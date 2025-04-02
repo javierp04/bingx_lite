@@ -63,7 +63,7 @@
                 </div>
                 <div class="col-md-6">
                     <label for="sim_ticker" class="form-label">Ticker</label>
-                    <input type="text" class="form-control" id="sim_ticker" placeholder="e.g., BTCUSDT" required>
+                    <input type="text" class="form-control" id="sim_ticker" placeholder="e.g., BTCUSDT" required value="BTCUSDT">
                 </div>
                 <div class="col-md-3">
                     <label for="sim_action" class="form-label">Action</label>
@@ -87,7 +87,7 @@
                 </div>
                 <div class="col-md-3">
                     <label for="sim_quantity" class="form-label">Quantity</label>
-                    <input type="number" class="form-control" id="sim_quantity" step="0.0001" min="0.0001" value="0.01" required>
+                    <input type="number" class="form-control" id="sim_quantity" step="0.0001" min="0.0001" value="0.0005" required>
                 </div>
                 <div class="col-md-3">
                     <label for="sim_leverage" class="form-label">Leverage</label>

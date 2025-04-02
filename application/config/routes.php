@@ -36,5 +36,11 @@ $route['trades'] = 'trades';
 $route['trades/close/(:num)'] = 'trades/close/$1';
 $route['trades/detail/(:num)'] = 'trades/detail/$1';
 
+// System Logs routes
+$route['systemlogs'] = 'systemlogs';
+$route['systemlogs/view/(:num)'] = 'systemlogs/view/$1';
+$route['systemlogs/search'] = 'systemlogs/search';
+$route['systemlogs/cleanup'] = 'systemlogs/cleanup';
+
 // Webhook route
 $route['webhook/tradingview'] = 'webhook/tradingview';

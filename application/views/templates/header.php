@@ -104,6 +104,13 @@
                                 </a>
                             </li>
                         <?php endif; ?>
+                        <?php if ($this->session->userdata('role') == 'admin') : ?>
+                            <li class="nav-item">
+                                <a class="nav-link" href="<?= base_url('systemlogs') ?>">
+                                    <i class="fas fa-history me-1"></i>System Logs
+                                </a>
+                            </li>
+                        <?php endif; ?>
                     </ul>
 
                     <ul class="navbar-nav">
