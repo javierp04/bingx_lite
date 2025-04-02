@@ -20,16 +20,18 @@ class Trade_model extends CI_Model {
             $this->db->where('trades.environment', $environment);
         }
         
-        $this->db->select('trades.*, strategies.name as strategy_name, strategies.strategy_id as strategy_external_id');
+        $this->db->select('trades.*, strategies.name as strategy_name, strategies.strategy_id as strategy_external_id, users.username');
         $this->db->join('strategies', 'strategies.id = trades.strategy_id', 'left');
+        $this->db->join('users', 'users.id = trades.user_id', 'left');
         $this->db->order_by('trades.created_at', 'DESC');
         
         return $this->db->get('trades')->result();
     }
     
     public function get_trade_by_id($id) {
-        $this->db->select('trades.*, strategies.name as strategy_name, strategies.strategy_id as strategy_external_id');
+        $this->db->select('trades.*, strategies.name as strategy_name, strategies.strategy_id as strategy_external_id, users.username');
         $this->db->join('strategies', 'strategies.id = trades.strategy_id', 'left');
+        $this->db->join('users', 'users.id = trades.user_id', 'left');
         return $this->db->get_where('trades', array('trades.id' => $id))->row();
     }
     
@@ -66,5 +68,13 @@ class Trade_model extends CI_Model {
     public function delete_trade($id) {
         $this->db->where('id', $id);
         return $this->db->delete('trades');
+    }
+    
+    public function get_total_pnl($trades) {
+        $total_pnl = 0;
+        foreach ($trades as $trade) {
+            $total_pnl += isset($trade->pnl) ? $trade->pnl : 0;
+        }
+        return $total_pnl;
     }
 }

@@ -5,49 +5,63 @@ class Webhook extends CI_Controller {
     
     public function __construct() {
         parent::__construct();
+        
+        // Load BingX API library
+        $this->load->library('BingxApi');
     }
     
     public function tradingview() {
         // Get JSON data from TradingView webhook
         $json_data = file_get_contents('php://input');
+        
+        // Process webhook data
+        $result = $this->process_webhook_data($json_data);
+        
+        // Send response
+        if ($result === true) {
+            $this->_send_response(200, 'Order executed successfully');
+        } else {
+            $this->_send_response(400, $result);
+        }
+    }
+    
+    public function process_webhook_data($json_data) {
+        // Decode JSON data
         $data = json_decode($json_data);
         
         // Verify data
         if (!$data || !isset($data->user_id) || !isset($data->strategy_id) || !isset($data->ticker) || 
             !isset($data->timeframe) || !isset($data->action) || !isset($data->environment)) {
             $this->_log_webhook_error('Missing required fields in webhook data', $json_data);
-            return $this->_send_response(400, 'Missing required fields');
+            return 'Missing required fields';
         }
         
         // Get user
         $user = $this->User_model->get_user_by_id($data->user_id);
         if (!$user) {
             $this->_log_webhook_error('User not found: ' . $data->user_id, $json_data);
-            return $this->_send_response(404, 'User not found');
+            return 'User not found';
         }
         
         // Get strategy
         $strategy = $this->Strategy_model->get_strategy_by_strategy_id($data->user_id, $data->strategy_id);
         if (!$strategy) {
             $this->_log_webhook_error('Strategy not found: ' . $data->strategy_id, $json_data);
-            return $this->_send_response(404, 'Strategy not found');
+            return 'Strategy not found';
         }
         
         // Check if strategy is active
         if (!$strategy->active) {
             $this->_log_webhook_error('Strategy is inactive: ' . $data->strategy_id, $json_data);
-            return $this->_send_response(400, 'Strategy is inactive');
+            return 'Strategy is inactive';
         }
         
         // Get API key for this environment
         $api_key = $this->Api_key_model->get_api_key($data->user_id, $data->environment);
         if (!$api_key) {
             $this->_log_webhook_error('API key not configured for environment: ' . $data->environment, $json_data);
-            return $this->_send_response(400, 'API key not configured for this environment');
+            return 'API key not configured for this environment';
         }
-        
-        // Load BingX API library
-        $this->load->library('BingxApi');
         
         // Determine trade type (spot or futures)
         $trade_type = $strategy->type;
@@ -84,7 +98,9 @@ class Webhook extends CI_Controller {
                         'trade_type' => $trade_type,
                         'quantity' => $quantity,
                         'entry_price' => $result->price,
+                        'current_price' => $result->price,
                         'leverage' => $trade_type == 'futures' ? $leverage : 1,
+                        'pnl' => 0, // Initial PNL is 0
                         'status' => 'open',
                         'environment' => $data->environment,
                         'webhook_data' => $json_data
@@ -101,14 +117,10 @@ class Webhook extends CI_Controller {
                     );
                     $this->Log_model->add_log($log_data);
                     
-                    return $this->_send_response(200, 'Order executed successfully', array(
-                        'trade_id' => $trade_id,
-                        'order_id' => $result->orderId,
-                        'price' => $result->price
-                    ));
+                    return true;
                 } else {
                     $this->_log_webhook_error('Failed to execute order', $json_data);
-                    return $this->_send_response(500, 'Failed to execute order');
+                    return 'Failed to execute order';
                 }
                 break;
                 
@@ -126,7 +138,7 @@ class Webhook extends CI_Controller {
                 
                 if (!$trade_to_close) {
                     $this->_log_webhook_error('No open trade found to close', $json_data);
-                    return $this->_send_response(404, 'No open trade found to close');
+                    return 'No open trade found to close';
                 }
                 
                 // Close position
@@ -151,9 +163,9 @@ class Webhook extends CI_Controller {
                     $exit_price = $result->price;
                     
                     if ($trade_to_close->side == 'BUY') {
-                        $pnl = ($exit_price - $trade_to_close->entry_price) * $trade_to_close->quantity;
+                        $pnl = ($exit_price - $trade_to_close->entry_price) * $trade_to_close->quantity * $trade_to_close->leverage;
                     } else {
-                        $pnl = ($trade_to_close->entry_price - $exit_price) * $trade_to_close->quantity;
+                        $pnl = ($trade_to_close->entry_price - $exit_price) * $trade_to_close->quantity * $trade_to_close->leverage;
                     }
                     
                     // Update trade
@@ -168,20 +180,16 @@ class Webhook extends CI_Controller {
                     );
                     $this->Log_model->add_log($log_data);
                     
-                    return $this->_send_response(200, 'Position closed successfully', array(
-                        'trade_id' => $trade_to_close->id,
-                        'exit_price' => $exit_price,
-                        'pnl' => $pnl
-                    ));
+                    return true;
                 } else {
                     $this->_log_webhook_error('Failed to close position', $json_data);
-                    return $this->_send_response(500, 'Failed to close position');
+                    return 'Failed to close position';
                 }
                 break;
                 
             default:
                 $this->_log_webhook_error('Invalid action: ' . $data->action, $json_data);
-                return $this->_send_response(400, 'Invalid action');
+                return 'Invalid action';
         }
     }
     
