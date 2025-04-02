@@ -1,7 +1,13 @@
 <!-- application/views/dashboard/index.php -->
-<h1 class="h3 mb-4">
-    <i class="fas fa-tachometer-alt me-2"></i>Trading Dashboard
-</h1>
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h3 mb-0">
+        <i class="fas fa-tachometer-alt me-2"></i>Trading Dashboard
+    </h1>
+    <div class="btc-price-container">
+        <span class="text-muted me-2">BTC Price:</span>
+        <span id="btc-price" class="badge bg-primary">Loading...</span>
+    </div>
+</div>
 
 <?php if ($is_admin): ?>
 <!-- Admin Simulation Panel -->
@@ -111,53 +117,6 @@
         <?= form_close() ?>
     </div>
 </div>
-
-<script>
-    document.getElementById('simulate-order-btn').addEventListener('click', function() {
-        // Get form values
-        const formData = {
-            // No se incluye user_id, el controlador usará el usuario actual
-            strategy_id: document.getElementById('sim_strategy_id').value,
-            ticker: document.getElementById('sim_ticker').value,
-            timeframe: document.getElementById('sim_timeframe').value,
-            action: document.getElementById('sim_action').value,
-            quantity: document.getElementById('sim_quantity').value,
-            leverage: document.getElementById('sim_leverage').value
-        };
-        
-        // Set the JSON data to the hidden field
-        document.getElementById('simulate_data').value = JSON.stringify(formData);
-        
-        // Submit the form
-        document.getElementById('simulate_data').form.submit();
-    });
-    
-    // Spot Price Test Button
-    document.getElementById('test-spot-price-btn').addEventListener('click', function() {
-        // Get symbol value
-        const symbol = document.getElementById('test-symbol').value;
-        
-        // Navigate to test spot price endpoint
-        window.location.href = '<?= base_url('dashboard/test_spot_price') ?>?symbol=' + encodeURIComponent(symbol);
-    });
-    
-    // Futures Price Test Button
-    document.getElementById('test-futures-price-btn').addEventListener('click', function() {
-        // Get symbol value
-        const symbol = document.getElementById('test-symbol').value;
-        
-        // Navigate to test futures price endpoint
-        window.location.href = '<?= base_url('dashboard/test_futures_price') ?>?symbol=' + encodeURIComponent(symbol);
-    });
-    
-    // Make Enter key work in price test input
-    document.getElementById('test-symbol').addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            document.getElementById('test-spot-price-btn').click();
-        }
-    });
-</script>
 <?php endif; ?>
 
 <!-- Summary Dashboard -->
@@ -250,8 +209,8 @@
                                         <?= ucfirst($trade->trade_type) ?>
                                     </span>
                                 </td>
-                                <td><?= $trade->entry_price ?></td>
-                                <td class="current-price"><?= isset($trade->current_price) ? $trade->current_price : $trade->entry_price ?></td>
+                                <td><?= number_format($trade->entry_price, 2) ?></td>
+                                <td class="current-price"><?= isset($trade->current_price) ? number_format($trade->current_price, 2) : number_format($trade->entry_price, 2) ?></td>
                                 <td><?= $trade->quantity ?></td>
                                 <td><?= $trade->leverage ?>x</td>
                                 <td class="<?= $pnl_class ?>">
@@ -305,130 +264,317 @@
     </div>
 </div>
 
-<!-- JavaScript for real-time updates -->
+<!-- Estilos adicionales para el precio de BTC -->
+<style>
+    .btc-price-container {
+        font-size: 0.9rem;
+        display: flex;
+        align-items: center;
+    }
+    
+    #btc-price {
+        font-size: 1rem;
+        padding: 0.4rem 0.8rem;
+        font-weight: bold;
+        transition: background-color 0.3s ease;
+    }
+    
+    .bg-success {
+        background-color: #28a745 !important;
+    }
+    
+    .bg-danger {
+        background-color: #dc3545 !important;
+    }
+</style>
+
+<!-- JavaScript para actualizaciones en tiempo real (solo REST API) -->
 <script>
-    $(document).ready(function() {
-        // Toggle chevron icon for webhook info collapse
-        $('#webhookInfo').on('show.bs.collapse', function () {
-            $('.card-header .fa-chevron-down').removeClass('fa-chevron-down').addClass('fa-chevron-up');
-        });
+    document.addEventListener('DOMContentLoaded', function() {
+        // Iniciar actualizaciones de precio BTC
+        updateBtcPrice();
         
-        $('#webhookInfo').on('hide.bs.collapse', function () {
-            $('.card-header .fa-chevron-up').removeClass('fa-chevron-up').addClass('fa-chevron-down');
-        });
+        // Iniciar actualizaciones de trades
+        setupTradesRefresh();
         
-        // Auto-refresh trades every 5 seconds
+        // Configurar controles de simulación
+        setupSimulationControls();
+        
+        // Configurar eventos para el panel de webhooks
+        setupWebhookPanel();
+    });
+    
+    // Configurar panel de webhook
+    function setupWebhookPanel() {
+        const webhookInfoElement = document.getElementById('webhookInfo');
+        if (webhookInfoElement) {
+            webhookInfoElement.addEventListener('show.bs.collapse', function () {
+                const chevronIcon = document.querySelector('.card-header .fa-chevron-down');
+                if (chevronIcon) {
+                    chevronIcon.classList.remove('fa-chevron-down');
+                    chevronIcon.classList.add('fa-chevron-up');
+                }
+            });
+            
+            webhookInfoElement.addEventListener('hide.bs.collapse', function () {
+                const chevronIcon = document.querySelector('.card-header .fa-chevron-up');
+                if (chevronIcon) {
+                    chevronIcon.classList.remove('fa-chevron-up');
+                    chevronIcon.classList.add('fa-chevron-down');
+                }
+            });
+        }
+    }
+    
+    // Actualizar precio de BTC
+    function updateBtcPrice() {
+        const btcPrice = document.getElementById('btc-price');
+        if (!btcPrice) return;
+        
+        fetch('<?= base_url('dashboard/get_btc_price') ?>')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success && data.price) {
+                    const price = parseFloat(data.price);
+                    
+                    // Formatear el precio
+                    btcPrice.textContent = '$' + data.price_formatted;
+                    
+                    // Cambiar el color basado en la comparación con el precio anterior
+                    const prevPrice = btcPrice.getAttribute('data-prev-price');
+                    if (prevPrice) {
+                        if (price > parseFloat(prevPrice)) {
+                            btcPrice.classList.remove('bg-danger', 'bg-primary');
+                            btcPrice.classList.add('bg-success');
+                        } else if (price < parseFloat(prevPrice)) {
+                            btcPrice.classList.remove('bg-success', 'bg-primary');
+                            btcPrice.classList.add('bg-danger');
+                        } else {
+                            btcPrice.classList.remove('bg-success', 'bg-danger');
+                            btcPrice.classList.add('bg-primary');
+                        }
+                    }
+                    
+                    // Guardar el precio actual para la próxima comparación
+                    btcPrice.setAttribute('data-prev-price', price.toString());
+                }
+            })
+            .catch(error => {
+                console.error('Error fetching BTC price:', error);
+            })
+            .finally(() => {
+                // Actualizar cada 5 segundos
+                setTimeout(updateBtcPrice, 5000);
+            });
+    }
+    
+    // Configurar actualización de trades
+    function setupTradesRefresh() {
+        // Variables para actualización de trades
         let refreshTimer;
         
+        // Iniciar auto-refresh
+        startRefresh();
+        
+        // Botón de actualización manual
+        const refreshBtn = document.getElementById('refresh-trades-btn');
+        if (refreshBtn) {
+            refreshBtn.addEventListener('click', refreshTrades);
+        }
+        
         function startRefresh() {
-            refreshTimer = setInterval(refreshTrades, 5000);
+            refreshTimer = setInterval(refreshTrades, 5000); // Cada 5 segundos
         }
         
         function stopRefresh() {
             clearInterval(refreshTimer);
         }
+    }
+    
+    // Función para actualizar trades
+    function refreshTrades() {
+        fetch('<?= base_url('dashboard/refresh_trades') ?>')
+            .then(response => response.json())
+            .then(data => {
+                updateTradesTable(data);
+                
+                const lastUpdatedElement = document.getElementById('last-updated');
+                if (lastUpdatedElement) {
+                    lastUpdatedElement.textContent = getCurrentTime();
+                }
+                
+                // Calcular PNL total
+                const totalPnl = calculateTotalPnl(data);
+                const pnlClass = totalPnl >= 0 ? 'text-profit' : 'text-loss';
+                
+                // Actualizar visualización del PNL
+                const totalPnlElement = document.getElementById('total-pnl');
+                if (totalPnlElement) {
+                    totalPnlElement.classList.remove('text-profit', 'text-loss');
+                    totalPnlElement.classList.add(pnlClass);
+                    totalPnlElement.textContent = formatNumber(totalPnl, 2) + ' USDT';
+                }
+            })
+            .catch(error => {
+                console.error('Error refreshing trades:', error);
+            });
+    }
+    
+    // Actualizar tabla de trades
+    function updateTradesTable(trades) {
+        const tbody = document.getElementById('trades-tbody');
+        if (!tbody) return;
         
-        // Start auto-refresh
-        startRefresh();
+        // Limpiar tabla actual
+        tbody.innerHTML = '';
         
-        // Manual refresh button
-        $('#refresh-trades-btn').click(refreshTrades);
+        if (trades.length === 0) {
+            const emptyRow = document.createElement('tr');
+            emptyRow.innerHTML = '<td colspan="11" class="text-center py-3">No active trades</td>';
+            tbody.appendChild(emptyRow);
+            return;
+        }
         
-        // Refresh function
-        function refreshTrades() {
-            $.ajax({
-                url: '<?= base_url('dashboard/refresh_trades') ?>',
-                dataType: 'json',
-                success: function(data) {
-                    updateTradesTable(data);
-                    $('#last-updated').text(getCurrentTime());
-                    
-                    // Calculate total PNL
-                    const totalPnl = calculateTotalPnl(data);
-                    const pnlClass = totalPnl >= 0 ? 'text-profit' : 'text-loss';
-                    
-                    // Update the PNL display
-                    $('#total-pnl')
-                        .removeClass('text-profit text-loss')
-                        .addClass(pnlClass)
-                        .text(totalPnl.toFixed(2) + ' USDT');
+        // Crear filas para cada trade
+        trades.forEach(function(trade) {
+            const pnlClass = (parseFloat(trade.pnl || 0) >= 0) ? 'text-profit' : 'text-loss';
+            const sideClass = (trade.side === 'BUY') ? 'text-success' : 'text-danger';
+            const typeClass = (trade.trade_type === 'futures') ? 'bg-warning text-dark' : 'bg-info';
+            
+            // Usar valores formateados o aplicar formato a los originales
+            const entryPrice = trade.entry_price_formatted || formatNumber(trade.entry_price, 2);
+            const currentPrice = trade.current_price_formatted || 
+                               (trade.current_price ? formatNumber(trade.current_price, 2) : entryPrice);
+            const formattedPnl = trade.pnl_formatted ? trade.pnl_formatted + ' USDT' : 
+                              ((trade.pnl !== null) ? formatNumber(trade.pnl, 2) + ' USDT' : 'N/A');
+            
+            const formattedDate = new Date(trade.created_at).toLocaleString();
+            
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>${trade.symbol}</td>
+                <td>${trade.strategy_name}</td>
+                <td class="${sideClass}">${trade.side}</td>
+                <td>
+                    <span class="badge ${typeClass}">
+                        ${trade.trade_type.charAt(0).toUpperCase() + trade.trade_type.slice(1)}
+                    </span>
+                </td>
+                <td>${entryPrice}</td>
+                <td class="current-price">${currentPrice}</td>
+                <td>${trade.quantity}</td>
+                <td>${trade.leverage}x</td>
+                <td class="${pnlClass}">${formattedPnl}</td>
+                <td>${formattedDate}</td>
+                <td>
+                    <a href="<?= base_url('trades/close/') ?>${trade.id}" class="btn btn-sm btn-danger" onclick="return confirm('Are you sure you want to close this trade?')">
+                        <i class="fas fa-times-circle"></i> Close
+                    </a>
+                </td>
+            `;
+            
+            tbody.appendChild(row);
+        });
+    }
+    
+    // Formatear números con número fijo de decimales
+    function formatNumber(number, decimals) {
+        return parseFloat(number).toFixed(decimals);
+    }
+    
+    // Calcular PNL total de todos los trades
+    function calculateTotalPnl(trades) {
+        let totalPnl = 0;
+        trades.forEach(function(trade) {
+            totalPnl += parseFloat(trade.pnl || 0);
+        });
+        return totalPnl;
+    }
+    
+    // Obtener hora actual formateada
+    function getCurrentTime() {
+        const now = new Date();
+        const hours = now.getHours().toString().padStart(2, '0');
+        const minutes = now.getMinutes().toString().padStart(2, '0');
+        const seconds = now.getSeconds().toString().padStart(2, '0');
+        return `${hours}:${minutes}:${seconds}`;
+    }
+    
+    // Configurar controles de simulación
+    function setupSimulationControls() {
+        // Botón de simulación de orden
+        const simulateBtn = document.getElementById('simulate-order-btn');
+        if (simulateBtn) {
+            simulateBtn.addEventListener('click', function() {
+                // Obtener valores del formulario
+                const formData = {
+                    strategy_id: document.getElementById('sim_strategy_id').value,
+                    ticker: document.getElementById('sim_ticker').value,
+                    timeframe: document.getElementById('sim_timeframe').value,
+                    action: document.getElementById('sim_action').value,
+                    quantity: document.getElementById('sim_quantity').value,
+                    leverage: document.getElementById('sim_leverage').value
+                };
+                
+                // Establecer los datos JSON en el campo oculto
+                const dataField = document.getElementById('simulate_data');
+                if (dataField) {
+                    dataField.value = JSON.stringify(formData);
+                    // Enviar el formulario
+                    dataField.form.submit();
                 }
             });
         }
         
-        function updateTradesTable(trades) {
-            const tbody = $('#trades-tbody');
-            tbody.empty();
-            
-            if (trades.length === 0) {
-                tbody.append('<tr><td colspan="11" class="text-center py-3">No active trades</td></tr>');
-                return;
-            }
-            
-            trades.forEach(function(trade) {
-                const pnlClass = (trade.pnl >= 0) ? 'text-profit' : 'text-loss';
-                const sideClass = (trade.side === 'BUY') ? 'text-success' : 'text-danger';
-                const typeClass = (trade.trade_type === 'futures') ? 'bg-warning text-dark' : 'bg-info';
-                const formattedPnl = (trade.pnl !== null) ? Number(trade.pnl).toFixed(2) + ' USDT' : 'N/A';
-                const formattedDate = new Date(trade.created_at).toLocaleString();
-                const currentPrice = trade.current_price || trade.entry_price;
-                
-                const row = `<tr>
-                    <td>${trade.symbol}</td>
-                    <td>${trade.strategy_name}</td>
-                    <td class="${sideClass}">${trade.side}</td>
-                    <td>
-                        <span class="badge ${typeClass}">
-                            ${trade.trade_type.charAt(0).toUpperCase() + trade.trade_type.slice(1)}
-                        </span>
-                    </td>
-                    <td>${trade.entry_price}</td>
-                    <td class="current-price">${currentPrice}</td>
-                    <td>${trade.quantity}</td>
-                    <td>${trade.leverage}x</td>
-                    <td class="${pnlClass}">${formattedPnl}</td>
-                    <td>${formattedDate}</td>
-                    <td>
-                        <a href="<?= base_url('trades/close/') ?>${trade.id}" class="btn btn-sm btn-danger" onclick="return confirm('Are you sure you want to close this trade?')">
-                            <i class="fas fa-times-circle"></i> Close
-                        </a>
-                    </td>
-                </tr>`;
-                
-                tbody.append(row);
+        // Botón de prueba de precio spot
+        const testSpotPriceBtn = document.getElementById('test-spot-price-btn');
+        if (testSpotPriceBtn) {
+            testSpotPriceBtn.addEventListener('click', function() {
+                const symbol = document.getElementById('test-symbol').value;
+                window.location.href = '<?= base_url('dashboard/test_spot_price') ?>?symbol=' + encodeURIComponent(symbol);
             });
         }
         
-        function calculateTotalPnl(trades) {
-            let totalPnl = 0;
-            trades.forEach(function(trade) {
-                totalPnl += parseFloat(trade.pnl || 0);
+        // Botón de prueba de precio futures
+        const testFuturesPriceBtn = document.getElementById('test-futures-price-btn');
+        if (testFuturesPriceBtn) {
+            testFuturesPriceBtn.addEventListener('click', function() {
+                const symbol = document.getElementById('test-symbol').value;
+                window.location.href = '<?= base_url('dashboard/test_futures_price') ?>?symbol=' + encodeURIComponent(symbol);
             });
-            return totalPnl;
         }
         
-        function getCurrentTime() {
-            const now = new Date();
-            const hours = now.getHours().toString().padStart(2, '0');
-            const minutes = now.getMinutes().toString().padStart(2, '0');
-            const seconds = now.getSeconds().toString().padStart(2, '0');
-            return `${hours}:${minutes}:${seconds}`;
+        // Manejar tecla Enter en el campo de símbolo
+        const testSymbolInput = document.getElementById('test-symbol');
+        if (testSymbolInput) {
+            testSymbolInput.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (testSpotPriceBtn) {
+                        testSpotPriceBtn.click();
+                    }
+                }
+            });
         }
-    });
+    }
     
-    // Copy webhook URL function
+    // Función para copiar la URL del webhook
     function copyWebhookUrl() {
         const webhookUrl = document.getElementById('webhook-url');
-        webhookUrl.select();
-        document.execCommand('copy');
-        
-        // Show tooltip
-        const button = document.querySelector('#webhook-url + button');
-        const originalText = button.innerHTML;
-        button.innerHTML = '<i class="fas fa-check"></i> Copied!';
-        
-        setTimeout(function() {
-            button.innerHTML = originalText;
-        }, 2000);
+        if (webhookUrl) {
+            webhookUrl.select();
+            document.execCommand('copy');
+            
+            // Mostrar confirmación
+            const button = document.querySelector('#webhook-url + button');
+            if (button) {
+                const originalText = button.innerHTML;
+                button.innerHTML = '<i class="fas fa-check"></i> Copied!';
+                
+                setTimeout(function() {
+                    button.innerHTML = originalText;
+                }, 2000);
+            }
+        }
     }
 </script>

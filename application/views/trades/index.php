@@ -16,15 +16,7 @@
                     <option value="closed" <?= $this->input->get('status') === 'closed' ? 'selected' : '' ?>>Closed</option>
                 </select>
             </div>
-            <div class="col-md-3">
-                <label for="environment" class="form-label">Environment</label>
-                <select class="form-select" id="environment" name="environment">
-                    <option value="" <?= $this->input->get('environment') === null ? 'selected' : '' ?>>All</option>
-                    <option value="sandbox" <?= $this->input->get('environment') === 'sandbox' ? 'selected' : '' ?>>Sandbox</option>
-                    <option value="production" <?= $this->input->get('environment') === 'production' ? 'selected' : '' ?>>Production</option>
-                </select>
-            </div>
-            <div class="col-md-3">
+            <div class="col-md-6">
                 <label for="strategy" class="form-label">Strategy</label>
                 <select class="form-select" id="strategy" name="strategy">
                     <option value="">All</option>
@@ -54,8 +46,7 @@
                         <th>Symbol</th>
                         <th>Strategy</th>
                         <th>Side</th>
-                        <th>Type</th>
-                        <th>Environment</th>
+                        <th>Type</th>                        
                         <th>Entry Price</th>
                         <th>Exit Price</th>
                         <th>Quantity</th>
@@ -87,12 +78,7 @@
                                     <span class="badge <?= $trade->trade_type == 'futures' ? 'bg-warning text-dark' : 'bg-info' ?>">
                                         <?= ucfirst($trade->trade_type) ?>
                                     </span>
-                                </td>
-                                <td>
-                                    <span class="badge <?= $trade->environment == 'production' ? 'bg-danger' : 'bg-secondary' ?>">
-                                        <?= ucfirst($trade->environment) ?>
-                                    </span>
-                                </td>
+                                </td>                                
                                 <td><?= $trade->entry_price ?></td>
                                 <td><?= $trade->exit_price ? $trade->exit_price : '-' ?></td>
                                 <td><?= $trade->quantity ?></td>

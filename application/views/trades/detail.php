@@ -35,12 +35,7 @@
                         </p>
                         <p><strong>Timeframe:</strong> <?= $trade->timeframe ?></p>
                     </div>
-                    <div class="col-md-6">
-                        <p><strong>Environment:</strong> 
-                            <span class="badge <?= $trade->environment == 'production' ? 'bg-danger' : 'bg-secondary' ?>">
-                                <?= ucfirst($trade->environment) ?>
-                            </span>
-                        </p>
+                    <div class="col-md-6">                        
                         <p><strong>Status:</strong> 
                             <span class="badge <?= $trade->status == 'open' ? 'bg-primary' : 'bg-success' ?>">
                                 <?= ucfirst($trade->status) ?>

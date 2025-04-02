@@ -17,6 +17,9 @@ class Webhook extends CI_Controller
         // Get JSON data from TradingView webhook
         $json_data = file_get_contents('php://input');
 
+        // Log the raw webhook data for debugging
+        $this->_log_webhook_debug('Received webhook', $json_data);
+
         // Process webhook data
         $result = $this->process_webhook_data($json_data);
 
@@ -56,7 +59,7 @@ class Webhook extends CI_Controller
         redirect('dashboard');
     }
 
-    // Nuevo método para depuración
+    // Webhook debug logger 
     private function _log_webhook_debug($message, $data)
     {
         $log_data = array(
@@ -81,12 +84,12 @@ class Webhook extends CI_Controller
             return 'Missing required fields';
         }
 
-        // Si el user_id no está en el JSON, usar el usuario actual (para simulaciones)
+        // If user_id is not in JSON, use current user (for simulations)
         if (!isset($data->user_id) && $this->session->userdata('user_id')) {
             $data->user_id = $this->session->userdata('user_id');
         }
 
-        // Verificar que hay un user_id
+        // Verify user_id exists
         if (!isset($data->user_id)) {
             $this->_log_webhook_error('Missing user_id in webhook data', $json_data);
             return 'Missing user_id';
@@ -135,6 +138,75 @@ class Webhook extends CI_Controller
         switch ($data->action) {
             case 'BUY':
             case 'SELL':
+                // Verificar si hay un trade abierto opuesto para cerrar primero
+                $opposite_side = $data->action === 'BUY' ? 'SELL' : 'BUY';
+                $trades = $this->Trade_model->get_all_trades($data->user_id, 'open');
+                $opposite_trade = null;
+
+                // Buscar un trade abierto con dirección opuesta para la misma estrategia/símbolo/timeframe
+                foreach ($trades as $trade) {
+                    if (
+                        $trade->symbol == $data->ticker &&
+                        $trade->strategy_id == $strategy->id &&
+                        $trade->side == $opposite_side &&
+                        $trade->timeframe == $data->timeframe
+                    ) {
+                        $opposite_trade = $trade;
+                        break;
+                    }
+                }
+
+                // Si existe un trade opuesto, cerrarlo primero
+                if ($opposite_trade) {
+                    $this->_log_webhook_debug(
+                        "Closing opposite direction trade before opening new position",
+                        json_encode($opposite_trade)
+                    );
+
+                    // Cerrar la posición opuesta primero
+                    if ($opposite_trade->trade_type == 'futures') {
+                        $result = $this->bingxapi->close_futures_position(
+                            $api_key,
+                            $opposite_trade->symbol,
+                            $opposite_trade->side,
+                            $opposite_trade->quantity
+                        );
+                    } else {
+                        $result = $this->bingxapi->close_spot_position(
+                            $api_key,
+                            $opposite_trade->symbol,
+                            $opposite_trade->side,
+                            $opposite_trade->quantity
+                        );
+                    }
+
+                    if ($result && isset($result->price)) {
+                        // Calcular PNL
+                        $exit_price = $result->price;
+
+                        if ($opposite_trade->side == 'BUY') {
+                            $pnl = ($exit_price - $opposite_trade->entry_price) *
+                                $opposite_trade->quantity * $opposite_trade->leverage;
+                        } else {
+                            $pnl = ($opposite_trade->entry_price - $exit_price) *
+                                $opposite_trade->quantity * $opposite_trade->leverage;
+                        }
+
+                        // Actualizar el trade
+                        $this->Trade_model->close_trade($opposite_trade->id, $exit_price, $pnl);
+
+                        // Log de cierre
+                        $log_data = array(
+                            'user_id' => $data->user_id,
+                            'action' => 'close_trade',
+                            'description' => 'Auto-closed opposite trade for ' . $opposite_trade->symbol .
+                                ' with PNL: ' . number_format($pnl, 2) .
+                                ' before opening new position'
+                        );
+                        $this->Log_model->add_log($log_data);
+                    }
+                }
+                
                 // Get quantity and leverage
                 $quantity = isset($data->quantity) ? $data->quantity : 0.01; // Default quantity
                 $leverage = isset($data->leverage) ? $data->leverage : 1; // Default leverage

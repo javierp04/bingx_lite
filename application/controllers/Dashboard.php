@@ -60,35 +60,57 @@ class Dashboard extends CI_Controller
         $api_key = $this->Api_key_model->get_api_key($user_id);
 
         // Update PNL for each trade
-        if ($api_key) {
+        if ($api_key && !empty($trades)) {
             foreach ($trades as $trade) {
-                // Update price and PNL information
-                if ($trade->trade_type == 'futures') {
-                    $price_info = $this->bingxapi->get_futures_price($api_key, $trade->symbol);
-                } else {
-                    $price_info = $this->bingxapi->get_spot_price($api_key, $trade->symbol);
-                }
-
-                if ($price_info) {
-                    // Calculate PNL
-                    $current_price = $price_info->price;
-
-                    if ($trade->side == 'BUY') {
-                        $pnl = ($current_price - $trade->entry_price) * $trade->quantity * $trade->leverage;
+                try {
+                    // Update price and PNL information
+                    if ($trade->trade_type == 'futures') {
+                        $price_info = $this->bingxapi->get_futures_price($api_key, $trade->symbol);
                     } else {
-                        $pnl = ($trade->entry_price - $current_price) * $trade->quantity * $trade->leverage;
+                        $price_info = $this->bingxapi->get_spot_price($api_key, $trade->symbol);
                     }
 
-                    // Update trade with current price and PNL
-                    $this->Trade_model->update_trade($trade->id, array(
-                        'current_price' => $current_price,
-                        'pnl' => $pnl
-                    ));
+                    if ($price_info && isset($price_info->price)) {
+                        // Calculate PNL
+                        $current_price = $price_info->price;
 
-                    // Update object for JSON response
-                    $trade->current_price = $current_price;
-                    $trade->pnl = $pnl;
+                        if ($trade->side == 'BUY') {
+                            $pnl = ($current_price - $trade->entry_price) * $trade->quantity * $trade->leverage;
+                        } else {
+                            $pnl = ($trade->entry_price - $current_price) * $trade->quantity * $trade->leverage;
+                        }
+
+                        // Update trade with current price and PNL
+                        $this->Trade_model->update_trade($trade->id, array(
+                            'current_price' => $current_price,
+                            'pnl' => $pnl
+                        ));
+
+                        // Update object for JSON response
+                        $trade->current_price = $current_price;
+                        $trade->pnl = $pnl;
+                    }
+                } catch (Exception $e) {
+                    // Log error but continue with other trades
+                    $this->Log_model->add_log([
+                        'user_id' => $user_id,
+                        'action' => 'refresh_error',
+                        'description' => 'Error updating trade ' . $trade->id . ': ' . $e->getMessage()
+                    ]);
                 }
+            }
+        }
+
+        // Format prices and PNL to limit decimals
+        foreach ($trades as $trade) {
+            if (isset($trade->current_price)) {
+                $trade->current_price_formatted = number_format($trade->current_price, 2);
+            }
+            if (isset($trade->entry_price)) {
+                $trade->entry_price_formatted = number_format($trade->entry_price, 2);
+            }
+            if (isset($trade->pnl)) {
+                $trade->pnl_formatted = number_format($trade->pnl, 2);
             }
         }
 
@@ -271,5 +293,42 @@ class Dashboard extends CI_Controller
         }
 
         redirect('dashboard');
+    }
+
+    public function get_btc_price()
+    {
+        $user_id = $this->session->userdata('user_id');
+
+        // Check login
+        if (!$user_id) {
+            echo json_encode(['error' => 'Not logged in']);
+            return;
+        }
+
+        // Get API key
+        $api_key = $this->Api_key_model->get_api_key($user_id);
+
+        if (!$api_key) {
+            echo json_encode(['error' => 'No API key configured']);
+            return;
+        }
+
+        // Get BTC price
+        $price_info = $this->bingxapi->get_spot_price($api_key, 'BTCUSDT');
+
+        if ($price_info && isset($price_info->price)) {
+            $price = $price_info->price;
+
+            echo json_encode([
+                'success' => true,
+                'price' => $price,
+                'price_formatted' => number_format($price, 2)
+            ]);
+        } else {
+            echo json_encode([
+                'error' => 'Failed to get price',
+                'message' => $this->bingxapi->get_last_error()
+            ]);
+        }
     }
 }

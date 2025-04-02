@@ -3,7 +3,6 @@ defined('BASEPATH') or exit('No direct script access allowed');
 
 class BingxApi
 {
-
     private $CI;
 
     // BingX API URLs
@@ -32,15 +31,14 @@ class BingxApi
      * Format symbol for BingX API based on operation type
      * 
      * @param string $symbol Raw symbol (e.g. BTCUSDT)
-     * @param string $operation Type of operation: 'price', 'trade', 'futures_price', 'futures_trade'
      * @return string Formatted symbol
      */
     public function format_symbol($symbol)
     {
-        // Eliminar cualquier guión existente primero
+        // Remove any hyphens first
         $symbol = str_replace('-', '', $symbol);
 
-        // Añadir guión para pares estándar
+        // Add hyphen for standard pairs
         if (substr($symbol, -4) === 'USDT') {
             return substr($symbol, 0, -4) . '-USDT';
         } elseif (substr($symbol, -4) === 'USDC') {
@@ -51,63 +49,27 @@ class BingxApi
             return substr($symbol, 0, -3) . '-ETH';
         }
 
-        // Para cualquier otro formato, devolver tal cual
+        // For any other format, return as is
         return $symbol;
     }
+
     /**
-     * Generate signature for BingX API
+     * Generate signature for BingX API - following their official example
      * 
-     * @param array $params Request parameters
+     * @param string $parameters Query string of parameters
      * @param string $api_secret API Secret
      * @return string HMAC SHA256 signature
      */
-    private function _generate_signature($params, $api_secret)
+    private function _generate_signature($parameters, $api_secret)
     {
-        // 1. Ordenar parámetros alfabéticamente
-        ksort($params);
-
-        // 2. Construir la cadena de consulta manualmente sin NINGUNA codificación URL
-        $query_string = '';
-        foreach ($params as $key => $value) {
-            if ($query_string !== '') {
-                $query_string .= '&';
-            }
-
-            // Formatear valores booleanos como 'true'/'false' en minúsculas
-            if (is_bool($value)) {
-                $value = $value ? 'true' : 'false';
-            }
-
-            // Asegurar que los valores decimales se formatean correctamente
-            // (evitar notación científica)
-            if (is_float($value)) {
-                $value = sprintf('%.8f', $value);
-                // Eliminar ceros finales
-                $value = rtrim(rtrim($value, '0'), '.');
-            }
-
-            $query_string .= $key . '=' . $value;
-        }
-
-        // Log para depuración
-        $this->CI->Log_model->add_log([
-            'user_id' => $this->CI->session->userdata('user_id'),
-            'action' => 'signature_debug',
-            'description' => json_encode([
-                'raw_query_string' => $query_string,
-                'api_secret_sample' => substr($api_secret, 0, 5) . '...' . substr($api_secret, -5)
-            ])
-        ]);
-
-        // 3. Generar firma HMAC-SHA256
-        $signature = hash_hmac('sha256', $query_string, $api_secret);
-
-        return $signature;
+        // Generate HMAC SHA256 signature and return lowercase hexadecimal
+        $hash = hash_hmac("sha256", $parameters, $api_secret, true);
+        $hashHex = bin2hex($hash);
+        return strtolower($hashHex);
     }
 
-
     /**
-     * Make API request to BingX
+     * Make API request to BingX - following their official example
      * 
      * @param object $api_key API key object with api_key and api_secret
      * @param string $endpoint API endpoint
@@ -118,49 +80,56 @@ class BingxApi
      */
     private function _make_request($api_key, $endpoint, $params = [], $method = 'GET', $is_futures = false)
     {
-        // Resetear último error
+        // Reset last error
         $this->last_error = null;
 
-        // Determinar URL base según el tipo de API
+        // Determine base URL
         $base_url = $is_futures ? $this->futures_api_url : $this->spot_api_url;
+        $host = parse_url($base_url, PHP_URL_HOST);
+        $protocol = parse_url($base_url, PHP_URL_SCHEME);
 
-        // Añadir timestamp a los parámetros (OBLIGATORIO)
-        $params['timestamp'] = number_format(round(microtime(true) * 1000), 0, '.', '');
+        // Start with timestamp parameter
+        $timestamp = round(microtime(true) * 1000);
+        $parameters = "timestamp=" . $timestamp;
 
-        // Guardar una copia de los parámetros para depuración
-        $debug_params = $params;
+        // Add all other parameters
+        foreach ($params as $key => $value) {
+            $parameters .= "&$key=$value";
+        }
 
-        // Generar firma
-        $signature = $this->_generate_signature($params, $api_key->api_secret);
+        // Generate signature
+        $signature = $this->_generate_signature($parameters, $api_key->api_secret);
 
-        // Añadir firma a los parámetros
-        $params['signature'] = $signature;
+        // Construct URL with parameters and signature
+        $url = "{$protocol}://{$host}{$endpoint}?{$parameters}&signature={$signature}";
 
-        // Inicializar cURL
+        // Debug log
+        $this->CI->Log_model->add_log([
+            'user_id' => $this->CI->session->userdata('user_id'),
+            'action' => 'api_debug',
+            'description' => json_encode([
+                'endpoint' => $endpoint,
+                'method' => $method,
+                'parameters' => $parameters,
+                'url' => $url
+            ])
+        ]);
+
+        // Initialize cURL
         $ch = curl_init();
-
-        // Manejar GET vs POST de manera diferente
-        if ($method == 'GET') {
-            // Para solicitudes GET, construir cadena de consulta manualmente
-            $query_string = http_build_query($params);
-            $url = $base_url . $endpoint . '?' . $query_string;
-
-            curl_setopt($ch, CURLOPT_URL, $url);
-            curl_setopt($ch, CURLOPT_HTTPGET, true);
-        } else {
-            // Para solicitudes POST, establecer la URL y los campos post por separado
-            $url = $base_url . $endpoint;
-            curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_URL, $url);
+        
+        if ($method == 'POST') {
             curl_setopt($ch, CURLOPT_POST, true);
-
-            // Convertir los parámetros a una cadena de consulta
-            $post_fields = http_build_query($params);
-            curl_setopt($ch, CURLOPT_POSTFIELDS, $post_fields);
+            // Empty post body as parameters are in the URL
+            curl_setopt($ch, CURLOPT_POSTFIELDS, '');
+        } else {
+            curl_setopt($ch, CURLOPT_HTTPGET, true);
         }
 
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 
-        // Establecer encabezados
+        // Set headers
         $headers = [
             'Content-Type: application/x-www-form-urlencoded',
             'User-Agent: BingX-Trading-Bot',
@@ -169,22 +138,21 @@ class BingxApi
 
         curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
 
-        // Ejecutar solicitud
+        // Execute request
         $response = curl_exec($ch);
         $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $curl_error = curl_error($ch);
 
-        // Cerrar cURL
+        // Close cURL
         curl_close($ch);
 
-        // Registrar solicitud y respuesta con más detalle
+        // Log request and response
         $log_data = [
             'endpoint' => $endpoint,
             'method' => $method,
             'url' => $url,
             'headers' => $headers,
-            'params_before_signature' => json_encode($debug_params),
-            'params_with_signature' => $method == 'GET' ? http_build_query($params) : $post_fields,
+            'parameters' => $parameters,
             'response' => $response,
             'http_code' => $http_code,
             'curl_error' => $curl_error
@@ -196,22 +164,22 @@ class BingxApi
             'description' => json_encode($log_data)
         ]);
 
-        // Verificar errores cURL
+        // Check for cURL errors
         if ($curl_error) {
             $this->last_error = "cURL Error: " . $curl_error;
             return false;
         }
 
-        // Verificar estado HTTP
+        // Check HTTP status
         if ($http_code != 200) {
             $this->last_error = "HTTP Error: " . $http_code . " - " . $response;
             return false;
         }
 
-        // Analizar respuesta
+        // Parse response
         $data = json_decode($response);
 
-        // Verificar errores de API
+        // Check for API errors
         if (isset($data->code) && $data->code != 0) {
             $this->last_error = "API Error: " . $data->code . " - " . (isset($data->msg) ? $data->msg : 'Unknown error');
             return false;
@@ -229,9 +197,11 @@ class BingxApi
      */
     public function get_spot_price($api_key, $symbol)
     {
+        $formatted_symbol = $this->format_symbol($symbol);
+        
         $endpoint = '/openApi/spot/v1/ticker/price';
         $params = [
-            'symbol' => $this->format_symbol($symbol)
+            'symbol' => $formatted_symbol
         ];
 
         $response = $this->_make_request($api_key, $endpoint, $params, 'GET', false);
@@ -258,9 +228,11 @@ class BingxApi
      */
     public function get_futures_price($api_key, $symbol)
     {
+        $formatted_symbol = $this->format_symbol($symbol);
+        
         $endpoint = '/openApi/swap/v2/quote/price';
         $params = [
-            'symbol' => $this->format_symbol($symbol)
+            'symbol' => $formatted_symbol
         ];
 
         $response = $this->_make_request($api_key, $endpoint, $params, 'GET', true);
@@ -288,12 +260,14 @@ class BingxApi
      */
     public function open_spot_position($api_key, $symbol, $side, $quantity)
     {
+        $formatted_symbol = $this->format_symbol($symbol);
+        
         $endpoint = '/openApi/spot/v1/trade/order';
         $params = [
-            'symbol' => $this->format_symbol($symbol),
+            'symbol' => $formatted_symbol,
             'side' => $side,
             'type' => 'MARKET',
-            'quantity' => $quantity
+            'quantity' => (string)$quantity
         ];
 
         $response = $this->_make_request($api_key, $endpoint, $params, 'POST', false);
@@ -310,7 +284,6 @@ class BingxApi
         return false;
     }
 
-
     /**
      * Close spot position
      * 
@@ -324,13 +297,14 @@ class BingxApi
     {
         // To close a position, we need to do the opposite action
         $close_side = $side == 'BUY' ? 'SELL' : 'BUY';
+        $formatted_symbol = $this->format_symbol($symbol);
 
         $endpoint = '/openApi/spot/v1/trade/order';
         $params = [
-            'symbol' => $this->format_symbol($symbol, 'trade'),
+            'symbol' => $formatted_symbol,
             'side' => $close_side,
             'type' => 'MARKET',
-            'quantity' => $quantity
+            'quantity' => (string)$quantity
         ];
 
         $response = $this->_make_request($api_key, $endpoint, $params, 'POST', false);
@@ -357,10 +331,12 @@ class BingxApi
      */
     public function set_futures_leverage($api_key, $symbol, $leverage)
     {
+        $formatted_symbol = $this->format_symbol($symbol);
+        
         $endpoint = '/openApi/swap/v2/trade/leverage';
         $params = [
-            'symbol' => $this->format_symbol($symbol),
-            'leverage' => $leverage
+            'symbol' => $formatted_symbol,
+            'leverage' => (string)$leverage
         ];
 
         $response = $this->_make_request($api_key, $endpoint, $params, 'POST', true);
@@ -379,13 +355,15 @@ class BingxApi
      */
     public function open_futures_position($api_key, $symbol, $side, $quantity)
     {
+        $formatted_symbol = $this->format_symbol($symbol);
+        
         $endpoint = '/openApi/swap/v2/trade/order';
         $params = [
-            'symbol' => $this->format_symbol($symbol, 'futures_trade'),
+            'symbol' => $formatted_symbol,
             'side' => $side,
             'positionSide' => 'BOTH',
             'type' => 'MARKET',
-            'quantity' => $quantity
+            'quantity' => (string)$quantity
         ];
 
         $response = $this->_make_request($api_key, $endpoint, $params, 'POST', true);
@@ -415,14 +393,15 @@ class BingxApi
     {
         // To close a position, we need to do the opposite action
         $close_side = $side == 'BUY' ? 'SELL' : 'BUY';
+        $formatted_symbol = $this->format_symbol($symbol);
 
         $endpoint = '/openApi/swap/v2/trade/order';
         $params = [
-            'symbol' => $this->format_symbol($symbol, 'futures_trade'),
+            'symbol' => $formatted_symbol,
             'side' => $close_side,
             'positionSide' => 'BOTH',
             'type' => 'MARKET',
-            'quantity' => $quantity,
+            'quantity' => (string)$quantity,
             'reduceOnly' => 'true'
         ];
 
