@@ -7,17 +7,13 @@ class Trade_model extends CI_Model {
         parent::__construct();
     }
     
-    public function get_all_trades($user_id = null, $status = null, $environment = null) {
+    public function get_all_trades($user_id = null, $status = null) {
         if ($user_id) {
             $this->db->where('trades.user_id', $user_id);
         }
         
         if ($status) {
             $this->db->where('trades.status', $status);
-        }
-        
-        if ($environment) {
-            $this->db->where('trades.environment', $environment);
         }
         
         $this->db->select('trades.*, strategies.name as strategy_name, strategies.strategy_id as strategy_external_id, users.username');
@@ -35,10 +31,9 @@ class Trade_model extends CI_Model {
         return $this->db->get_where('trades', array('trades.id' => $id))->row();
     }
     
-    public function get_trade_by_order_id($order_id, $environment) {
+    public function get_trade_by_order_id($order_id) {
         return $this->db->get_where('trades', array(
-            'order_id' => $order_id,
-            'environment' => $environment
+            'order_id' => $order_id
         ))->row();
     }
     

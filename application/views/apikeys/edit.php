@@ -10,11 +10,6 @@
             <div class="card-body">
                 <?= form_open('apikeys/edit/' . $api_key->id) ?>
                     <div class="mb-3">
-                        <label for="environment" class="form-label">Environment</label>
-                        <input type="text" class="form-control" value="<?= ucfirst($api_key->environment) ?>" readonly>
-                    </div>
-                    
-                    <div class="mb-3">
                         <label for="api_key" class="form-label">API Key</label>
                         <input type="text" class="form-control" id="api_key" name="api_key" value="<?= set_value('api_key', $api_key->api_key) ?>" required>
                     </div>

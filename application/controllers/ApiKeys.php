@@ -17,7 +17,7 @@ class ApiKeys extends CI_Controller {
         $user_id = $this->session->userdata('user_id');
         
         // Get API keys
-        $data['api_keys'] = $this->Api_key_model->get_all_api_keys($user_id);
+        $data['api_key'] = $this->Api_key_model->get_api_key($user_id);
         
         $this->load->view('templates/header', $data);
         $this->load->view('apikeys/index', $data);
@@ -28,7 +28,6 @@ class ApiKeys extends CI_Controller {
         $data['title'] = 'Add API Key';
         
         // Form validation
-        $this->form_validation->set_rules('environment', 'Environment', 'required');
         $this->form_validation->set_rules('api_key', 'API Key', 'required');
         $this->form_validation->set_rules('api_secret', 'API Secret', 'required');
         
@@ -42,7 +41,6 @@ class ApiKeys extends CI_Controller {
             // Add API key
             $api_data = array(
                 'user_id' => $user_id,
-                'environment' => $this->input->post('environment'),
                 'api_key' => $this->input->post('api_key'),
                 'api_secret' => $this->input->post('api_secret')
             );
@@ -53,7 +51,7 @@ class ApiKeys extends CI_Controller {
             $log_data = array(
                 'user_id' => $user_id,
                 'action' => 'add_api_key',
-                'description' => 'Added API key for ' . $this->input->post('environment')
+                'description' => 'Added API key'
             );
             $this->Log_model->add_log($log_data);
             
@@ -93,7 +91,7 @@ class ApiKeys extends CI_Controller {
             $log_data = array(
                 'user_id' => $this->session->userdata('user_id'),
                 'action' => 'edit_api_key',
-                'description' => 'Updated API key for ' . $data['api_key']->environment
+                'description' => 'Updated API key'
             );
             $this->Log_model->add_log($log_data);
             
@@ -118,7 +116,7 @@ class ApiKeys extends CI_Controller {
         $log_data = array(
             'user_id' => $this->session->userdata('user_id'),
             'action' => 'delete_api_key',
-            'description' => 'Deleted API key for ' . $api_key->environment
+            'description' => 'Deleted API key'
         );
         $this->Log_model->add_log($log_data);
         

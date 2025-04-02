@@ -10,14 +10,6 @@
             <div class="card-body">
                 <?= form_open('apikeys/add') ?>
                     <div class="mb-3">
-                        <label for="environment" class="form-label">Environment</label>
-                        <select class="form-select" id="environment" name="environment" required>
-                            <option value="sandbox" <?= set_select('environment', 'sandbox', true) ?>>Sandbox</option>
-                            <option value="production" <?= set_select('environment', 'production') ?>>Production</option>
-                        </select>
-                    </div>
-                    
-                    <div class="mb-3">
                         <label for="api_key" class="form-label">API Key</label>
                         <input type="text" class="form-control" id="api_key" name="api_key" value="<?= set_value('api_key') ?>" required>
                     </div>

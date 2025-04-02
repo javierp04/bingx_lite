@@ -8,83 +8,137 @@
 <div class="card mb-4">
     <div class="card-header">
         <h5 class="mb-0">
-            <i class="fas fa-tools me-1"></i>Order Simulation Panel (Admin)
+            <i class="fas fa-tools me-1"></i>Order Simulation Panel
         </h5>
     </div>
     <div class="card-body">
-        <?= form_open('dashboard/simulate_order', ['class' => 'row g-3']) ?>
-            <div class="col-md-3">
-                <label for="user_id" class="form-label">User</label>
-                <select class="form-select" id="user_id" name="user_id" required>
-                    <?php foreach ($all_users as $user): ?>
-                        <option value="<?= $user->id ?>"><?= $user->username ?></option>
-                    <?php endforeach; ?>
-                </select>
+        <!-- API Connection Tests -->
+        <div class="mb-4">
+            <h6 class="mb-3">API Connection Tests</h6>
+            <div class="row g-2">
+                <div class="col-md-auto">
+                    <a href="<?= base_url('dashboard/test_spot_balance') ?>" class="btn btn-outline-primary">
+                        <i class="fas fa-wallet me-1"></i>Test Spot Balance
+                    </a>
+                </div>
+                <div class="col-md-auto">
+                    <a href="<?= base_url('dashboard/test_futures_balance') ?>" class="btn btn-outline-primary">
+                        <i class="fas fa-chart-line me-1"></i>Test Futures Balance
+                    </a>
+                </div>
+                <div class="col-md-auto">
+                    <div class="input-group">
+                        <input type="text" class="form-control" placeholder="BTCUSDT" id="test-symbol" value="BTCUSDT">
+                        <a href="javascript:void(0);" class="btn btn-outline-primary" id="test-price-btn">
+                            <i class="fas fa-search-dollar me-1"></i>Test Price
+                        </a>
+                    </div>
+                </div>
             </div>
-            <div class="col-md-3">
-                <label for="strategy_id" class="form-label">Strategy</label>
-                <select class="form-select" id="strategy_id" name="strategy_id" required>
-                    <?php foreach ($all_strategies as $strategy): ?>
-                        <option value="<?= $strategy->strategy_id ?>"><?= $strategy->name ?> (<?= $strategy->strategy_id ?>)</option>
-                    <?php endforeach; ?>
-                </select>
-            </div>
-            <div class="col-md-3">
-                <label for="ticker" class="form-label">Ticker</label>
-                <input type="text" class="form-control" id="ticker" name="ticker" placeholder="e.g., BTCUSDT" required>
-            </div>
-            <div class="col-md-3">
-                <label for="timeframe" class="form-label">Timeframe</label>
-                <select class="form-select" id="timeframe" name="timeframe" required>
-                    <option value="1m">1m</option>
-                    <option value="5m">5m</option>
-                    <option value="15m">15m</option>
-                    <option value="30m">30m</option>
-                    <option value="1h" selected>1h</option>
-                    <option value="4h">4h</option>
-                    <option value="1d">1d</option>
-                </select>
-            </div>
-            <div class="col-md-3">
-                <label for="action" class="form-label">Action</label>
-                <select class="form-select" id="action" name="action" required>
-                    <option value="BUY">BUY</option>
-                    <option value="SELL">SELL</option>
-                    <option value="CLOSE">CLOSE</option>
-                </select>
-            </div>
-            <div class="col-md-3">
-                <label for="quantity" class="form-label">Quantity</label>
-                <input type="number" class="form-control" id="quantity" name="quantity" step="0.0001" min="0.0001" value="0.01" required>
-            </div>
-            <div class="col-md-3">
-                <label for="leverage" class="form-label">Leverage</label>
-                <select class="form-select" id="leverage" name="leverage">
-                    <option value="1">1x</option>
-                    <option value="2">2x</option>
-                    <option value="3">3x</option>
-                    <option value="5">5x</option>
-                    <option value="10">10x</option>
-                    <option value="20">20x</option>
-                    <option value="50">50x</option>
-                    <option value="100">100x</option>
-                </select>
-            </div>
-            <div class="col-md-3">
-                <label for="environment" class="form-label">Environment</label>
-                <select class="form-select" id="environment" name="environment" required>
-                    <option value="sandbox" selected>Sandbox</option>
-                    <option value="production">Production</option>
-                </select>
-            </div>
-            <div class="col-12 mt-3">
-                <button type="submit" class="btn btn-primary">
-                    <i class="fas fa-play me-1"></i>Simulate Order
-                </button>
+        </div>
+        
+        <hr class="my-3">
+        
+        <!-- Order Simulation Form -->
+        <h6 class="mb-3">Send Order</h6>
+        <?= form_open('webhook/simulate') ?>
+            <input type="hidden" name="simulate_data" id="simulate_data" value="">
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label for="sim_strategy_id" class="form-label">Strategy</label>
+                    <select class="form-select" id="sim_strategy_id" required>
+                        <?php foreach ($all_strategies as $strategy): ?>
+                            <option value="<?= $strategy->strategy_id ?>"><?= $strategy->name ?> (<?= $strategy->strategy_id ?>)</option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="col-md-6">
+                    <label for="sim_ticker" class="form-label">Ticker</label>
+                    <input type="text" class="form-control" id="sim_ticker" placeholder="e.g., BTCUSDT" required>
+                </div>
+                <div class="col-md-3">
+                    <label for="sim_action" class="form-label">Action</label>
+                    <select class="form-select" id="sim_action" required>
+                        <option value="BUY">BUY</option>
+                        <option value="SELL">SELL</option>
+                        <option value="CLOSE">CLOSE</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label for="sim_timeframe" class="form-label">Timeframe</label>
+                    <select class="form-select" id="sim_timeframe" required>
+                        <option value="1m">1m</option>
+                        <option value="5m">5m</option>
+                        <option value="15m">15m</option>
+                        <option value="30m">30m</option>
+                        <option value="1h" selected>1h</option>
+                        <option value="4h">4h</option>
+                        <option value="1d">1d</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label for="sim_quantity" class="form-label">Quantity</label>
+                    <input type="number" class="form-control" id="sim_quantity" step="0.0001" min="0.0001" value="0.01" required>
+                </div>
+                <div class="col-md-3">
+                    <label for="sim_leverage" class="form-label">Leverage</label>
+                    <select class="form-select" id="sim_leverage">
+                        <option value="1">1x</option>
+                        <option value="2">2x</option>
+                        <option value="3">3x</option>
+                        <option value="5">5x</option>
+                        <option value="10">10x</option>
+                        <option value="20">20x</option>
+                        <option value="50">50x</option>
+                        <option value="100">100x</option>
+                    </select>
+                </div>
+                <div class="col-12 mt-3">
+                    <button type="button" class="btn btn-primary" id="simulate-order-btn">
+                        <i class="fas fa-play me-1"></i>Simulate Order
+                    </button>
+                </div>
             </div>
         <?= form_close() ?>
     </div>
 </div>
+
+<script>
+    document.getElementById('simulate-order-btn').addEventListener('click', function() {
+        // Get form values
+        const formData = {
+            // No se incluye user_id, el controlador usará el usuario actual
+            strategy_id: document.getElementById('sim_strategy_id').value,
+            ticker: document.getElementById('sim_ticker').value,
+            timeframe: document.getElementById('sim_timeframe').value,
+            action: document.getElementById('sim_action').value,
+            quantity: document.getElementById('sim_quantity').value,
+            leverage: document.getElementById('sim_leverage').value
+        };
+        
+        // Set the JSON data to the hidden field
+        document.getElementById('simulate_data').value = JSON.stringify(formData);
+        
+        // Submit the form
+        document.getElementById('simulate_data').form.submit();
+    });
+    
+    document.getElementById('test-price-btn').addEventListener('click', function() {
+        // Get symbol value
+        const symbol = document.getElementById('test-symbol').value;
+        
+        // Navigate to test price endpoint
+        window.location.href = '<?= base_url('dashboard/test_price') ?>?symbol=' + encodeURIComponent(symbol);
+    });
+    
+    // Make Enter key work in price test input
+    document.getElementById('test-symbol').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            document.getElementById('test-price-btn').click();
+        }
+    });
+</script>
 <?php endif; ?>
 
 <!-- Summary Dashboard -->
@@ -146,7 +200,7 @@
                         <th>Symbol</th>
                         <th>Strategy</th>
                         <th>Side</th>
-                        <th>Environment</th>
+                        <th>Type</th>
                         <th>Entry Price</th>
                         <th>Current Price</th>
                         <th>Quantity</th>
@@ -166,15 +220,15 @@
                             <?php 
                                 $pnl_class = isset($trade->pnl) && $trade->pnl >= 0 ? 'text-profit' : 'text-loss';
                                 $side_class = $trade->side == 'BUY' ? 'text-success' : 'text-danger';
-                                $env_class = $trade->environment == 'production' ? 'bg-danger' : 'bg-secondary';
+                                $type_class = $trade->trade_type == 'futures' ? 'bg-warning text-dark' : 'bg-info';
                             ?>
                             <tr>
                                 <td><?= $trade->symbol ?></td>
                                 <td><?= $trade->strategy_name ?></td>
                                 <td class="<?= $side_class ?>"><?= $trade->side ?></td>
                                 <td>
-                                    <span class="badge <?= $env_class ?>">
-                                        <?= ucfirst($trade->environment) ?>
+                                    <span class="badge <?= $type_class ?>">
+                                        <?= ucfirst($trade->trade_type) ?>
                                     </span>
                                 </td>
                                 <td><?= $trade->entry_price ?></td>
@@ -226,8 +280,7 @@
   "timeframe": "1h",
   "action": "BUY", // BUY, SELL, or CLOSE
   "quantity": 0.01,
-  "leverage": 5, // Only used for futures
-  "environment": "sandbox" // sandbox or production
+  "leverage": 5 // Only used for futures
 }</code></pre>
         </div>
     </div>
@@ -296,7 +349,7 @@
             trades.forEach(function(trade) {
                 const pnlClass = (trade.pnl >= 0) ? 'text-profit' : 'text-loss';
                 const sideClass = (trade.side === 'BUY') ? 'text-success' : 'text-danger';
-                const envClass = (trade.environment === 'production') ? 'bg-danger' : 'bg-secondary';
+                const typeClass = (trade.trade_type === 'futures') ? 'bg-warning text-dark' : 'bg-info';
                 const formattedPnl = (trade.pnl !== null) ? Number(trade.pnl).toFixed(2) + ' USDT' : 'N/A';
                 const formattedDate = new Date(trade.created_at).toLocaleString();
                 const currentPrice = trade.current_price || trade.entry_price;
@@ -306,8 +359,8 @@
                     <td>${trade.strategy_name}</td>
                     <td class="${sideClass}">${trade.side}</td>
                     <td>
-                        <span class="badge ${envClass}">
-                            ${trade.environment.charAt(0).toUpperCase() + trade.environment.slice(1)}
+                        <span class="badge ${typeClass}">
+                            ${trade.trade_type.charAt(0).toUpperCase() + trade.trade_type.slice(1)}
                         </span>
                     </td>
                     <td>${trade.entry_price}</td>

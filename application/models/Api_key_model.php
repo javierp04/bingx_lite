@@ -18,18 +18,16 @@ class Api_key_model extends CI_Model {
         return $this->db->get_where('api_keys', array('id' => $id))->row();
     }
     
-    public function get_api_key($user_id, $environment) {
+    public function get_api_key($user_id) {
         return $this->db->get_where('api_keys', array(
-            'user_id' => $user_id,
-            'environment' => $environment
+            'user_id' => $user_id
         ))->row();
     }
     
     public function add_api_key($data) {
-        // Check if user already has keys for this environment
+        // Check if user already has keys
         $existing = $this->db->get_where('api_keys', array(
-            'user_id' => $data['user_id'],
-            'environment' => $data['environment']
+            'user_id' => $data['user_id']
         ))->row();
         
         if ($existing) {

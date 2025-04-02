@@ -25,15 +25,50 @@ class Webhook extends CI_Controller {
         }
     }
     
+    public function simulate() {
+        // Check if request is from our system
+        if (!$this->input->post('simulate_data')) {
+            $this->session->set_flashdata('error', 'Error simulating order: Missing data');
+            redirect('dashboard');
+            return;
+        }
+        
+        // Get JSON data from form post
+        $json_data = $this->input->post('simulate_data');
+        
+        // Process webhook data
+        $result = $this->process_webhook_data($json_data);
+        
+        // Send response to browser
+        if ($result === true) {
+            $this->session->set_flashdata('success', 'Order simulated successfully');
+        } else {
+            $this->session->set_flashdata('error', 'Error simulating order: ' . $result);
+        }
+        
+        redirect('dashboard');
+    }
+    
     public function process_webhook_data($json_data) {
         // Decode JSON data
         $data = json_decode($json_data);
         
         // Verify data
-        if (!$data || !isset($data->user_id) || !isset($data->strategy_id) || !isset($data->ticker) || 
-            !isset($data->timeframe) || !isset($data->action) || !isset($data->environment)) {
+        if (!$data || !isset($data->strategy_id) || !isset($data->ticker) || 
+            !isset($data->timeframe) || !isset($data->action)) {
             $this->_log_webhook_error('Missing required fields in webhook data', $json_data);
             return 'Missing required fields';
+        }
+        
+        // Si el user_id no está en el JSON, usar el usuario actual (para simulaciones)
+        if (!isset($data->user_id) && $this->session->userdata('user_id')) {
+            $data->user_id = $this->session->userdata('user_id');
+        }
+        
+        // Verificar que hay un user_id
+        if (!isset($data->user_id)) {
+            $this->_log_webhook_error('Missing user_id in webhook data', $json_data);
+            return 'Missing user_id';
         }
         
         // Get user
@@ -46,8 +81,8 @@ class Webhook extends CI_Controller {
         // Get strategy
         $strategy = $this->Strategy_model->get_strategy_by_strategy_id($data->user_id, $data->strategy_id);
         if (!$strategy) {
-            $this->_log_webhook_error('Strategy not found: ' . $data->strategy_id, $json_data);
-            return 'Strategy not found';
+            $this->_log_webhook_error('Strategy not found: ' . $data->strategy_id . ' for user ' . $data->user_id, $json_data);
+            return 'Strategy not found: ' . $data->strategy_id;
         }
         
         // Check if strategy is active
@@ -56,11 +91,11 @@ class Webhook extends CI_Controller {
             return 'Strategy is inactive';
         }
         
-        // Get API key for this environment
-        $api_key = $this->Api_key_model->get_api_key($data->user_id, $data->environment);
+        // Get API key for this user
+        $api_key = $this->Api_key_model->get_api_key($data->user_id);
         if (!$api_key) {
-            $this->_log_webhook_error('API key not configured for environment: ' . $data->environment, $json_data);
-            return 'API key not configured for this environment';
+            $this->_log_webhook_error('API key not configured for user: ' . $data->user_id, $json_data);
+            return 'API key not configured for this user';
         }
         
         // Determine trade type (spot or futures)
@@ -78,7 +113,12 @@ class Webhook extends CI_Controller {
                 if ($trade_type == 'futures') {
                     // Set leverage first if needed
                     if ($leverage > 1) {
-                        $this->bingxapi->set_futures_leverage($api_key, $data->ticker, $leverage);
+                        $result = $this->bingxapi->set_futures_leverage($api_key, $data->ticker, $leverage);
+                        if (!$result) {
+                            $error = $this->bingxapi->get_last_error();
+                            $this->_log_webhook_error('Failed to set leverage: ' . $error, $json_data);
+                            return 'Failed to set leverage: ' . $error;
+                        }
                     }
                     
                     $result = $this->bingxapi->open_futures_position($api_key, $data->ticker, $data->action, $quantity);
@@ -86,7 +126,13 @@ class Webhook extends CI_Controller {
                     $result = $this->bingxapi->open_spot_position($api_key, $data->ticker, $data->action, $quantity);
                 }
                 
-                if ($result && isset($result->orderId) && isset($result->price)) {
+                if (!$result) {
+                    $error = $this->bingxapi->get_last_error();
+                    $this->_log_webhook_error('Failed to execute order: ' . $error, $json_data);
+                    return 'Failed to execute order: ' . $error;
+                }
+                
+                if (isset($result->orderId) && isset($result->price)) {
                     // Save trade to database
                     $trade_data = array(
                         'user_id' => $data->user_id,
@@ -102,7 +148,6 @@ class Webhook extends CI_Controller {
                         'leverage' => $trade_type == 'futures' ? $leverage : 1,
                         'pnl' => 0, // Initial PNL is 0
                         'status' => 'open',
-                        'environment' => $data->environment,
                         'webhook_data' => $json_data
                     );
                     
@@ -119,14 +164,14 @@ class Webhook extends CI_Controller {
                     
                     return true;
                 } else {
-                    $this->_log_webhook_error('Failed to execute order', $json_data);
-                    return 'Failed to execute order';
+                    $this->_log_webhook_error('Invalid order response format', $json_data);
+                    return 'Invalid order response format';
                 }
                 break;
                 
             case 'CLOSE':
                 // Find open trade by symbol and strategy
-                $trades = $this->Trade_model->get_all_trades($data->user_id, 'open', $data->environment);
+                $trades = $this->Trade_model->get_all_trades($data->user_id, 'open');
                 $trade_to_close = null;
                 
                 foreach ($trades as $trade) {
@@ -158,7 +203,13 @@ class Webhook extends CI_Controller {
                     );
                 }
                 
-                if ($result && isset($result->price)) {
+                if (!$result) {
+                    $error = $this->bingxapi->get_last_error();
+                    $this->_log_webhook_error('Failed to close position: ' . $error, $json_data);
+                    return 'Failed to close position: ' . $error;
+                }
+                
+                if (isset($result->price)) {
                     // Calculate PNL
                     $exit_price = $result->price;
                     
@@ -182,8 +233,8 @@ class Webhook extends CI_Controller {
                     
                     return true;
                 } else {
-                    $this->_log_webhook_error('Failed to close position', $json_data);
-                    return 'Failed to close position';
+                    $this->_log_webhook_error('Invalid close response format', $json_data);
+                    return 'Invalid close response format';
                 }
                 break;
                 
@@ -195,7 +246,7 @@ class Webhook extends CI_Controller {
     
     private function _log_webhook_error($error, $data) {
         $log_data = array(
-            'user_id' => null,
+            'user_id' => $this->session->userdata('user_id'),
             'action' => 'webhook_error',
             'description' => $error . '. Data: ' . $data
         );

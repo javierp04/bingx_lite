@@ -5,8 +5,24 @@ class BingxApi {
     
     private $CI;
     
+    // BingX API URLs
+    private $spot_api_url = 'https://open-api.bingx.com';
+    private $futures_api_url = 'https://open-api.bingx.com';
+    
+    // Para almacenar el último error
+    private $last_error = null;
+    
     public function __construct() {
         $this->CI =& get_instance();
+    }
+    
+    /**
+     * Obtener el último error de la API
+     * 
+     * @return string|null El último mensaje de error o null si no hay error
+     */
+    public function get_last_error() {
+        return $this->last_error;
     }
     
     /**
@@ -43,16 +59,14 @@ class BingxApi {
      * @return object|false Response data or false on failure
      */
     private function _make_request($api_key, $endpoint, $params = [], $method = 'GET', $is_futures = false) {
-        // Determine base URL based on environment and API type
-        if ($api_key->environment == 'production') {
-            $base_url = $is_futures ? BINGX_FUTURES_API_URL_PRODUCTION : BINGX_SPOT_API_URL_PRODUCTION;
-        } else {
-            $base_url = $is_futures ? BINGX_FUTURES_API_URL_SANDBOX : BINGX_SPOT_API_URL_SANDBOX;
-        }
+        // Reset last error
+        $this->last_error = null;
         
-        // Add timestamp and API key to parameters
+        // Determine base URL based on API type
+        $base_url = $is_futures ? $this->futures_api_url : $this->spot_api_url;
+        
+        // Add timestamp to parameters (REQUIRED)
         $params['timestamp'] = round(microtime(true) * 1000);
-        $params['apiKey'] = $api_key->api_key;
         
         // Generate signature
         $signature = $this->_generate_signature($params, $api_key->api_secret);
@@ -75,14 +89,21 @@ class BingxApi {
         }
         
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        
+        // BingX requiere X-BX-APIKEY en el encabezado HTTP
         curl_setopt($ch, CURLOPT_HTTPHEADER, [
             'Content-Type: application/x-www-form-urlencoded',
-            'User-Agent: BingX-Trading-Bot'
+            'User-Agent: BingX-Trading-Bot',
+            'X-BX-APIKEY: ' . $api_key->api_key
         ]);
+        
+        // Para debug, guardar la URL completa
+        $debug_url = $method == 'GET' ? $url : ($url . '?' . http_build_query($params));
         
         // Execute request
         $response = curl_exec($ch);
         $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curl_error = curl_error($ch);
         
         // Close cURL
         curl_close($ch);
@@ -90,18 +111,30 @@ class BingxApi {
         // Log request and response
         $log_data = [
             'endpoint' => $endpoint,
+            'url' => $debug_url,
+            'method' => $method,
+            'headers' => ['X-BX-APIKEY: ' . substr($api_key->api_key, 0, 5) . '...'],
             'params' => json_encode($params),
             'response' => $response,
-            'http_code' => $http_code
+            'http_code' => $http_code,
+            'curl_error' => $curl_error
         ];
+        
         $this->CI->Log_model->add_log([
             'user_id' => $this->CI->session->userdata('user_id'),
             'action' => 'api_request',
             'description' => json_encode($log_data)
         ]);
         
-        // Check if request was successful
+        // Check for cURL errors
+        if ($curl_error) {
+            $this->last_error = "cURL Error: " . $curl_error;
+            return false;
+        }
+        
+        // Check HTTP status
         if ($http_code != 200) {
+            $this->last_error = "HTTP Error: " . $http_code . " - " . $response;
             return false;
         }
         
@@ -110,6 +143,7 @@ class BingxApi {
         
         // Check for API errors
         if (isset($data->code) && $data->code != 0) {
+            $this->last_error = "API Error: " . $data->code . " - " . $data->msg;
             return false;
         }
         
