@@ -1,3 +1,4 @@
+<!-- application/views/strategies/index.php -->
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h1 class="h3 mb-0">
         <i class="fas fa-chart-line me-2"></i>Trading Strategies
@@ -18,6 +19,7 @@
                         <th>Strategy ID</th>
                         <th>Type</th>
                         <th>Status</th>
+                        <th>Image</th>
                         <th>Created</th>
                         <th>Actions</th>
                     </tr>
@@ -25,7 +27,7 @@
                 <tbody>
                     <?php if (empty($strategies)): ?>
                         <tr>
-                            <td colspan="7" class="text-center py-3">No strategies found</td>
+                            <td colspan="8" class="text-center py-3">No strategies found</td>
                         </tr>
                     <?php else: ?>
                         <?php foreach ($strategies as $strategy): ?>
@@ -42,6 +44,15 @@
                                     <span class="badge <?= $strategy->active ? 'bg-success' : 'bg-secondary' ?>">
                                         <?= $strategy->active ? 'Active' : 'Inactive' ?>
                                     </span>
+                                </td>
+                                <td>
+                                    <?php if ($strategy->image): ?>
+                                        <a href="<?= base_url('strategies/view_image/' . $strategy->id) ?>" class="btn btn-sm btn-info">
+                                            <i class="fas fa-image"></i> View
+                                        </a>
+                                    <?php else: ?>
+                                        <span class="text-muted">No image</span>
+                                    <?php endif; ?>
                                 </td>
                                 <td><?= date('Y-m-d', strtotime($strategy->created_at)) ?></td>
                                 <td>

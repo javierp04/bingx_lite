@@ -10,6 +10,11 @@ class Strategies extends CI_Controller {
         if (!$this->session->userdata('logged_in')) {
             redirect('auth');
         }
+        
+        // Create upload directory if it doesn't exist
+        if (!is_dir(UPLOAD_PATH . 'strategies/')) {
+            mkdir(UPLOAD_PATH . 'strategies/', 0777, TRUE);
+        }
     }
     
     public function index() {
@@ -39,6 +44,25 @@ class Strategies extends CI_Controller {
         } else {
             $user_id = $this->session->userdata('user_id');
             
+            // Handle image upload
+            $image_filename = null;
+            if (!empty($_FILES['strategy_image']['name'])) {
+                $config['upload_path'] = UPLOAD_PATH . 'strategies/';
+                $config['allowed_types'] = 'gif|jpg|jpeg|png';
+                $config['max_size'] = 2048; // 2MB
+                $config['encrypt_name'] = TRUE;
+                
+                $this->load->library('upload', $config);
+                
+                if (!$this->upload->do_upload('strategy_image')) {
+                    $this->session->set_flashdata('error', $this->upload->display_errors());
+                    redirect('strategies/add');
+                } else {
+                    $upload_data = $this->upload->data();
+                    $image_filename = $upload_data['file_name'];
+                }
+            }
+            
             // Add strategy
             $strategy_data = array(
                 'user_id' => $user_id,
@@ -46,6 +70,7 @@ class Strategies extends CI_Controller {
                 'name' => $this->input->post('name'),
                 'type' => $this->input->post('type'),
                 'description' => $this->input->post('description'),
+                'image' => $image_filename,
                 'active' => $this->input->post('active') ? 1 : 0
             );
             
@@ -84,12 +109,38 @@ class Strategies extends CI_Controller {
             $this->load->view('strategies/edit', $data);
             $this->load->view('templates/footer');
         } else {
+            // Handle image upload
+            $image_filename = $data['strategy']->image; // Keep existing image by default
+            
+            if (!empty($_FILES['strategy_image']['name'])) {
+                $config['upload_path'] = UPLOAD_PATH . 'strategies/';
+                $config['allowed_types'] = 'gif|jpg|jpeg|png';
+                $config['max_size'] = 2048; // 2MB
+                $config['encrypt_name'] = TRUE;
+                
+                $this->load->library('upload', $config);
+                
+                if (!$this->upload->do_upload('strategy_image')) {
+                    $this->session->set_flashdata('error', $this->upload->display_errors());
+                    redirect('strategies/edit/' . $id);
+                } else {
+                    // Delete old image if it exists
+                    if ($image_filename && file_exists(UPLOAD_PATH . 'strategies/' . $image_filename)) {
+                        unlink(UPLOAD_PATH . 'strategies/' . $image_filename);
+                    }
+                    
+                    $upload_data = $this->upload->data();
+                    $image_filename = $upload_data['file_name'];
+                }
+            }
+            
             // Update strategy
             $strategy_data = array(
                 'strategy_id' => $this->input->post('strategy_id'),
                 'name' => $this->input->post('name'),
                 'type' => $this->input->post('type'),
                 'description' => $this->input->post('description'),
+                'image' => $image_filename,
                 'active' => $this->input->post('active') ? 1 : 0
             );
             
@@ -126,6 +177,11 @@ class Strategies extends CI_Controller {
             }
         }
         
+        // Delete image if it exists
+        if ($strategy->image && file_exists(UPLOAD_PATH . 'strategies/' . $strategy->image)) {
+            unlink(UPLOAD_PATH . 'strategies/' . $strategy->image);
+        }
+        
         // Delete strategy
         $this->Strategy_model->delete_strategy($id);
         
@@ -139,5 +195,28 @@ class Strategies extends CI_Controller {
         
         $this->session->set_flashdata('success', 'Strategy deleted successfully');
         redirect('strategies');
+    }
+    
+    public function view_image($id) {
+        $strategy = $this->Strategy_model->get_strategy_by_id($id);
+        
+        // Check if strategy exists and belongs to user
+        if (empty($strategy) || $strategy->user_id != $this->session->userdata('user_id')) {
+            $this->session->set_flashdata('error', 'Strategy not found or access denied');
+            redirect('strategies');
+        }
+        
+        // Check if strategy has an image
+        if (!$strategy->image || !file_exists(UPLOAD_PATH . 'strategies/' . $strategy->image)) {
+            $this->session->set_flashdata('error', 'Strategy image not found');
+            redirect('strategies');
+        }
+        
+        $data['title'] = 'View Strategy Image';
+        $data['strategy'] = $strategy;
+        
+        $this->load->view('templates/header', $data);
+        $this->load->view('strategies/view_image', $data);
+        $this->load->view('templates/footer');
     }
 }

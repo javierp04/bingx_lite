@@ -1,3 +1,4 @@
+<!-- application/views/strategies/add.php -->
 <div class="mb-4">
     <h1 class="h3 mb-0">
         <i class="fas fa-chart-line me-2"></i>Add New Strategy
@@ -8,7 +9,7 @@
     <div class="col-md-8">
         <div class="card">
             <div class="card-body">
-                <?= form_open('strategies/add') ?>
+                <?= form_open_multipart('strategies/add') ?>
                     <div class="mb-3">
                         <label for="strategy_id" class="form-label">Strategy ID</label>
                         <input type="text" class="form-control" id="strategy_id" name="strategy_id" value="<?= set_value('strategy_id') ?>" required>
@@ -34,6 +35,12 @@
                         <label for="description" class="form-label">Description</label>
                         <textarea class="form-control" id="description" name="description" rows="3"><?= set_value('description') ?></textarea>
                         <div class="form-text">Optional description of your strategy</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="strategy_image" class="form-label">Strategy Image</label>
+                        <input type="file" class="form-control" id="strategy_image" name="strategy_image">
+                        <div class="form-text">Upload an image of the TradingView strategy or indicator parameters (optional, max 2MB)</div>
                     </div>
                     
                     <div class="mb-3 form-check">

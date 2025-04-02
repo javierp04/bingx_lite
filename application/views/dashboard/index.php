@@ -1,3 +1,4 @@
+<!-- application/views/dashboard/index.php -->
 <h1 class="h3 mb-4">
     <i class="fas fa-tachometer-alt me-2"></i>Trading Dashboard
 </h1>
@@ -198,21 +199,27 @@
     </div>
 </div>
 
-<!-- Webhook URL Information Card -->
+<!-- Webhook URL Information Card (Collapsible) -->
 <div class="card mt-4">
-    <div class="card-header">
-        <h5 class="mb-0">TradingView Webhook Information</h5>
-    </div>
-    <div class="card-body">
-        <p>Use the following webhook URL in your TradingView alerts:</p>
-        <div class="input-group mb-3">
-            <input type="text" class="form-control" value="<?= base_url('webhook/tradingview') ?>" id="webhook-url" readonly>
-            <button class="btn btn-outline-secondary" type="button" onclick="copyWebhookUrl()">
-                <i class="fas fa-copy"></i> Copy
-            </button>
+    <div class="card-header" role="button" data-bs-toggle="collapse" data-bs-target="#webhookInfo" aria-expanded="false" aria-controls="webhookInfo">
+        <div class="d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">
+                <i class="fas fa-webhook me-1"></i>TradingView Webhook Information
+            </h5>
+            <i class="fas fa-chevron-down"></i>
         </div>
-        <p>Required JSON format for TradingView webhook:</p>
-        <pre class="bg-light p-3 rounded"><code>{
+    </div>
+    <div class="collapse" id="webhookInfo">
+        <div class="card-body">
+            <p>Use the following webhook URL in your TradingView alerts:</p>
+            <div class="input-group mb-3">
+                <input type="text" class="form-control" value="<?= base_url('webhook/tradingview') ?>" id="webhook-url" readonly>
+                <button class="btn btn-outline-secondary" type="button" onclick="copyWebhookUrl()">
+                    <i class="fas fa-copy"></i> Copy
+                </button>
+            </div>
+            <p>Required JSON format for TradingView webhook:</p>
+            <pre class="bg-light p-3 rounded"><code>{
   "user_id": <?= $this->session->userdata('user_id') ?>,
   "strategy_id": "YOUR_STRATEGY_ID",
   "ticker": "BTCUSDT",
@@ -222,12 +229,22 @@
   "leverage": 5, // Only used for futures
   "environment": "sandbox" // sandbox or production
 }</code></pre>
+        </div>
     </div>
 </div>
 
 <!-- JavaScript for real-time updates -->
 <script>
     $(document).ready(function() {
+        // Toggle chevron icon for webhook info collapse
+        $('#webhookInfo').on('show.bs.collapse', function () {
+            $('.card-header .fa-chevron-down').removeClass('fa-chevron-down').addClass('fa-chevron-up');
+        });
+        
+        $('#webhookInfo').on('hide.bs.collapse', function () {
+            $('.card-header .fa-chevron-up').removeClass('fa-chevron-up').addClass('fa-chevron-down');
+        });
+        
         // Auto-refresh trades every 5 seconds
         let refreshTimer;
         

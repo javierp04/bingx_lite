@@ -9,7 +9,7 @@
     <div class="col-md-8">
         <div class="card">
             <div class="card-body">
-                <?= form_open('strategies/edit/' . $strategy->id) ?>
+                <?= form_open_multipart('strategies/edit/' . $strategy->id) ?>
                     <div class="mb-3">
                         <label for="strategy_id" class="form-label">Strategy ID</label>
                         <input type="text" class="form-control" id="strategy_id" name="strategy_id" value="<?= set_value('strategy_id', $strategy->strategy_id) ?>" required>
@@ -35,6 +35,25 @@
                         <label for="description" class="form-label">Description</label>
                         <textarea class="form-control" id="description" name="description" rows="3"><?= set_value('description', $strategy->description) ?></textarea>
                         <div class="form-text">Optional description of your strategy</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="strategy_image" class="form-label">Strategy Image</label>
+                        <?php if ($strategy->image): ?>
+                            <div class="mb-2">
+                                <a href="<?= base_url('strategies/view_image/' . $strategy->id) ?>" class="btn btn-sm btn-info">
+                                    <i class="fas fa-image me-1"></i>View Current Image
+                                </a>
+                            </div>
+                        <?php endif; ?>
+                        <input type="file" class="form-control" id="strategy_image" name="strategy_image">
+                        <div class="form-text">
+                            <?php if ($strategy->image): ?>
+                                Upload a new image to replace the current one (optional, max 2MB)
+                            <?php else: ?>
+                                Upload an image of the TradingView strategy or indicator parameters (optional, max 2MB)
+                            <?php endif; ?>
+                        </div>
                     </div>
                     
                     <div class="mb-3 form-check">
