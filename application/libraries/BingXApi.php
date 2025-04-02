@@ -26,6 +26,51 @@ class BingxApi {
     }
     
     /**
+     * Format symbol for BingX API based on operation type
+     * 
+     * @param string $symbol Raw symbol (e.g. BTCUSDT)
+     * @param string $operation Type of operation: 'price', 'trade', 'futures_price', 'futures_trade'
+     * @return string Formatted symbol
+     */
+    private function _format_symbol($symbol, $operation = 'price') {
+        // Remove any existing hyphens first
+        $symbol = str_replace('-', '', $symbol);
+        
+        switch ($operation) {
+            case 'price':
+                // For spot price endpoint (uses BTC-USDT format)
+                if (substr($symbol, -4) === 'USDT') {
+                    return substr($symbol, 0, -4) . '-USDT';
+                } elseif (substr($symbol, -4) === 'USDC') {
+                    return substr($symbol, 0, -4) . '-USDC';
+                }
+                return $symbol;
+                
+            case 'futures_price':
+                // For futures price endpoint (requires ending with -USDT or -USDC)
+                if (substr($symbol, -4) === 'USDT') {
+                    return substr($symbol, 0, -4) . '-USDT';
+                } elseif (substr($symbol, -4) === 'USDC') {
+                    return substr($symbol, 0, -4) . '-USDC';
+                }
+                // Default to -USDT if no suffix
+                return $symbol . '-USDT';
+                
+            case 'trade':
+                // For spot trading (uses BTCUSDT format)
+                return $symbol;
+                
+            case 'futures_trade':
+                // For futures trading (uses BTCUSDT format)
+                return $symbol;
+                
+            default:
+                // Default no formatting
+                return $symbol;
+        }
+    }
+    
+    /**
      * Generate signature for BingX API
      * 
      * @param array $params Request parameters
@@ -71,6 +116,19 @@ class BingxApi {
         // Generate signature
         $signature = $this->_generate_signature($params, $api_key->api_secret);
         $params['signature'] = $signature;
+        
+        // Log symbol format for debugging
+        if (isset($params['symbol'])) {
+            $this->CI->Log_model->add_log([
+                'user_id' => $this->CI->session->userdata('user_id'),
+                'action' => 'api_debug',
+                'description' => 'Symbol format: ' . json_encode([
+                    'original' => $params['symbol'],
+                    'endpoint' => $endpoint,
+                    'is_futures' => $is_futures
+                ])
+            ]);
+        }
         
         // Initialize cURL
         $ch = curl_init();
@@ -143,7 +201,7 @@ class BingxApi {
         
         // Check for API errors
         if (isset($data->code) && $data->code != 0) {
-            $this->last_error = "API Error: " . $data->code . " - " . $data->msg;
+            $this->last_error = "API Error: " . $data->code . " - " . (isset($data->msg) ? $data->msg : 'Unknown error');
             return false;
         }
         
@@ -160,13 +218,23 @@ class BingxApi {
     public function get_spot_price($api_key, $symbol) {
         $endpoint = '/openApi/spot/v1/ticker/price';
         $params = [
-            'symbol' => $symbol
+            'symbol' => $this->_format_symbol($symbol, 'price')
         ];
         
         $response = $this->_make_request($api_key, $endpoint, $params, 'GET', false);
         
-        if ($response && isset($response->data)) {
-            return $response->data;
+        if ($response && isset($response->data) && is_array($response->data) && !empty($response->data)) {
+            // Extract from nested structure
+            if (isset($response->data[0]->trades) && is_array($response->data[0]->trades) && !empty($response->data[0]->trades)) {
+                $price = $response->data[0]->trades[0]->price;
+                
+                // Create a standardized response object for consistency with other functions
+                $price_object = new stdClass();
+                $price_object->price = $price;
+                $price_object->symbol = $symbol;
+                
+                return $price_object;
+            }
         }
         
         return false;
@@ -182,13 +250,18 @@ class BingxApi {
     public function get_futures_price($api_key, $symbol) {
         $endpoint = '/openApi/swap/v2/quote/price';
         $params = [
-            'symbol' => $symbol
+            'symbol' => $this->_format_symbol($symbol, 'futures_price')
         ];
         
         $response = $this->_make_request($api_key, $endpoint, $params, 'GET', true);
         
         if ($response && isset($response->data)) {
-            return $response->data;
+            // Add more detailed extraction for futures price data if needed
+            if (isset($response->data->price)) {
+                return $response->data;
+            } elseif (isset($response->data[0]) && isset($response->data[0]->price)) {
+                return $response->data[0];
+            }
         }
         
         return false;
@@ -206,7 +279,7 @@ class BingxApi {
     public function open_spot_position($api_key, $symbol, $side, $quantity) {
         $endpoint = '/openApi/spot/v1/trade/order';
         $params = [
-            'symbol' => $symbol,
+            'symbol' => $this->_format_symbol($symbol, 'trade'),
             'side' => $side,
             'type' => 'MARKET',
             'quantity' => $quantity
@@ -241,7 +314,7 @@ class BingxApi {
         
         $endpoint = '/openApi/spot/v1/trade/order';
         $params = [
-            'symbol' => $symbol,
+            'symbol' => $this->_format_symbol($symbol, 'trade'),
             'side' => $close_side,
             'type' => 'MARKET',
             'quantity' => $quantity
@@ -272,7 +345,7 @@ class BingxApi {
     public function set_futures_leverage($api_key, $symbol, $leverage) {
         $endpoint = '/openApi/swap/v2/trade/leverage';
         $params = [
-            'symbol' => $symbol,
+            'symbol' => $this->_format_symbol($symbol, 'futures_trade'),
             'leverage' => $leverage
         ];
         
@@ -293,7 +366,7 @@ class BingxApi {
     public function open_futures_position($api_key, $symbol, $side, $quantity) {
         $endpoint = '/openApi/swap/v2/trade/order';
         $params = [
-            'symbol' => $symbol,
+            'symbol' => $this->_format_symbol($symbol, 'futures_trade'),
             'side' => $side,
             'positionSide' => 'BOTH',
             'type' => 'MARKET',
@@ -329,7 +402,7 @@ class BingxApi {
         
         $endpoint = '/openApi/swap/v2/trade/order';
         $params = [
-            'symbol' => $symbol,
+            'symbol' => $this->_format_symbol($symbol, 'futures_trade'),
             'side' => $close_side,
             'positionSide' => 'BOTH',
             'type' => 'MARKET',

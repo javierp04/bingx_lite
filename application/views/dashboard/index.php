@@ -26,11 +26,20 @@
                         <i class="fas fa-chart-line me-1"></i>Test Futures Balance
                     </a>
                 </div>
-                <div class="col-md-auto">
-                    <div class="input-group">
-                        <input type="text" class="form-control" placeholder="BTCUSDT" id="test-symbol" value="BTCUSDT">
-                        <a href="javascript:void(0);" class="btn btn-outline-primary" id="test-price-btn">
-                            <i class="fas fa-search-dollar me-1"></i>Test Price
+                
+                <!-- Price Testing Controls -->
+                <div class="col-md-12 mt-3">
+                    <label class="form-label">Test Symbol Price</label>
+                    <div class="d-flex gap-2">
+                        <div class="input-group" style="max-width: 300px;">
+                            <span class="input-group-text">Symbol</span>
+                            <input type="text" class="form-control" placeholder="BTCUSDT" id="test-symbol" value="BTCUSDT">
+                        </div>
+                        <a href="javascript:void(0);" class="btn btn-primary" id="test-spot-price-btn">
+                            <i class="fas fa-coins me-1"></i>Test Spot Price
+                        </a>
+                        <a href="javascript:void(0);" class="btn btn-danger" id="test-futures-price-btn">
+                            <i class="fas fa-chart-line me-1"></i>Test Futures Price
                         </a>
                     </div>
                 </div>
@@ -123,19 +132,29 @@
         document.getElementById('simulate_data').form.submit();
     });
     
-    document.getElementById('test-price-btn').addEventListener('click', function() {
+    // Spot Price Test Button
+    document.getElementById('test-spot-price-btn').addEventListener('click', function() {
         // Get symbol value
         const symbol = document.getElementById('test-symbol').value;
         
-        // Navigate to test price endpoint
-        window.location.href = '<?= base_url('dashboard/test_price') ?>?symbol=' + encodeURIComponent(symbol);
+        // Navigate to test spot price endpoint
+        window.location.href = '<?= base_url('dashboard/test_spot_price') ?>?symbol=' + encodeURIComponent(symbol);
+    });
+    
+    // Futures Price Test Button
+    document.getElementById('test-futures-price-btn').addEventListener('click', function() {
+        // Get symbol value
+        const symbol = document.getElementById('test-symbol').value;
+        
+        // Navigate to test futures price endpoint
+        window.location.href = '<?= base_url('dashboard/test_futures_price') ?>?symbol=' + encodeURIComponent(symbol);
     });
     
     // Make Enter key work in price test input
     document.getElementById('test-symbol').addEventListener('keypress', function(e) {
         if (e.key === 'Enter') {
             e.preventDefault();
-            document.getElementById('test-price-btn').click();
+            document.getElementById('test-spot-price-btn').click();
         }
     });
 </script>
