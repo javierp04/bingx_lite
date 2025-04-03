@@ -46,7 +46,8 @@
                         <th>Symbol</th>
                         <th>Strategy</th>
                         <th>Side</th>
-                        <th>Type</th>                        
+                        <th>Type</th>
+                        <th>Position ID</th>                        
                         <th>Entry Price</th>
                         <th>Exit Price</th>
                         <th>Quantity</th>
@@ -78,10 +79,11 @@
                                     <span class="badge <?= $trade->trade_type == 'futures' ? 'bg-warning text-dark' : 'bg-info' ?>">
                                         <?= ucfirst($trade->trade_type) ?>
                                     </span>
-                                </td>                                
-                                <td><?= $trade->entry_price ?></td>
-                                <td><?= $trade->exit_price ? $trade->exit_price : '-' ?></td>
-                                <td><?= $trade->quantity ?></td>
+                                </td>
+                                <td><?= isset($trade->position_id) ? $trade->position_id : 'N/A' ?></td>                                
+                                <td><?= number_format($trade->entry_price, 2) ?></td>
+                                <td><?= $trade->exit_price ? number_format($trade->exit_price, 2) : '-' ?></td>
+                                <td><?= rtrim(rtrim(number_format($trade->quantity, 8), '0'), '.') ?></td>
                                 <td><?= $trade->leverage ?>x</td>
                                 <td class="<?= $pnl_class ?>">
                                     <?= isset($trade->pnl) ? number_format($trade->pnl, 2) . ' USDT' : '-' ?>

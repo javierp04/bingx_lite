@@ -59,7 +59,16 @@
             <?= form_open('webhook/simulate') ?>
             <input type="hidden" name="simulate_data" id="simulate_data" value="">
             <div class="row g-3">
-                <div class="col-md-6">
+                <!-- First Row - Essential fields: Environment, Strategy, Ticker, Timeframe, Action -->
+                <div class="col-md-2">
+                    <label for="sim_environment" class="form-label">Environment</label>
+                    <select class="form-select" id="sim_environment">
+                        <option value="production">Production</option>
+                        <option value="sandbox">Sandbox (Futures Only)</option>
+                    </select>
+                </div>
+                
+                <div class="col-md-3">
                     <label for="sim_strategy_id" class="form-label">Strategy</label>
                     <select class="form-select" id="sim_strategy_id" required>
                         <?php foreach ($all_strategies as $strategy): ?>
@@ -67,19 +76,13 @@
                         <?php endforeach; ?>
                     </select>
                 </div>
-                <div class="col-md-6">
+                
+                <div class="col-md-2">
                     <label for="sim_ticker" class="form-label">Ticker</label>
                     <input type="text" class="form-control" id="sim_ticker" placeholder="e.g., BTCUSDT" required value="BTCUSDT">
                 </div>
-                <div class="col-md-3">
-                    <label for="sim_action" class="form-label">Action</label>
-                    <select class="form-select" id="sim_action" required>
-                        <option value="BUY">BUY</option>
-                        <option value="SELL">SELL</option>
-                        <option value="CLOSE">CLOSE</option>
-                    </select>
-                </div>
-                <div class="col-md-3">
+                
+                <div class="col-md-2">
                     <label for="sim_timeframe" class="form-label">Timeframe</label>
                     <select class="form-select" id="sim_timeframe" required>
                         <option value="1m">1m</option>
@@ -91,10 +94,28 @@
                         <option value="1d">1d</option>
                     </select>
                 </div>
+                
+                <div class="col-md-3">
+                    <label for="sim_action" class="form-label">Action</label>
+                    <select class="form-select" id="sim_action" required>
+                        <option value="BUY">BUY</option>
+                        <option value="SELL">SELL</option>
+                        <option value="CLOSE">CLOSE</option>
+                    </select>
+                </div>
+                
+                <!-- Second Row - Position ID, Quantity, Leverage, TP/SL -->
+                <div class="col-md-3">
+                    <label for="sim_position_id" class="form-label">Position ID</label>
+                    <input type="text" class="form-control" id="sim_position_id" placeholder="e.g., 12345">
+                    <div class="form-text small">Optional identifier for position tracking</div>
+                </div>
+                
                 <div class="col-md-2">
                     <label for="sim_quantity" class="form-label">Quantity</label>
-                    <input type="number" class="form-control" id="sim_quantity" step="0.0001" min="0.0001" value="0.0005" required>
+                    <input type="number" class="form-control" id="sim_quantity" step="0.0001" min="0.0001" value="0.0001" required>
                 </div>
+                
                 <div class="col-md-2">
                     <label for="sim_leverage" class="form-label">Leverage</label>
                     <select class="form-select" id="sim_leverage">
@@ -108,24 +129,15 @@
                         <option value="100">100x</option>
                     </select>
                 </div>
+                
                 <div class="col-md-2">
-                    <label for="sim_environment" class="form-label">Environment</label>
-                    <select class="form-select" id="sim_environment">
-                        <option value="production">Production</option>
-                        <option value="sandbox">Sandbox (Futures Only)</option>
-                    </select>
+                    <label for="sim_take_profit" class="form-label">Take Profit</label>
+                    <input type="number" class="form-control" id="sim_take_profit" step="0.01" placeholder="TP price">
                 </div>
-
-                <!-- Take Profit & Stop Loss fields -->
-                <div class="col-md-6">
-                    <label for="sim_take_profit" class="form-label">Take Profit (Optional)</label>
-                    <input type="number" class="form-control" id="sim_take_profit" step="0.01" placeholder="Take profit price">
-                    <div class="form-text">For futures only. Leave empty to disable.</div>
-                </div>
-                <div class="col-md-6">
-                    <label for="sim_stop_loss" class="form-label">Stop Loss (Optional)</label>
-                    <input type="number" class="form-control" id="sim_stop_loss" step="0.01" placeholder="Stop loss price">
-                    <div class="form-text">For futures only. Leave empty to disable.</div>
+                
+                <div class="col-md-2">
+                    <label for="sim_stop_loss" class="form-label">Stop Loss</label>
+                    <input type="number" class="form-control" id="sim_stop_loss" step="0.01" placeholder="SL price">
                 </div>
 
                 <div class="col-12 mt-3">
@@ -199,6 +211,7 @@
                         <th>Strategy</th>
                         <th>Side</th>
                         <th>Type</th>
+                        <th>Position ID</th>
                         <th>Entry Price</th>
                         <th>Current Price</th>
                         <th>Quantity</th>
@@ -211,7 +224,7 @@
                 <tbody id="trades-tbody">
                     <?php if (empty($open_trades)): ?>
                         <tr>
-                            <td colspan="11" class="text-center py-3">No active trades</td>
+                            <td colspan="12" class="text-center py-3">No active trades</td>
                         </tr>
                     <?php else: ?>
                         <?php foreach ($open_trades as $trade): ?>
@@ -229,9 +242,10 @@
                                         <?= ucfirst($trade->trade_type) ?>
                                     </span>
                                 </td>
+                                <td><?= isset($trade->position_id) ? $trade->position_id : 'N/A' ?></td>
                                 <td><?= number_format($trade->entry_price, 2) ?></td>
                                 <td class="current-price"><?= isset($trade->current_price) ? number_format($trade->current_price, 2) : number_format($trade->entry_price, 2) ?></td>
-                                <td><?= $trade->quantity ?></td>
+                                <td><?= rtrim(rtrim(number_format($trade->quantity, 8), '0'), '.') ?></td>
                                 <td><?= $trade->leverage ?>x</td>
                                 <td class="<?= $pnl_class ?>">
                                     <?= isset($trade->pnl) ? number_format($trade->pnl, 2) . ' USDT' : 'N/A' ?>
@@ -278,8 +292,37 @@
   "timeframe": "1h",
   "action": "BUY", // BUY, SELL, or CLOSE
   "quantity": 0.01,
-  "leverage": 5 // Only used for futures
+  "leverage": 5, // Only used for futures
+  "position_id": 12345 // Optional - helps track specific positions
 }</code></pre>
+            
+            <div class="alert alert-info mt-3">
+                <i class="fas fa-lightbulb me-2"></i><strong>Using Position IDs in TradingView</strong><br>
+                For reliable position tracking across different symbols and timeframes, include complete position information in your alerts:
+                <pre class="bg-light p-2 mt-2 mb-0"><code>// In your TradingView Pine Script
+strategy("My Strategy", ...)
+
+// When opening a position, store the bar_index and side
+if (strategy.position_size == 0 and longCondition)
+    strategy.entry("long", strategy.long, ...)
+    positionBarIndex := bar_index
+    positionSide := "BUY"
+    
+// When closing a specific position
+if (strategy.position_size > 0 and exitLongCondition)
+    strategy.close("long", ...)
+    
+    // In your alert message - include side for hedged mode
+    alertMessage = '{
+  "user_id": <?= $this->session->userdata('user_id') ?>,
+  "strategy_id": "YOUR_STRATEGY_ID",
+  "ticker": "{{ticker}}",
+  "timeframe": "{{interval}}",
+  "action": "CLOSE",
+  "position_id": ' + tostring(positionBarIndex) + ',
+  "side": "BUY"  // Critical for hedged futures
+}'</code></pre>
+            </div>
         </div>
     </div>
 </div>
@@ -308,7 +351,6 @@
     }
 </style>
 
-<!-- JavaScript para actualizaciones en tiempo real (solo REST API) -->
 <!-- JavaScript para actualizaciones en tiempo real (solo REST API) -->
 <script>
     document.addEventListener('DOMContentLoaded', function() {
@@ -443,65 +485,90 @@
 
     // Actualizar tabla de trades
     function updateTradesTable(trades) {
-        const tbody = document.getElementById('trades-tbody');
-        if (!tbody) return;
+    const tbody = document.getElementById('trades-tbody');
+    if (!tbody) return;
 
-        // Limpiar tabla actual
-        tbody.innerHTML = '';
+    // Limpiar tabla actual
+    tbody.innerHTML = '';
 
-        if (trades.length === 0) {
-            const emptyRow = document.createElement('tr');
-            emptyRow.innerHTML = '<td colspan="11" class="text-center py-3">No active trades</td>';
-            tbody.appendChild(emptyRow);
-            return;
-        }
-
-        // Crear filas para cada trade
-        trades.forEach(function(trade) {
-            const pnlClass = (parseFloat(trade.pnl || 0) >= 0) ? 'text-profit' : 'text-loss';
-            const sideClass = (trade.side === 'BUY') ? 'text-success' : 'text-danger';
-            const typeClass = (trade.trade_type === 'futures') ? 'bg-warning text-dark' : 'bg-info';
-
-            // Usar valores formateados o aplicar formato a los originales
-            const entryPrice = trade.entry_price_formatted || formatNumber(trade.entry_price, 2);
-            const currentPrice = trade.current_price_formatted ||
-                (trade.current_price ? formatNumber(trade.current_price, 2) : entryPrice);
-            const formattedPnl = trade.pnl_formatted ? trade.pnl_formatted + ' USDT' :
-                ((trade.pnl !== null) ? formatNumber(trade.pnl, 2) + ' USDT' : 'N/A');
-
-            const formattedDate = new Date(trade.created_at).toLocaleString();
-
-            const row = document.createElement('tr');
-            row.innerHTML = `
-                <td>${trade.symbol}</td>
-                <td>${trade.strategy_name}</td>
-                <td class="${sideClass}">${trade.side}</td>
-                <td>
-                    <span class="badge ${typeClass}">
-                        ${trade.trade_type.charAt(0).toUpperCase() + trade.trade_type.slice(1)}
-                    </span>
-                </td>
-                <td>${entryPrice}</td>
-                <td class="current-price">${currentPrice}</td>
-                <td>${trade.quantity}</td>
-                <td>${trade.leverage}x</td>
-                <td class="${pnlClass}">${formattedPnl}</td>
-                <td>${formattedDate}</td>
-                <td>
-                    <a href="<?= base_url('trades/close/') ?>${trade.id}" class="btn btn-sm btn-danger" onclick="return confirm('Are you sure you want to close this trade?')">
-                        <i class="fas fa-times-circle"></i> Close
-                    </a>
-                </td>
-            `;
-
-            tbody.appendChild(row);
-        });
+    if (trades.length === 0) {
+        const emptyRow = document.createElement('tr');
+        emptyRow.innerHTML = '<td colspan="12" class="text-center py-3">No active trades</td>';
+        tbody.appendChild(emptyRow);
+        return;
     }
 
-    // Formatear números con número fijo de decimales
-    function formatNumber(number, decimals) {
-        return parseFloat(number).toFixed(decimals);
+    // Crear filas para cada trade
+    trades.forEach(function(trade) {
+        const pnlClass = (parseFloat(trade.pnl || 0) >= 0) ? 'text-profit' : 'text-loss';
+        const sideClass = (trade.side === 'BUY') ? 'text-success' : 'text-danger';
+        const typeClass = (trade.trade_type === 'futures') ? 'bg-warning text-dark' : 'bg-info';
+
+        // Format quantity - remove trailing zeros
+        const quantity = formatQuantity(trade.quantity);
+        
+        // Usar valores formateados o aplicar formato a los originales
+        const entryPrice = trade.entry_price_formatted || formatNumber(trade.entry_price, 2);
+        const currentPrice = trade.current_price_formatted ||
+            (trade.current_price ? formatNumber(trade.current_price, 2) : entryPrice);
+        const formattedPnl = trade.pnl_formatted ? trade.pnl_formatted + ' USDT' :
+            ((trade.pnl !== null) ? formatNumber(trade.pnl, 2) + ' USDT' : 'N/A');
+
+        const formattedDate = new Date(trade.created_at).toLocaleString();
+        
+        // Display position ID or N/A
+        const positionId = trade.position_id || 'N/A';
+
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td>${trade.symbol}</td>
+            <td>${trade.strategy_name}</td>
+            <td class="${sideClass}">${trade.side}</td>
+            <td>
+                <span class="badge ${typeClass}">
+                    ${trade.trade_type.charAt(0).toUpperCase() + trade.trade_type.slice(1)}
+                </span>
+            </td>
+            <td>${positionId}</td>
+            <td>${entryPrice}</td>
+            <td class="current-price">${currentPrice}</td>
+            <td>${quantity}</td>
+            <td>${trade.leverage}x</td>
+            <td class="${pnlClass}">${formattedPnl}</td>
+            <td>${formattedDate}</td>
+            <td>
+                <a href="<?= base_url('trades/close/') ?>${trade.id}" class="btn btn-sm btn-danger" onclick="return confirm('Are you sure you want to close this trade?')">
+                    <i class="fas fa-times-circle"></i> Close
+                </a>
+            </td>
+        `;
+
+        tbody.appendChild(row);
+    });
+}
+
+// Formatear números con número fijo de decimals
+function formatNumber(number, decimals) {
+    return parseFloat(number).toFixed(decimals);
+}
+
+// Formatear quantity sin ceros a la derecha
+function formatQuantity(number) {
+    if (!number) return "0";
+    
+    // First format with 8 decimal places
+    let formatted = parseFloat(number).toFixed(8);
+    
+    // Remove trailing zeros
+    formatted = formatted.replace(/\.?0+$/, '');
+    
+    // If we accidentally removed the decimal point too, add it back if needed
+    if (formatted.endsWith('.')) {
+        formatted = formatted.slice(0, -1);
     }
+    
+    return formatted;
+}
 
     // Calcular PNL total de todos los trades
     function calculateTotalPnl(trades) {
@@ -549,6 +616,12 @@
                     formData.stop_loss = parseFloat(stopLossEl.value);
                 }
                 
+                // Add position_id if it has a value
+                const positionIdEl = document.getElementById('sim_position_id');
+                if (positionIdEl && positionIdEl.value) {
+                    formData.position_id = positionIdEl.value;
+                }
+                
                 // Establecer los datos JSON en el campo oculto
                 const dataField = document.getElementById('simulate_data');
                 if (dataField) {
@@ -591,13 +664,13 @@
                     if (takeProfitInput) {
                         takeProfitInput.disabled = true;
                         takeProfitInput.value = '';
-                        takeProfitInput.closest('.col-md-6').style.opacity = '0.5';
+                        takeProfitInput.closest('.col-md-2').style.opacity = '0.5';
                     }
                     
                     if (stopLossInput) {
                         stopLossInput.disabled = true;
                         stopLossInput.value = '';
-                        stopLossInput.closest('.col-md-6').style.opacity = '0.5';
+                        stopLossInput.closest('.col-md-2').style.opacity = '0.5';
                     }
                 } else {
                     // Set default to sandbox for futures
@@ -609,12 +682,12 @@
                     // Enable take profit and stop loss for futures
                     if (takeProfitInput) {
                         takeProfitInput.disabled = false;
-                        takeProfitInput.closest('.col-md-6').style.opacity = '1';
+                        takeProfitInput.closest('.col-md-2').style.opacity = '1';
                     }
                     
                     if (stopLossInput) {
                         stopLossInput.disabled = false;
-                        stopLossInput.closest('.col-md-6').style.opacity = '1';
+                        stopLossInput.closest('.col-md-2').style.opacity = '1';
                     }
                 }
             }
