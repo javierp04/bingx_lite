@@ -16,7 +16,7 @@ class BingxApi
     public function __construct()
     {
         $this->CI = &get_instance();
-        
+
         // Default to production URLs
         $this->set_environment('production');
     }
@@ -30,7 +30,7 @@ class BingxApi
     public function set_environment($environment)
     {
         $this->environment = $environment;
-        
+
         // Set appropriate API URLs based on environment
         if ($environment == 'sandbox') {
             $this->spot_api_url = BINGX_SPOT_API_URL_SANDBOX;
@@ -157,7 +157,7 @@ class BingxApi
         // Initialize cURL
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_URL, $url);
-        
+
         if ($method == 'POST') {
             curl_setopt($ch, CURLOPT_POST, true);
             // Empty post body as parameters are in the URL
@@ -245,16 +245,16 @@ class BingxApi
         if ($this->environment == 'sandbox') {
             $this->set_environment('production');
         }
-        
+
         $formatted_symbol = $this->format_symbol($symbol);
-        
+
         $endpoint = '/openApi/spot/v1/ticker/price';
         $params = [
             'symbol' => $formatted_symbol
         ];
 
         $response = $this->_make_request($api_key, $endpoint, $params, 'GET', false, $skip_logging);
-        
+
         // Restore original environment
         if ($saved_env != $this->environment) {
             $this->set_environment($saved_env);
@@ -288,7 +288,7 @@ class BingxApi
     public function get_futures_price($api_key, $symbol, $skip_logging = false)
     {
         $formatted_symbol = $this->format_symbol($symbol);
-        
+
         $endpoint = '/openApi/swap/v2/quote/price';
         $params = [
             'symbol' => $formatted_symbol
@@ -324,9 +324,9 @@ class BingxApi
         if ($this->environment == 'sandbox') {
             $this->set_environment('production');
         }
-        
+
         $formatted_symbol = $this->format_symbol($symbol);
-        
+
         $endpoint = '/openApi/spot/v1/trade/order';
         $params = [
             'symbol' => $formatted_symbol,
@@ -336,7 +336,7 @@ class BingxApi
         ];
 
         $response = $this->_make_request($api_key, $endpoint, $params, 'POST', false);
-        
+
         // Restore original environment
         if ($saved_env != $this->environment) {
             $this->set_environment($saved_env);
@@ -370,7 +370,7 @@ class BingxApi
         if ($this->environment == 'sandbox') {
             $this->set_environment('production');
         }
-        
+
         // To close a position, we need to do the opposite action
         $close_side = $side == 'BUY' ? 'SELL' : 'BUY';
         $formatted_symbol = $this->format_symbol($symbol);
@@ -384,7 +384,7 @@ class BingxApi
         ];
 
         $response = $this->_make_request($api_key, $endpoint, $params, 'POST', false);
-        
+
         // Restore original environment
         if ($saved_env != $this->environment) {
             $this->set_environment($saved_env);
@@ -413,7 +413,7 @@ class BingxApi
     public function set_futures_leverage($api_key, $symbol, $leverage)
     {
         $formatted_symbol = $this->format_symbol($symbol);
-        
+
         $endpoint = '/openApi/swap/v2/trade/leverage';
         $params = [
             'symbol' => $formatted_symbol,
@@ -439,10 +439,10 @@ class BingxApi
             'price' => (float)$price,
             'workingType' => 'MARK_PRICE'
         ];
-        
+
         return json_encode($take_profit);
     }
-    
+
     /**
      * Create JSON string for stop loss order
      *
@@ -457,11 +457,11 @@ class BingxApi
             'price' => (float)$price,
             'workingType' => 'MARK_PRICE'
         ];
-        
+
         return json_encode($stop_loss);
     }
 
-/**
+    /**
      * Open futures position
      * 
      * @param object $api_key API key object
@@ -475,10 +475,10 @@ class BingxApi
     public function open_futures_position($api_key, $symbol, $side, $quantity, $take_profit = null, $stop_loss = null)
     {
         $formatted_symbol = $this->format_symbol($symbol);
-        
+
         // Use LONG for BUY orders and SHORT for SELL orders
         $positionSide = ($side == 'BUY') ? 'LONG' : 'SHORT';
-        
+
         $params = [
             'symbol' => $formatted_symbol,
             'side' => $side,
@@ -486,12 +486,12 @@ class BingxApi
             'type' => 'MARKET',
             'quantity' => (string)$quantity
         ];
-        
+
         // Add take profit if provided
         if ($take_profit !== null && $take_profit > 0) {
             $params['takeProfit'] = $this->_create_take_profit_json($take_profit);
         }
-        
+
         // Add stop loss if provided
         if ($stop_loss !== null && $stop_loss > 0) {
             $params['stopLoss'] = $this->_create_stop_loss_json($stop_loss);
@@ -511,7 +511,7 @@ class BingxApi
             // La estructura de la respuesta es diferente a lo esperado
             // El orderId está en data.order.orderId según la documentación
             $orderInfo = new stdClass();
-            
+
             if (isset($response->data->order) && isset($response->data->order->orderId)) {
                 // Estructura correcta según la documentación
                 $orderInfo->orderId = $response->data->order->orderId;
@@ -523,7 +523,7 @@ class BingxApi
                 $this->last_error = "Cannot find orderId in response";
                 return false;
             }
-            
+
             // Obtener el precio actual ya que no viene en la respuesta
             $price_info = $this->get_futures_price($api_key, $symbol, true);
             if ($price_info && isset($price_info->price)) {
@@ -532,7 +532,7 @@ class BingxApi
                 // Si no podemos obtener el precio, usamos un valor por defecto
                 $orderInfo->price = 0;
             }
-            
+
             return $orderInfo;
         }
 
@@ -540,7 +540,7 @@ class BingxApi
     }
 
     /**
-     * Close futures position
+     * Close futures position in one-way mode
      * 
      * @param object $api_key API key object
      * @param string $symbol Trading pair
@@ -550,11 +550,13 @@ class BingxApi
      */
     public function close_futures_position($api_key, $symbol, $side, $quantity)
     {
-        // To close a position, we need to do the opposite action
+        // In one-way mode, to close a position, we need to do the opposite action
         $close_side = $side == 'BUY' ? 'SELL' : 'BUY';
-        // If original side was BUY/LONG, we need to close with SHORT, and vice versa
+
+        // In one-way mode, the positionSide parameter needs to match the position's original side
+        // This is counter-intuitive but required by BingX API in one-way mode
         $position_side = $side == 'BUY' ? 'LONG' : 'SHORT';
-        
+
         $formatted_symbol = $this->format_symbol($symbol);
 
         $endpoint = '/openApi/swap/v2/trade/order';
@@ -564,12 +566,26 @@ class BingxApi
             'positionSide' => $position_side,
             'type' => 'MARKET',
             'quantity' => (string)$quantity,
-            'reduceOnly' => 'true'
+            'reduceOnly' => 'true'   // This is crucial to ensure we're only closing existing positions
         ];
+
+        // Log the close request for debugging
+        $this->CI->Log_model->add_log([
+            'user_id' => $this->CI->session->userdata('user_id'),
+            'action' => 'close_position_request',
+            'description' => 'Closing position: ' . json_encode([
+                'symbol' => $symbol,
+                'original_side' => $side,
+                'close_side' => $close_side,
+                'position_side' => $position_side,
+                'quantity' => $quantity,
+                'environment' => $this->environment
+            ])
+        ]);
 
         $response = $this->_make_request($api_key, $endpoint, $params, 'POST', true);
 
-        // Registrar la respuesta completa para depuración
+        // Log the complete response for debugging
         $this->CI->Log_model->add_log([
             'user_id' => $this->CI->session->userdata('user_id'),
             'action' => 'api_response_debug',
@@ -577,30 +593,30 @@ class BingxApi
         ]);
 
         if ($response && isset($response->data)) {
-            // La estructura de la respuesta es diferente a lo esperado
+            // The structure of the response is different than expected
             $orderInfo = new stdClass();
-            
+
             if (isset($response->data->order) && isset($response->data->order->orderId)) {
-                // Estructura correcta según la documentación
+                // Correct structure according to documentation
                 $orderInfo->orderId = $response->data->order->orderId;
             } elseif (isset($response->data->orderId)) {
-                // Estructura alternativa (por si acaso)
+                // Alternative structure (just in case)
                 $orderInfo->orderId = $response->data->orderId;
             } else {
-                // No podemos encontrar el orderId en ningún lugar
+                // Can't find the orderId anywhere
                 $this->last_error = "Cannot find orderId in response";
                 return false;
             }
-            
-            // Obtener el precio actual ya que no viene en la respuesta
+
+            // Get current price since it's not in the response
             $price_info = $this->get_futures_price($api_key, $symbol, true);
             if ($price_info && isset($price_info->price)) {
                 $orderInfo->price = $price_info->price;
             } else {
-                // Si no podemos obtener el precio, usamos un valor por defecto
+                // If we can't get the price, use a default value
                 $orderInfo->price = 0;
             }
-            
+
             return $orderInfo;
         }
 
@@ -639,11 +655,11 @@ class BingxApi
         if ($this->environment == 'sandbox') {
             $this->set_environment('production');
         }
-        
+
         $endpoint = '/openApi/spot/v1/account/balance';
 
         $response = $this->_make_request($api_key, $endpoint, [], 'GET', false);
-        
+
         // Restore original environment
         if ($saved_env != $this->environment) {
             $this->set_environment($saved_env);

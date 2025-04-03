@@ -309,6 +309,7 @@
 </style>
 
 <!-- JavaScript para actualizaciones en tiempo real (solo REST API) -->
+<!-- JavaScript para actualizaciones en tiempo real (solo REST API) -->
 <script>
     document.addEventListener('DOMContentLoaded', function() {
         // Iniciar actualizaciones de precio BTC
@@ -580,10 +581,9 @@
                 
                 // Handle sandbox option
                 if (isSpot) {
-                    // If sandbox is selected, switch to production
-                    if (environmentSelect.value === 'sandbox') {
-                        environmentSelect.value = 'production';
-                    }
+                    // Always set to production for spot
+                    environmentSelect.value = 'production';
+                    
                     // Disable sandbox option
                     environmentSelect.querySelector('option[value="sandbox"]').disabled = true;
                     
@@ -600,6 +600,9 @@
                         stopLossInput.closest('.col-md-6').style.opacity = '0.5';
                     }
                 } else {
+                    // Set default to sandbox for futures
+                    environmentSelect.value = 'sandbox';
+                    
                     // Enable sandbox option for futures
                     environmentSelect.querySelector('option[value="sandbox"]').disabled = false;
                     
