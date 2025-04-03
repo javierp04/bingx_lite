@@ -157,73 +157,64 @@ class Webhook extends CI_Controller
         switch ($data->action) {
             case 'BUY':
             case 'SELL':
-                // Verificar si hay un trade abierto opuesto para cerrar primero
-                $opposite_side = $data->action === 'BUY' ? 'SELL' : 'BUY';
-                $trades = $this->Trade_model->get_all_trades($data->user_id, 'open');
-                $opposite_trade = null;
+                if ($trade_type == 'spot') {
+                    // Verificar si hay un trade abierto opuesto para cerrar primero
+                    $opposite_side = $data->action === 'BUY' ? 'SELL' : 'BUY';
+                    $trades = $this->Trade_model->get_all_trades($data->user_id, 'open');
+                    $opposite_trade = null;
 
-                // Buscar un trade abierto con dirección opuesta para la misma estrategia/símbolo/timeframe
-                foreach ($trades as $trade) {
-                    if (
-                        $trade->symbol == $data->ticker &&
-                        $trade->strategy_id == $strategy->id &&
-                        $trade->side == $opposite_side &&
-                        $trade->timeframe == $data->timeframe &&
-                        $trade->environment == $environment
-                    ) {
-                        $opposite_trade = $trade;
-                        break;
+                    // Buscar un trade abierto con dirección opuesta para la misma estrategia/símbolo/timeframe
+                    foreach ($trades as $trade) {
+                        if (
+                            $trade->symbol == $data->ticker &&
+                            $trade->strategy_id == $strategy->id &&
+                            $trade->side == $opposite_side &&
+                            $trade->timeframe == $data->timeframe &&
+                            $trade->environment == $environment
+                        ) {
+                            $opposite_trade = $trade;
+                            break;
+                        }
                     }
-                }
 
-                // Si existe un trade opuesto, cerrarlo primero
-                if ($opposite_trade) {
-                    $this->_log_webhook_debug(
-                        "Closing opposite direction trade before opening new position",
-                        json_encode($opposite_trade)
-                    );
-
-                    // Cerrar la posición opuesta primero
-                    if ($opposite_trade->trade_type == 'futures') {
-                        $result = $this->bingxapi->close_futures_position(
-                            $api_key,
-                            $opposite_trade->symbol,
-                            $opposite_trade->side,
-                            $opposite_trade->quantity
+                    // Si existe un trade opuesto, cerrarlo primero
+                    if ($opposite_trade) {
+                        $this->_log_webhook_debug(
+                            "Closing opposite direction trade before opening new position",
+                            json_encode($opposite_trade)
                         );
-                    } else {
                         $result = $this->bingxapi->close_spot_position(
                             $api_key,
                             $opposite_trade->symbol,
                             $opposite_trade->side,
                             $opposite_trade->quantity
                         );
-                    }
 
-                    if ($result && isset($result->price)) {
-                        // Calcular PNL
-                        $exit_price = $result->price;
+                        if ($result && isset($result->price)) {
+                            // Calcular PNL
+                            $exit_price = $result->price;
 
-                        if ($opposite_trade->side == 'BUY') {
-                            $pnl = ($exit_price - $opposite_trade->entry_price) *
-                                $opposite_trade->quantity * $opposite_trade->leverage;
-                        } else {
-                            $pnl = ($opposite_trade->entry_price - $exit_price) *
-                                $opposite_trade->quantity * $opposite_trade->leverage;
+                            if ($opposite_trade->side == 'BUY') {
+                                $pnl = ($exit_price - $opposite_trade->entry_price) *
+                                    $opposite_trade->quantity * $opposite_trade->leverage;
+                            } else {
+                                $pnl = ($opposite_trade->entry_price - $exit_price) *
+                                    $opposite_trade->quantity * $opposite_trade->leverage;
+                            }
+
+                            // Actualizar el trade
+                            $this->Trade_model->close_trade($opposite_trade->id, $exit_price, $pnl);
+
+                            // Log de cierre
+                            $log_data = array(
+                                'user_id' => $data->user_id,
+                                'action' => 'close_trade',
+                                'description' => 'Auto-closed opposite trade for ' . $opposite_trade->symbol .
+                                    ' with PNL: ' . number_format($pnl, 2) .
+                                    ' before opening new position'
+                            );
+                            $this->Log_model->add_log($log_data);
                         }
-
-                        // Actualizar el trade
-                        $this->Trade_model->close_trade($opposite_trade->id, $exit_price, $pnl);
-
-                        // Log de cierre
-                        $log_data = array(
-                            'user_id' => $data->user_id,
-                            'action' => 'close_trade',
-                            'description' => 'Auto-closed opposite trade for ' . $opposite_trade->symbol .
-                                ' with PNL: ' . number_format($pnl, 2) .
-                                ' before opening new position'
-                        );
-                        $this->Log_model->add_log($log_data);
                     }
                 }
 
