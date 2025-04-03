@@ -89,8 +89,7 @@
   "timeframe": "1h",
   "action": "BUY",
   "quantity": 0.01,
-  "leverage": 5,
-  "environment": "sandbox"
+  "leverage": 5
 }</code></pre>
 
         <h6 class="mt-3">Strategy Types:</h6>

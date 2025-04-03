@@ -77,8 +77,7 @@ alertMessage = '{
   "timeframe": "{{interval}}",
   "action": "{{strategy.order.action}}",
   "quantity": 0.01,
-  "leverage": 5,
-  "environment": "sandbox"
+  "leverage": 5
 }'
 
 // Send alert
