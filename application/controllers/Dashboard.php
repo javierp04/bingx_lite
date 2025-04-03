@@ -52,40 +52,43 @@ class Dashboard extends CI_Controller
     public function refresh_trades()
     {
         $user_id = $this->session->userdata('user_id');
-
+    
         // Get all open trades
         $trades = $this->Trade_model->get_all_trades($user_id, 'open');
-
+    
         // Get API key for this user
         $api_key = $this->Api_key_model->get_api_key($user_id);
-
+    
         // Update PNL for each trade
         if ($api_key && !empty($trades)) {
             foreach ($trades as $trade) {
                 try {
-                    // Update price and PNL information
+                    // Set the correct environment for the API
+                    $this->bingxapi->set_environment($trade->environment);
+    
+                    // Update price and PNL information - With skip_logging parameter set to true
                     if ($trade->trade_type == 'futures') {
-                        $price_info = $this->bingxapi->get_futures_price($api_key, $trade->symbol);
+                        $price_info = $this->bingxapi->get_futures_price($api_key, $trade->symbol, true);
                     } else {
-                        $price_info = $this->bingxapi->get_spot_price($api_key, $trade->symbol);
+                        $price_info = $this->bingxapi->get_spot_price($api_key, $trade->symbol, true);
                     }
-
+    
                     if ($price_info && isset($price_info->price)) {
                         // Calculate PNL
                         $current_price = $price_info->price;
-
+    
                         if ($trade->side == 'BUY') {
                             $pnl = ($current_price - $trade->entry_price) * $trade->quantity * $trade->leverage;
                         } else {
                             $pnl = ($trade->entry_price - $current_price) * $trade->quantity * $trade->leverage;
                         }
-
+    
                         // Update trade with current price and PNL
                         $this->Trade_model->update_trade($trade->id, array(
                             'current_price' => $current_price,
                             'pnl' => $pnl
                         ));
-
+    
                         // Update object for JSON response
                         $trade->current_price = $current_price;
                         $trade->pnl = $pnl;
@@ -100,7 +103,7 @@ class Dashboard extends CI_Controller
                 }
             }
         }
-
+    
         // Format prices and PNL to limit decimals
         foreach ($trades as $trade) {
             if (isset($trade->current_price)) {
@@ -113,7 +116,7 @@ class Dashboard extends CI_Controller
                 $trade->pnl_formatted = number_format($trade->pnl, 2);
             }
         }
-
+    
         // Return JSON response
         echo json_encode($trades);
     }
@@ -314,7 +317,7 @@ class Dashboard extends CI_Controller
         }
 
         // Get BTC price
-        $price_info = $this->bingxapi->get_spot_price($api_key, 'BTCUSDT');
+        $price_info = $this->bingxapi->get_spot_price($api_key, 'BTCUSDT', true);
 
         if ($price_info && isset($price_info->price)) {
             $price = $price_info->price;

@@ -32,13 +32,32 @@
                         </span>
                     </td>
                 </tr>
+                <tr>
+                    <th>Status</th>
+                    <td>
+                        <span class="badge <?= $strategy->active ? 'bg-success' : 'bg-secondary' ?>">
+                            <?= $strategy->active ? 'Active' : 'Inactive' ?>
+                        </span>
+                    </td>
+                </tr>
                 <?php if ($strategy->description): ?>
                 <tr>
                     <th>Description</th>
-                    <td><?= $strategy->description ?></td>
+                    <td class="strategy-description">
+                        <?= nl2br(htmlspecialchars($strategy->description)) ?>
+                    </td>
                 </tr>
                 <?php endif; ?>
             </table>
         </div>
     </div>
 </div>
+
+<style>
+    .strategy-description {
+        text-align: left;
+        white-space: pre-line;
+        font-size: 14px;
+        line-height: 1.5;
+    }
+</style>

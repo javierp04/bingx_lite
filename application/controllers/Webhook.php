@@ -115,6 +115,15 @@ class Webhook extends CI_Controller
             return 'Strategy is inactive';
         }
 
+        // Determine trade environment (sandbox or production)
+        $environment = 'production';
+        if (isset($data->environment) && $data->environment == 'sandbox') {
+            // Only futures can use sandbox
+            if ($strategy->type == 'futures') {
+                $environment = 'sandbox';
+            }
+        }
+
         // Get API key for this user
         $api_key = $this->Api_key_model->get_api_key($data->user_id);
         if (!$api_key) {
@@ -122,13 +131,23 @@ class Webhook extends CI_Controller
             return 'API key not configured for this user';
         }
 
+        // Set environment in BingX API library
+        $this->bingxapi->set_environment($environment);
+
+        // Extract take profit and stop loss if available
+        $take_profit = isset($data->take_profit) ? $data->take_profit : null;
+        $stop_loss = isset($data->stop_loss) ? $data->stop_loss : null;
+
         // Log parameters before sending to API
         $this->_log_webhook_debug('Preparing order parameters', json_encode([
             'ticker' => $data->ticker,
             'formatted_ticker' => $this->bingxapi->format_symbol($data->ticker),
             'action' => $data->action,
             'quantity' => isset($data->quantity) ? $data->quantity : 0.01,
-            'strategy_type' => $strategy->type
+            'strategy_type' => $strategy->type,
+            'environment' => $environment,
+            'take_profit' => $take_profit,
+            'stop_loss' => $stop_loss
         ]));
 
         // Determine trade type (spot or futures)
@@ -149,7 +168,8 @@ class Webhook extends CI_Controller
                         $trade->symbol == $data->ticker &&
                         $trade->strategy_id == $strategy->id &&
                         $trade->side == $opposite_side &&
-                        $trade->timeframe == $data->timeframe
+                        $trade->timeframe == $data->timeframe &&
+                        $trade->environment == $environment
                     ) {
                         $opposite_trade = $trade;
                         break;
@@ -206,7 +226,7 @@ class Webhook extends CI_Controller
                         $this->Log_model->add_log($log_data);
                     }
                 }
-                
+
                 // Get quantity and leverage
                 $quantity = isset($data->quantity) ? $data->quantity : 0.01; // Default quantity
                 $leverage = isset($data->leverage) ? $data->leverage : 1; // Default leverage
@@ -223,8 +243,17 @@ class Webhook extends CI_Controller
                         }
                     }
 
-                    $result = $this->bingxapi->open_futures_position($api_key, $data->ticker, $data->action, $quantity);
+                    // Open futures position with take profit and stop loss
+                    $result = $this->bingxapi->open_futures_position(
+                        $api_key,
+                        $data->ticker,
+                        $data->action,
+                        $quantity,
+                        $take_profit,
+                        $stop_loss
+                    );
                 } else {
+                    // Spot trading doesn't support take profit/stop loss through API
                     $result = $this->bingxapi->open_spot_position($api_key, $data->ticker, $data->action, $quantity);
                 }
 
@@ -244,10 +273,13 @@ class Webhook extends CI_Controller
                         'timeframe' => $data->timeframe,
                         'side' => $data->action,
                         'trade_type' => $trade_type,
+                        'environment' => $environment,
                         'quantity' => $quantity,
                         'entry_price' => $result->price,
                         'current_price' => $result->price,
                         'leverage' => $trade_type == 'futures' ? $leverage : 1,
+                        'take_profit' => $take_profit,
+                        'stop_loss' => $stop_loss,
                         'pnl' => 0, // Initial PNL is 0
                         'status' => 'open',
                         'webhook_data' => $json_data
@@ -260,7 +292,7 @@ class Webhook extends CI_Controller
                         'user_id' => $data->user_id,
                         'action' => 'open_trade',
                         'description' => 'Opened ' . $trade_type . ' ' . $data->action . ' position for ' . $data->ticker .
-                            ' via webhook (Strategy: ' . $strategy->name . ')'
+                            ' via webhook (Strategy: ' . $strategy->name . ', Environment: ' . $environment . ')'
                     );
                     $this->Log_model->add_log($log_data);
 
@@ -277,7 +309,11 @@ class Webhook extends CI_Controller
                 $trade_to_close = null;
 
                 foreach ($trades as $trade) {
-                    if ($trade->symbol == $data->ticker && $trade->strategy_id == $strategy->id) {
+                    if (
+                        $trade->symbol == $data->ticker &&
+                        $trade->strategy_id == $strategy->id &&
+                        $trade->environment == $environment
+                    ) {
                         $trade_to_close = $trade;
                         break;
                     }
@@ -329,7 +365,8 @@ class Webhook extends CI_Controller
                         'user_id' => $data->user_id,
                         'action' => 'close_trade',
                         'description' => 'Closed trade for ' . $trade_to_close->symbol . ' with PNL: ' .
-                            number_format($pnl, 2) . ' via webhook (Strategy: ' . $strategy->name . ')'
+                            number_format($pnl, 2) . ' via webhook (Strategy: ' . $strategy->name .
+                            ', Environment: ' . $environment . ')'
                     );
                     $this->Log_model->add_log($log_data);
 
