@@ -34,6 +34,7 @@
                             </span>
                         </p>
                         <p><strong>Timeframe:</strong> <?= $trade->timeframe ?></p>
+                        <p><strong>Position ID:</strong> <?= isset($trade->position_id) ? $trade->position_id : 'N/A' ?></p>
                     </div>
                     <div class="col-md-6">                        
                         <p><strong>Status:</strong> 
@@ -58,11 +59,11 @@
             <div class="card-body">
                 <div class="row">
                     <div class="col-md-6">
-                        <p><strong>Entry Price:</strong> <?= $trade->entry_price ?> USDT</p>
+                        <p><strong>Entry Price:</strong> <?= number_format($trade->entry_price, 2) ?> USDT</p>
                         <?php if ($trade->status == 'closed' && $trade->exit_price): ?>
-                            <p><strong>Exit Price:</strong> <?= $trade->exit_price ?> USDT</p>
+                            <p><strong>Exit Price:</strong> <?= number_format($trade->exit_price, 2) ?> USDT</p>
                         <?php endif; ?>
-                        <p><strong>Quantity:</strong> <?= $trade->quantity ?></p>
+                        <p><strong>Quantity:</strong> <?= rtrim(rtrim(number_format($trade->quantity, 8), '0'), '.') ?></p>
                     </div>
                     <div class="col-md-6">
                         <p><strong>Leverage:</strong> <?= $trade->leverage ?>x</p>

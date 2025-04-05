@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Servidor: 127.0.0.1
--- Tiempo de generación: 03-04-2025 a las 00:34:27
+-- Tiempo de generación: 03-04-2025 a las 13:01:01
 -- Versión del servidor: 10.4.27-MariaDB
 -- Versión de PHP: 7.4.33
 
@@ -86,6 +86,17 @@ CREATE TABLE `system_logs` (
   `created_at` datetime NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+--
+-- Volcado de datos para la tabla `system_logs`
+--
+
+INSERT INTO `system_logs` (`id`, `user_id`, `action`, `description`, `ip_address`, `created_at`) VALUES
+(1, 1, 'webhook_debug', 'Simulating order with raw data. Data: {\"strategy_id\":\"BTC_H1_RSI\",\"ticker\":\"BTCUSDT\",\"timeframe\":\"1h\",\"action\":\"BUY\",\"quantity\":\"0.0001\",\"leverage\":\"1\",\"environment\":\"production\",\"position_id\":\"12345\"}', '127.0.0.1', '2025-04-03 12:53:23'),
+(2, 1, 'webhook_debug', 'Preparing order parameters. Data: {\"ticker\":\"BTCUSDT\",\"formatted_ticker\":\"BTC-USDT\",\"action\":\"BUY\",\"quantity\":\"0.0001\",\"strategy_type\":\"spot\",\"environment\":\"production\",\"take_profit\":null,\"stop_loss\":null,\"position_id\":\"12345\"}', '127.0.0.1', '2025-04-03 12:53:23'),
+(3, 1, 'api_debug', '{\"endpoint\":\"\\/openApi\\/spot\\/v1\\/trade\\/order\",\"method\":\"POST\",\"parameters\":\"timestamp=1743695603293&symbol=BTC-USDT&side=BUY&type=MARKET&quantity=0.0001\",\"url\":\"https:\\/\\/open-api.bingx.com\\/openApi\\/spot\\/v1\\/trade\\/order?timestamp=1743695603293&symbol=BTC-USDT&side=BUY&type=MARKET&quantity=0.0001&signature=f924f89093f7480f11d317d0545dc4e72b30dff5891c926f78e4f3bad8f008be\",\"environment\":\"production\",\"is_futures\":false}', '127.0.0.1', '2025-04-03 12:53:23'),
+(4, 1, 'api_request', '{\"endpoint\":\"\\/openApi\\/spot\\/v1\\/trade\\/order\",\"method\":\"POST\",\"url\":\"https:\\/\\/open-api.bingx.com\\/openApi\\/spot\\/v1\\/trade\\/order?timestamp=1743695603293&symbol=BTC-USDT&side=BUY&type=MARKET&quantity=0.0001&signature=f924f89093f7480f11d317d0545dc4e72b30dff5891c926f78e4f3bad8f008be\",\"headers\":[\"Content-Type: application\\/x-www-form-urlencoded\",\"User-Agent: BingX-Trading-Bot\",\"X-BX-APIKEY: mlTNwZLYS5qb0ojsPMUxym78kboX5ekCAYLUcUrPrr2kYrSpbP6DRTEDDkQcLMT9C8cNEcqjUdlI0zyA794Q\"],\"parameters\":\"timestamp=1743695603293&symbol=BTC-USDT&side=BUY&type=MARKET&quantity=0.0001\",\"response\":\"{\\\"code\\\":0,\\\"msg\\\":\\\"\\\",\\\"debugMsg\\\":\\\"\\\",\\\"data\\\":{\\\"symbol\\\":\\\"BTC-USDT\\\",\\\"orderId\\\":1907823749680332800,\\\"transactTime\\\":1743695602232,\\\"price\\\":\\\"81725.56\\\",\\\"stopPrice\\\":\\\"0\\\",\\\"origQty\\\":\\\"0.0001\\\",\\\"executedQty\\\":\\\"0.0001\\\",\\\"cummulativeQuoteQty\\\":\\\"8.172647000000001\\\",\\\"status\\\":\\\"FILLED\\\",\\\"type\\\":\\\"MARKET\\\",\\\"side\\\":\\\"BUY\\\",\\\"clientOrderID\\\":\\\"\\\",\\\"clientUserID\\\":\\\"\\\",\\\"msg\\\":\\\"\\\",\\\"bxUid\\\":\\\"\\\"}}\",\"http_code\":200,\"curl_error\":\"\",\"environment\":\"production\"}', '127.0.0.1', '2025-04-03 12:53:24'),
+(5, 1, 'open_trade', 'Opened spot BUY position for BTCUSDT via webhook (Strategy: Estrategia Bitcoin RSI en H1 - SHORT Estructural, Environment: production, Position ID: 12345)', '127.0.0.1', '2025-04-03 12:53:24');
+
 -- --------------------------------------------------------
 
 --
@@ -112,10 +123,18 @@ CREATE TABLE `trades` (
   `pnl` decimal(18,8) DEFAULT NULL,
   `status` enum('open','closed') NOT NULL DEFAULT 'open',
   `webhook_data` text DEFAULT NULL,
+  `position_id` varchar(50) DEFAULT NULL,
   `created_at` datetime NOT NULL DEFAULT current_timestamp(),
   `updated_at` datetime DEFAULT NULL ON UPDATE current_timestamp(),
   `closed_at` datetime DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Volcado de datos para la tabla `trades`
+--
+
+INSERT INTO `trades` (`id`, `user_id`, `strategy_id`, `order_id`, `symbol`, `timeframe`, `side`, `trade_type`, `environment`, `quantity`, `entry_price`, `current_price`, `leverage`, `take_profit`, `stop_loss`, `exit_price`, `pnl`, `status`, `webhook_data`, `position_id`, `created_at`, `updated_at`, `closed_at`) VALUES
+(1, 1, 1, '1907823749680332800', 'BTCUSDT', '1h', 'BUY', 'spot', 'production', '0.00010000', '81726.64000000', '81726.63000000', 1, NULL, NULL, NULL, '-0.00000100', 'open', '{\"strategy_id\":\"BTC_H1_RSI\",\"ticker\":\"BTCUSDT\",\"timeframe\":\"1h\",\"action\":\"BUY\",\"quantity\":\"0.0001\",\"leverage\":\"1\",\"environment\":\"production\",\"position_id\":\"12345\"}', '12345', '2025-04-03 12:53:24', '2025-04-03 12:53:27', NULL);
 
 -- --------------------------------------------------------
 
@@ -172,7 +191,8 @@ ALTER TABLE `system_logs`
 ALTER TABLE `trades`
   ADD PRIMARY KEY (`id`),
   ADD KEY `user_id` (`user_id`),
-  ADD KEY `strategy_id` (`strategy_id`);
+  ADD KEY `strategy_id` (`strategy_id`),
+  ADD KEY `idx_position_id` (`position_id`);
 
 --
 -- Indices de la tabla `users`
@@ -202,13 +222,13 @@ ALTER TABLE `strategies`
 -- AUTO_INCREMENT de la tabla `system_logs`
 --
 ALTER TABLE `system_logs`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
 
 --
 -- AUTO_INCREMENT de la tabla `trades`
 --
 ALTER TABLE `trades`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
 
 --
 -- AUTO_INCREMENT de la tabla `users`

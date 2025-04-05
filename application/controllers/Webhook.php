@@ -137,6 +137,9 @@ class Webhook extends CI_Controller
         // Extract take profit and stop loss if available
         $take_profit = isset($data->take_profit) ? $data->take_profit : null;
         $stop_loss = isset($data->stop_loss) ? $data->stop_loss : null;
+        
+        // Extract position_id if available (for identifying which position to close)
+        $position_id = isset($data->position_id) ? $data->position_id : null;
 
         // Log parameters before sending to API
         $this->_log_webhook_debug('Preparing order parameters', json_encode([
@@ -147,7 +150,8 @@ class Webhook extends CI_Controller
             'strategy_type' => $strategy->type,
             'environment' => $environment,
             'take_profit' => $take_profit,
-            'stop_loss' => $stop_loss
+            'stop_loss' => $stop_loss,
+            'position_id' => $position_id
         ]));
 
         // Determine trade type (spot or futures)
@@ -157,75 +161,69 @@ class Webhook extends CI_Controller
         switch ($data->action) {
             case 'BUY':
             case 'SELL':
-                // Verificar si hay un trade abierto opuesto para cerrar primero
-                $opposite_side = $data->action === 'BUY' ? 'SELL' : 'BUY';
-                $trades = $this->Trade_model->get_all_trades($data->user_id, 'open');
-                $opposite_trade = null;
+                /* 
+                // COMMENTED OUT: Code to close opposite position in spot trading
+                if ($trade_type == 'spot') {
+                    // Verificar si hay un trade abierto opuesto para cerrar primero
+                    $opposite_side = $data->action === 'BUY' ? 'SELL' : 'BUY';
+                    $trades = $this->Trade_model->get_all_trades($data->user_id, 'open');
+                    $opposite_trade = null;
 
-                // Buscar un trade abierto con dirección opuesta para la misma estrategia/símbolo/timeframe
-                foreach ($trades as $trade) {
-                    if (
-                        $trade->symbol == $data->ticker &&
-                        $trade->strategy_id == $strategy->id &&
-                        $trade->side == $opposite_side &&
-                        $trade->timeframe == $data->timeframe &&
-                        $trade->environment == $environment
-                    ) {
-                        $opposite_trade = $trade;
-                        break;
+                    // Buscar un trade abierto con dirección opuesta para la misma estrategia/símbolo/timeframe
+                    foreach ($trades as $trade) {
+                        if (
+                            $trade->symbol == $data->ticker &&
+                            $trade->strategy_id == $strategy->id &&
+                            $trade->side == $opposite_side &&
+                            $trade->timeframe == $data->timeframe &&
+                            $trade->environment == $environment
+                        ) {
+                            $opposite_trade = $trade;
+                            break;
+                        }
                     }
-                }
 
-                // Si existe un trade opuesto, cerrarlo primero
-                if ($opposite_trade) {
-                    $this->_log_webhook_debug(
-                        "Closing opposite direction trade before opening new position",
-                        json_encode($opposite_trade)
-                    );
-
-                    // Cerrar la posición opuesta primero
-                    if ($opposite_trade->trade_type == 'futures') {
-                        $result = $this->bingxapi->close_futures_position(
-                            $api_key,
-                            $opposite_trade->symbol,
-                            $opposite_trade->side,
-                            $opposite_trade->quantity
+                    // Si existe un trade opuesto, cerrarlo primero
+                    if ($opposite_trade) {
+                        $this->_log_webhook_debug(
+                            "Closing opposite direction trade before opening new position",
+                            json_encode($opposite_trade)
                         );
-                    } else {
                         $result = $this->bingxapi->close_spot_position(
                             $api_key,
                             $opposite_trade->symbol,
                             $opposite_trade->side,
                             $opposite_trade->quantity
                         );
-                    }
 
-                    if ($result && isset($result->price)) {
-                        // Calcular PNL
-                        $exit_price = $result->price;
+                        if ($result && isset($result->price)) {
+                            // Calcular PNL
+                            $exit_price = $result->price;
 
-                        if ($opposite_trade->side == 'BUY') {
-                            $pnl = ($exit_price - $opposite_trade->entry_price) *
-                                $opposite_trade->quantity * $opposite_trade->leverage;
-                        } else {
-                            $pnl = ($opposite_trade->entry_price - $exit_price) *
-                                $opposite_trade->quantity * $opposite_trade->leverage;
+                            if ($opposite_trade->side == 'BUY') {
+                                $pnl = ($exit_price - $opposite_trade->entry_price) *
+                                    $opposite_trade->quantity * $opposite_trade->leverage;
+                            } else {
+                                $pnl = ($opposite_trade->entry_price - $exit_price) *
+                                    $opposite_trade->quantity * $opposite_trade->leverage;
+                            }
+
+                            // Actualizar el trade
+                            $this->Trade_model->close_trade($opposite_trade->id, $exit_price, $pnl);
+
+                            // Log de cierre
+                            $log_data = array(
+                                'user_id' => $data->user_id,
+                                'action' => 'close_trade',
+                                'description' => 'Auto-closed opposite trade for ' . $opposite_trade->symbol .
+                                    ' with PNL: ' . number_format($pnl, 2) .
+                                    ' before opening new position'
+                            );
+                            $this->Log_model->add_log($log_data);
                         }
-
-                        // Actualizar el trade
-                        $this->Trade_model->close_trade($opposite_trade->id, $exit_price, $pnl);
-
-                        // Log de cierre
-                        $log_data = array(
-                            'user_id' => $data->user_id,
-                            'action' => 'close_trade',
-                            'description' => 'Auto-closed opposite trade for ' . $opposite_trade->symbol .
-                                ' with PNL: ' . number_format($pnl, 2) .
-                                ' before opening new position'
-                        );
-                        $this->Log_model->add_log($log_data);
                     }
                 }
+                */
 
                 // Get quantity and leverage
                 $quantity = isset($data->quantity) ? $data->quantity : 0.01; // Default quantity
@@ -282,6 +280,7 @@ class Webhook extends CI_Controller
                         'stop_loss' => $stop_loss,
                         'pnl' => 0, // Initial PNL is 0
                         'status' => 'open',
+                        'position_id' => $position_id, // Store position_id from TradingView
                         'webhook_data' => $json_data
                     );
 
@@ -292,7 +291,8 @@ class Webhook extends CI_Controller
                         'user_id' => $data->user_id,
                         'action' => 'open_trade',
                         'description' => 'Opened ' . $trade_type . ' ' . $data->action . ' position for ' . $data->ticker .
-                            ' via webhook (Strategy: ' . $strategy->name . ', Environment: ' . $environment . ')'
+                            ' via webhook (Strategy: ' . $strategy->name . ', Environment: ' . $environment . 
+                            ', Position ID: ' . $position_id . ')'
                     );
                     $this->Log_model->add_log($log_data);
 
@@ -304,23 +304,67 @@ class Webhook extends CI_Controller
                 break;
 
             case 'CLOSE':
-                // Find open trade by symbol and strategy
+                // Find open trade by comprehensive matching criteria
                 $trades = $this->Trade_model->get_all_trades($data->user_id, 'open');
                 $trade_to_close = null;
 
-                foreach ($trades as $trade) {
-                    if (
-                        $trade->symbol == $data->ticker &&
-                        $trade->strategy_id == $strategy->id &&
-                        $trade->environment == $environment
-                    ) {
-                        $trade_to_close = $trade;
-                        break;
+                // Log the search criteria
+                $this->_log_webhook_debug('Position close criteria', json_encode([
+                    'position_id' => $position_id,
+                    'ticker' => $data->ticker,
+                    'timeframe' => $data->timeframe,
+                    'side' => isset($data->side) ? $data->side : 'not specified',
+                    'strategy_id' => $strategy->id
+                ]));
+
+                if ($position_id) {
+                    // Find trade by matching position_id AND symbol/timeframe for safety
+                    foreach ($trades as $trade) {
+                        if (
+                            $trade->position_id == $position_id &&
+                            $trade->symbol == $data->ticker &&
+                            $trade->timeframe == $data->timeframe &&
+                            $trade->environment == $environment
+                        ) {
+                            // For futures, also match the side (BUY/SELL) when specified
+                            if ($trade_type == 'futures' && isset($data->side)) {
+                                if ($trade->side == $data->side) {
+                                    $trade_to_close = $trade;
+                                    break;
+                                }
+                            } else {
+                                $trade_to_close = $trade;
+                                break;
+                            }
+                        }
+                    }
+                } else {
+                    // Fallback to traditional search if no position_id provided
+                    foreach ($trades as $trade) {
+                        if (
+                            $trade->symbol == $data->ticker &&
+                            $trade->strategy_id == $strategy->id &&
+                            $trade->timeframe == $data->timeframe &&
+                            $trade->environment == $environment
+                        ) {
+                            // For futures, we need to match the side as well in case of hedged positions
+                            if ($trade_type == 'futures' && isset($data->side)) {
+                                if ($trade->side == $data->side) {
+                                    $trade_to_close = $trade;
+                                    break;
+                                }
+                            } else {
+                                $trade_to_close = $trade;
+                                break;
+                            }
+                        }
                     }
                 }
 
                 if (!$trade_to_close) {
-                    $this->_log_webhook_error('No open trade found to close', $json_data);
+                    $this->_log_webhook_error('No open trade found to close matching criteria: ' . 
+                                             (isset($position_id) ? 'Position ID: ' . $position_id : 'Symbol/Strategy'), 
+                                              $json_data);
                     return 'No open trade found to close';
                 }
 
@@ -366,7 +410,7 @@ class Webhook extends CI_Controller
                         'action' => 'close_trade',
                         'description' => 'Closed trade for ' . $trade_to_close->symbol . ' with PNL: ' .
                             number_format($pnl, 2) . ' via webhook (Strategy: ' . $strategy->name .
-                            ', Environment: ' . $environment . ')'
+                            ', Environment: ' . $environment . ', Position ID: ' . $trade_to_close->position_id . ')'
                     );
                     $this->Log_model->add_log($log_data);
 

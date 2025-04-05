@@ -37,6 +37,30 @@ class Trade_model extends CI_Model {
         ))->row();
     }
     
+    public function get_trade_by_position_id($position_id, $user_id = null, $symbol = null, $timeframe = null, $side = null) {
+        if ($user_id) {
+            $this->db->where('user_id', $user_id);
+        }
+        
+        $this->db->where('position_id', $position_id);
+        $this->db->where('status', 'open');
+        
+        // Add additional filters for more specificity
+        if ($symbol) {
+            $this->db->where('symbol', $symbol);
+        }
+        
+        if ($timeframe) {
+            $this->db->where('timeframe', $timeframe);
+        }
+        
+        if ($side) {
+            $this->db->where('side', $side);
+        }
+        
+        return $this->db->get('trades')->row();
+    }
+    
     public function add_trade($data) {
         $this->db->insert('trades', $data);
         return $this->db->insert_id();

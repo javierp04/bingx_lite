@@ -104,16 +104,24 @@ class Dashboard extends CI_Controller
             }
         }
     
-        // Format prices and PNL to limit decimals
+        // Format values for JSON response
         foreach ($trades as $trade) {
+            // Format price values
             if (isset($trade->current_price)) {
                 $trade->current_price_formatted = number_format($trade->current_price, 2);
             }
+            
             if (isset($trade->entry_price)) {
                 $trade->entry_price_formatted = number_format($trade->entry_price, 2);
             }
+            
             if (isset($trade->pnl)) {
                 $trade->pnl_formatted = number_format($trade->pnl, 2);
+            }
+            
+            // Format quantity (el cliente JavaScript se encargará de eliminar los ceros)
+            if (isset($trade->quantity)) {
+                $trade->quantity_formatted = rtrim(rtrim(number_format($trade->quantity, 8), '0'), '.');
             }
         }
     
