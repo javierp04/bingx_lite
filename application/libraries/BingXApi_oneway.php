@@ -550,24 +550,25 @@ class BingxApi
      */
     public function close_futures_position($api_key, $symbol, $side, $quantity)
     {
-        // In hedged mode, to close a position, we need to do the opposite action
+        // In one-way mode, to close a position, we need to do the opposite action
         $close_side = $side == 'BUY' ? 'SELL' : 'BUY';
-    
-        // In hedged mode, the positionSide must match the original position's side
+
+        // In one-way mode, the positionSide parameter needs to match the position's original side
+        // This is counter-intuitive but required by BingX API in one-way mode
         $position_side = $side == 'BUY' ? 'LONG' : 'SHORT';
-    
+
         $formatted_symbol = $this->format_symbol($symbol);
-    
+
         $endpoint = '/openApi/swap/v2/trade/order';
         $params = [
             'symbol' => $formatted_symbol,
             'side' => $close_side,
             'positionSide' => $position_side,
             'type' => 'MARKET',
-            'quantity' => (string)$quantity
-            // REMOVED: 'reduceOnly' => 'true' - This param causes error in Hedge mode
+            'quantity' => (string)$quantity,
+            'reduceOnly' => 'true'   // This is crucial to ensure we're only closing existing positions
         ];
-    
+
         // Log the close request for debugging
         $this->CI->Log_model->add_log([
             'user_id' => $this->CI->session->userdata('user_id'),
@@ -581,20 +582,20 @@ class BingxApi
                 'environment' => $this->environment
             ])
         ]);
-    
+
         $response = $this->_make_request($api_key, $endpoint, $params, 'POST', true);
-    
+
         // Log the complete response for debugging
         $this->CI->Log_model->add_log([
             'user_id' => $this->CI->session->userdata('user_id'),
             'action' => 'api_response_debug',
             'description' => 'Response from close_futures_position: ' . json_encode($response)
         ]);
-    
+
         if ($response && isset($response->data)) {
             // The structure of the response is different than expected
             $orderInfo = new stdClass();
-    
+
             if (isset($response->data->order) && isset($response->data->order->orderId)) {
                 // Correct structure according to documentation
                 $orderInfo->orderId = $response->data->order->orderId;
@@ -606,7 +607,7 @@ class BingxApi
                 $this->last_error = "Cannot find orderId in response";
                 return false;
             }
-    
+
             // Get current price since it's not in the response
             $price_info = $this->get_futures_price($api_key, $symbol, true);
             if ($price_info && isset($price_info->price)) {
@@ -615,10 +616,10 @@ class BingxApi
                 // If we can't get the price, use a default value
                 $orderInfo->price = 0;
             }
-    
+
             return $orderInfo;
         }
-    
+
         return false;
     }
 
