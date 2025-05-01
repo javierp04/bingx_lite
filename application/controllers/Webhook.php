@@ -265,15 +265,16 @@ class Webhook extends CI_Controller
 
                 // Execute order
                 if ($trade_type == 'futures') {
-                    // Set leverage first if needed
-                    if ($data->leverage != "") {
-                        $result = $this->bingxapi->set_futures_leverage($api_key, $data->ticker, $data->leverage, $data->lvg_side);
-                        if (!$result) {
-                            $error = $this->bingxapi->get_last_error();
-                            $this->_log_webhook_error('Failed to set leverage: ' . $error, $json_data);
-                            return 'Failed to set leverage: ' . $error;
-                        }
-                    }
+                    // Set leverage first if needed //AVOIDED LEVERAGE SETTING FOR NOW
+
+                    // if ($data->leverage != "") {
+                    //     $result = $this->bingxapi->set_futures_leverage($api_key, $data->ticker, $data->leverage, $data->lvg_side);
+                    //     if (!$result) {
+                    //         $error = $this->bingxapi->get_last_error();
+                    //         $this->_log_webhook_error('Failed to set leverage: ' . $error, $json_data);
+                    //         return 'Failed to set leverage: ' . $error;
+                    //     }
+                    // }
 
                     // Open futures position with take profit and stop loss
                     $result = $this->bingxapi->open_futures_position(
