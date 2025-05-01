@@ -20,7 +20,41 @@ class Webhook extends CI_Controller
         // Log the raw webhook data for debugging
         $this->_log_webhook_debug('Received webhook', $json_data);
 
-        // Process webhook data
+        // Decode JSON to PHP array
+        $data = json_decode($json_data, true);
+
+        // Check if JSON was valid and contains the action field
+        if ($data && isset($data['action'])) {
+            // Convert TradingView actions to your format
+            switch ($data['action']) {
+                case 'buy':
+                    $data['action'] = 'BUY';                    
+                    break;
+                case 'short':
+                    $data['action'] = 'SELL';                    
+                    break;
+                case 'sell':
+                case 'cover':
+                    $data['action'] = 'CLOSE';
+                    break;
+            }
+            $comment = $data['position_id'] ?? '';
+            
+            if (strpos($comment, '|') !== false) {
+                $parts = explode('|', $comment);
+                $data['position_id'] = end($parts);
+            }
+
+            // Log the converted data
+            $this->_log_webhook_debug('Converted actions', json_encode($data));
+
+            // Re-encode to JSON for process_webhook_data
+            $json_data = json_encode($data);
+        } else {
+            $this->_log_webhook_debug('Warning', 'Invalid JSON or missing action field');
+        }
+
+        // Process webhook data with converted actions
         $result = $this->process_webhook_data($json_data);
 
         // Send response
@@ -83,6 +117,7 @@ class Webhook extends CI_Controller
             $this->_log_webhook_error('Missing required fields in webhook data', $json_data);
             return 'Missing required fields';
         }
+        $data->lvg_side = $data->action == 'BUY' ? 'LONG' : ($data->action == 'SELL' ? 'SHORT' : null);
 
         // If user_id is not in JSON, use current user (for simulations)
         if (!isset($data->user_id) && $this->session->userdata('user_id')) {
@@ -137,7 +172,7 @@ class Webhook extends CI_Controller
         // Extract take profit and stop loss if available
         $take_profit = isset($data->take_profit) ? $data->take_profit : null;
         $stop_loss = isset($data->stop_loss) ? $data->stop_loss : null;
-        
+
         // Extract position_id if available (for identifying which position to close)
         $position_id = isset($data->position_id) ? $data->position_id : null;
 
@@ -226,14 +261,13 @@ class Webhook extends CI_Controller
                 */
 
                 // Get quantity and leverage
-                $quantity = isset($data->quantity) ? $data->quantity : 0.01; // Default quantity
-                $leverage = isset($data->leverage) ? $data->leverage : 1; // Default leverage
+                $quantity = isset($data->quantity) ? $data->quantity : 0.001; // Default quantity                
 
                 // Execute order
                 if ($trade_type == 'futures') {
                     // Set leverage first if needed
-                    if ($leverage > 1) {
-                        $result = $this->bingxapi->set_futures_leverage($api_key, $data->ticker, $leverage);
+                    if ($data->leverage != "") {
+                        $result = $this->bingxapi->set_futures_leverage($api_key, $data->ticker, $data->leverage, $data->lvg_side);
                         if (!$result) {
                             $error = $this->bingxapi->get_last_error();
                             $this->_log_webhook_error('Failed to set leverage: ' . $error, $json_data);
@@ -291,7 +325,7 @@ class Webhook extends CI_Controller
                         'user_id' => $data->user_id,
                         'action' => 'open_trade',
                         'description' => 'Opened ' . $trade_type . ' ' . $data->action . ' position for ' . $data->ticker .
-                            ' via webhook (Strategy: ' . $strategy->name . ', Environment: ' . $environment . 
+                            ' via webhook (Strategy: ' . $strategy->name . ', Environment: ' . $environment .
                             ', Position ID: ' . $position_id . ')'
                     );
                     $this->Log_model->add_log($log_data);
@@ -362,9 +396,11 @@ class Webhook extends CI_Controller
                 }
 
                 if (!$trade_to_close) {
-                    $this->_log_webhook_error('No open trade found to close matching criteria: ' . 
-                                             (isset($position_id) ? 'Position ID: ' . $position_id : 'Symbol/Strategy'), 
-                                              $json_data);
+                    $this->_log_webhook_error(
+                        'No open trade found to close matching criteria: ' .
+                            (isset($position_id) ? 'Position ID: ' . $position_id : 'Symbol/Strategy'),
+                        $json_data
+                    );
                     return 'No open trade found to close';
                 }
 

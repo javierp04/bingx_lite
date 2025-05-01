@@ -119,6 +119,7 @@
                 <div class="col-md-2">
                     <label for="sim_leverage" class="form-label">Leverage</label>
                     <select class="form-select" id="sim_leverage">
+                        <option value="">--------</option>
                         <option value="1">1x</option>
                         <option value="2">2x</option>
                         <option value="3">3x</option>

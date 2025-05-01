@@ -410,14 +410,15 @@ class BingxApi
      * @param int $leverage Leverage level
      * @return bool Success status
      */
-    public function set_futures_leverage($api_key, $symbol, $leverage)
+    public function set_futures_leverage($api_key, $symbol, $leverage, $side)
     {
         $formatted_symbol = $this->format_symbol($symbol);
 
         $endpoint = '/openApi/swap/v2/trade/leverage';
         $params = [
             'symbol' => $formatted_symbol,
-            'leverage' => (string)$leverage
+            'leverage' => (string)$leverage,
+            'side' => $side // LONG or SHORT
         ];
 
         $response = $this->_make_request($api_key, $endpoint, $params, 'POST', true);
