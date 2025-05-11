@@ -112,3 +112,112 @@
         </div>
     </div>
 </div>
+
+<!-- Trading Statistics -->
+<?php if (!empty($stats) && $stats['total_trades'] > 0): ?>
+<div class="card mt-4">
+    <div class="card-header">
+        <h5 class="mb-0">
+            <i class="fas fa-chart-pie me-1"></i>Trading Statistics
+        </h5>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-3 mb-3">
+                <div class="card h-100 <?= $stats['total_pnl'] >= 0 ? 'bg-success bg-opacity-10' : 'bg-danger bg-opacity-10' ?>">
+                    <div class="card-body text-center">
+                        <h6 class="text-muted">Total PNL</h6>
+                        <h4 class="mb-0 <?= $stats['total_pnl'] >= 0 ? 'text-success' : 'text-danger' ?>">
+                            <?= number_format($stats['total_pnl'], 2) ?> USDT
+                        </h4>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 mb-3">
+                <div class="card h-100 <?= $stats['total_pnl_percentage'] >= 0 ? 'bg-success bg-opacity-10' : 'bg-danger bg-opacity-10' ?>">
+                    <div class="card-body text-center">
+                        <h6 class="text-muted">PNL Percentage</h6>
+                        <h4 class="mb-0 <?= $stats['total_pnl_percentage'] >= 0 ? 'text-success' : 'text-danger' ?>">
+                            <?= number_format($stats['total_pnl_percentage'], 2) ?>%
+                        </h4>
+                        <small class="text-muted">Weighted by investment size</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 mb-3">
+                <div class="card h-100">
+                    <div class="card-body text-center">
+                        <h6 class="text-muted">Winrate</h6>
+                        <h4 class="mb-0">
+                            <?= number_format($stats['winrate'], 1) ?>%
+                        </h4>
+                        <small class="text-muted"><?= $stats['winning_trades'] ?> / <?= $stats['total_trades'] ?> trades</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 mb-3">
+                <div class="card h-100 <?= $stats['profit_per_trade'] >= 0 ? 'bg-success bg-opacity-10' : 'bg-danger bg-opacity-10' ?>">
+                    <div class="card-body text-center">
+                        <h6 class="text-muted">Avg. Profit per Trade</h6>
+                        <h4 class="mb-0 <?= $stats['profit_per_trade'] >= 0 ? 'text-success' : 'text-danger' ?>">
+                            <?= number_format($stats['profit_per_trade'], 2) ?> USDT
+                        </h4>
+                        <small class="text-muted">From <?= $stats['total_trades'] ?> closed trades</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="row mt-2">
+            <div class="col-md-6 mb-3">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <h6 class="text-muted">Detailed Statistics</h6>
+                        <table class="table table-sm table-borderless mb-0">
+                            <tr>
+                                <td>Total Trades Closed:</td>
+                                <td><?= $stats['total_trades'] ?></td>
+                            </tr>
+                            <tr>
+                                <td>Winning Trades:</td>
+                                <td><?= $stats['winning_trades'] ?> (<?= number_format(($stats['winning_trades'] / $stats['total_trades']) * 100, 1) ?>%)</td>
+                            </tr>
+                            <tr>
+                                <td>Losing Trades:</td>
+                                <td><?= $stats['losing_trades'] ?> (<?= number_format(($stats['losing_trades'] / $stats['total_trades']) * 100, 1) ?>%)</td>
+                            </tr>
+                            <tr>
+                                <td>Total Capital Invested:</td>
+                                <td><?= number_format($stats['total_invested'], 2) ?> USDT</td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6 mb-3">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <h6 class="text-muted">Performance Summary</h6>
+                        <p class="mb-2">
+                            <i class="fas fa-info-circle me-1 text-primary"></i>
+                            These statistics reflect only your closed trades. The PNL percentage takes leverage into account by measuring
+                            gains against your real invested capital.
+                        </p>
+                        <?php if ($stats['total_pnl'] >= 0): ?>
+                            <div class="alert alert-success py-2 mb-0">
+                                <i class="fas fa-check-circle me-1"></i>
+                                Your trading has been profitable with a total gain of <?= number_format($stats['total_pnl'], 2) ?> USDT (<?= number_format($stats['total_pnl_percentage'], 2) ?>%).
+                            </div>
+                        <?php else: ?>
+                            <div class="alert alert-danger py-2 mb-0">
+                                <i class="fas fa-exclamation-circle me-1"></i>
+                                Your trading has resulted in a loss of <?= number_format(abs($stats['total_pnl']), 2) ?> USDT (<?= number_format(abs($stats['total_pnl_percentage']), 2) ?>%).
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
