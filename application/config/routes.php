@@ -20,10 +20,10 @@ $route['users/edit/(:num)'] = 'users/edit/$1';
 $route['users/delete/(:num)'] = 'users/delete/$1';
 
 // API Keys routes
-$route['apikeys'] = 'apikeys';
-$route['apikeys/add'] = 'apikeys/add';
-$route['apikeys/edit/(:num)'] = 'apikeys/edit/$1';
-$route['apikeys/delete/(:num)'] = 'apikeys/delete/$1';
+$route['apikeys'] = 'ApiKeys';
+$route['apikeys/add'] = 'ApiKeys/add';
+$route['apikeys/edit/(:num)'] = 'ApiKeys/edit/$1';
+$route['apikeys/delete/(:num)'] = 'ApiKeys/delete/$1';
 
 // Strategies routes
 $route['strategies'] = 'strategies';

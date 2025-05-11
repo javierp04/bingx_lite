@@ -102,7 +102,7 @@
                                         <?= $log->action ?>
                                     </span>
                                 </td>
-                                <td>
+                                <td class="description-cell">
                                     <?php 
                                         $truncated_desc = (strlen($log->description) > 100) ? 
                                             substr($log->description, 0, 100) . '...' : $log->description;

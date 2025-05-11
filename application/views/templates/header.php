@@ -59,6 +59,13 @@
         .nav-tabs .nav-link.active {
             font-weight: bold;
         }
+        .table td {
+    white-space: normal !important;
+}
+.table .description-cell {
+    max-width: 300px;
+    word-wrap: break-word;
+}
     </style>
 </head>
 

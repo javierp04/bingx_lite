@@ -67,6 +67,7 @@ class Trades extends CI_Controller {
         
         // Close trade
         if ($trade->trade_type == 'futures') {
+            $this->bingxapi->set_environment($trade->environment);
             $result = $this->bingxapi->close_futures_position($api_key, $trade->symbol, $trade->side, $trade->quantity);
         } else {
             $result = $this->bingxapi->close_spot_position($api_key, $trade->symbol, $trade->side, $trade->quantity);

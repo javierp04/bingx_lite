@@ -3,9 +3,34 @@
         <h1 class="h3 mb-0">
             <i class="fas fa-file-alt me-2"></i>Log Details #<?= $log->id ?>
         </h1>
-        <a href="<?= base_url('systemlogs') ?>" class="btn btn-secondary">
-            <i class="fas fa-arrow-left me-1"></i>Back to Logs
-        </a>
+        <div>
+            <!-- Navigation Buttons -->
+            <div class="btn-group me-2">
+                <?php if (isset($adjacent_logs['prev_id'])): ?>
+                    <a href="<?= base_url('systemlogs/view/' . $adjacent_logs['prev_id']) ?>" class="btn btn-outline-primary" title="Previous Log">
+                        <i class="fas fa-arrow-left"></i> Previous
+                    </a>
+                <?php else: ?>
+                    <button class="btn btn-outline-secondary" disabled title="No Previous Log">
+                        <i class="fas fa-arrow-left"></i> Previous
+                    </button>
+                <?php endif; ?>
+                
+                <?php if (isset($adjacent_logs['next_id'])): ?>
+                    <a href="<?= base_url('systemlogs/view/' . $adjacent_logs['next_id']) ?>" class="btn btn-outline-primary" title="Next Log">
+                        Next <i class="fas fa-arrow-right"></i>
+                    </a>
+                <?php else: ?>
+                    <button class="btn btn-outline-secondary" disabled title="No Next Log">
+                        Next <i class="fas fa-arrow-right"></i>
+                    </button>
+                <?php endif; ?>
+            </div>
+            
+            <a href="<?= base_url('systemlogs') ?>" class="btn btn-secondary">
+                <i class="fas fa-list me-1"></i>Back to Logs
+            </a>
+        </div>
     </div>
 </div>
 
@@ -286,6 +311,10 @@
                 <tr>
                     <th>Leverage</th>
                     <td><?= isset($payload_data->leverage) ? $payload_data->leverage . 'x' : 'N/A' ?></td>
+                </tr>
+                <tr>
+                    <th>Position ID</th>
+                    <td><?= isset($payload_data->position_id) ? $payload_data->position_id : 'N/A' ?></td>
                 </tr>
             </table>
         <?php endif; ?>

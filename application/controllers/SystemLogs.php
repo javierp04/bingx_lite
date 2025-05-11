@@ -61,6 +61,7 @@ class SystemLogs extends CI_Controller
         $this->load->view('templates/footer');
     }
 
+    // Helper function to get previous and next log IDs
     public function get_adjacent_logs($id)
     {
         // Get previous log ID
