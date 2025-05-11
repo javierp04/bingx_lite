@@ -52,79 +52,104 @@ class Dashboard extends CI_Controller
     public function refresh_trades()
     {
         $user_id = $this->session->userdata('user_id');
-
+    
         // Get all open trades
         $trades = $this->Trade_model->get_all_trades($user_id, 'open');
-
+    
         // Get API key for this user
         $api_key = $this->Api_key_model->get_api_key($user_id);
-
+    
         // Update PNL for each trade
         if ($api_key && !empty($trades)) {
+            // Collect unique symbol-environment-type combinations
+            $price_requests = [];
+            
             foreach ($trades as $trade) {
+                $key = $trade->symbol . '_' . $trade->environment . '_' . $trade->trade_type;
+                if (!isset($price_requests[$key])) {
+                    $price_requests[$key] = [
+                        'symbol' => $trade->symbol,
+                        'environment' => $trade->environment,
+                        'trade_type' => $trade->trade_type
+                    ];
+                }
+            }
+            
+            // Fetch prices for unique combinations
+            $price_cache = [];
+            foreach ($price_requests as $key => $request) {
                 try {
                     // Set the correct environment for the API
-                    $this->bingxapi->set_environment($trade->environment);
-
-                    // Update price and PNL information - With skip_logging parameter set to true
-                    if ($trade->trade_type == 'futures') {
-                        $price_info = $this->bingxapi->get_futures_price($api_key, $trade->symbol, true);
+                    $this->bingxapi->set_environment($request['environment']);
+    
+                    // Get price based on trade type
+                    if ($request['trade_type'] == 'futures') {
+                        $price_info = $this->bingxapi->get_futures_price($api_key, $request['symbol'], true);
                     } else {
-                        $price_info = $this->bingxapi->get_spot_price($api_key, $trade->symbol, true);
+                        $price_info = $this->bingxapi->get_spot_price($api_key, $request['symbol'], true);
                     }
-
+    
                     if ($price_info && isset($price_info->price)) {
-                        // Calculate PNL
-                        $current_price = $price_info->price;
-
-                        if ($trade->side == 'BUY') {
-                            $pnl = ($current_price - $trade->entry_price) * $trade->quantity;
-                        } else {
-                            $pnl = ($trade->entry_price - $current_price) * $trade->quantity;
-                        }
-
-                        // Update trade with current price and PNL
-                        $this->Trade_model->update_trade($trade->id, array(
-                            'current_price' => $current_price,
-                            'pnl' => $pnl
-                        ));
-
-                        // Update object for JSON response
-                        $trade->current_price = $current_price;
-                        $trade->pnl = $pnl;
+                        $price_cache[$key] = $price_info->price;
                     }
                 } catch (Exception $e) {
-                    // Log error but continue with other trades
+                    // Log error but continue with other requests
                     $this->Log_model->add_log([
                         'user_id' => $user_id,
                         'action' => 'refresh_error',
-                        'description' => 'Error updating trade ' . $trade->id . ': ' . $e->getMessage()
+                        'description' => 'Error fetching price for ' . $request['symbol'] . ': ' . $e->getMessage()
                     ]);
                 }
             }
+            
+            // Update each trade with cached prices
+            foreach ($trades as $trade) {
+                $key = $trade->symbol . '_' . $trade->environment . '_' . $trade->trade_type;
+                
+                if (isset($price_cache[$key])) {
+                    $current_price = $price_cache[$key];
+    
+                    // Calculate PNL
+                    if ($trade->side == 'BUY') {
+                        $pnl = ($current_price - $trade->entry_price) * $trade->quantity;
+                    } else {
+                        $pnl = ($trade->entry_price - $current_price) * $trade->quantity;
+                    }
+    
+                    // Update trade with current price and PNL
+                    $this->Trade_model->update_trade($trade->id, array(
+                        'current_price' => $current_price,
+                        'pnl' => $pnl
+                    ));
+    
+                    // Update object for JSON response
+                    $trade->current_price = $current_price;
+                    $trade->pnl = $pnl;
+                }
+            }
         }
-
+    
         // Format values for JSON response
         foreach ($trades as $trade) {
             // Format price values
             if (isset($trade->current_price)) {
                 $trade->current_price_formatted = number_format($trade->current_price, 2);
             }
-
+            
             if (isset($trade->entry_price)) {
                 $trade->entry_price_formatted = number_format($trade->entry_price, 2);
             }
-
+            
             if (isset($trade->pnl)) {
                 $trade->pnl_formatted = number_format($trade->pnl, 2);
             }
-
+            
             // Format quantity (el cliente JavaScript se encargará de eliminar los ceros)
             if (isset($trade->quantity)) {
                 $trade->quantity_formatted = rtrim(rtrim(number_format($trade->quantity, 8), '0'), '.');
             }
         }
-
+    
         // Return JSON response
         echo json_encode($trades);
     }
