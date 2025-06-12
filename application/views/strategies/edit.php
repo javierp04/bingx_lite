@@ -56,8 +56,8 @@
                         </div>
                     </div>
                     
-                    <div class="mb-3 form-check">
-                        <input type="checkbox" class="form-check-input" id="active" name="active" value="1" <?= set_checkbox('active', '1', $strategy->active) ?>>
+                    <div class="mb-3 form-check">                        
+                        <input type="checkbox" class="form-check-input" id="active" name="active" value="1" <?= $strategy->active ? 'checked' : '' ?>>
                         <label class="form-check-label" for="active">Active</label>
                         <div class="form-text">Inactive strategies will not execute trades</div>
                     </div>
