@@ -9,6 +9,119 @@
     </div>
 </div>
 
+<!-- Summary Dashboard -->
+<div class="row">
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Active Trades</h5>
+                <h2 class="mb-0"><?= count($open_trades) ?></h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Strategies</h5>
+                <h2 class="mb-0"><?= count($strategies) ?></h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Total PNL</h5>
+                <?php
+                $total_pnl = 0;
+                foreach ($open_trades as $trade) {
+                    $total_pnl += isset($trade->pnl) ? $trade->pnl : 0;
+                }
+                $pnl_class = $total_pnl >= 0 ? 'text-profit' : 'text-loss';
+                ?>
+                <h2 class="mb-0 <?= $pnl_class ?>" id="total-pnl"><?= number_format($total_pnl, 2) ?> USDT</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Last Updated</h5>
+                <h2 class="mb-0" id="last-updated">Now</h2>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Active Trades Table -->
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">Active Trades</h5>
+        <button class="btn btn-sm btn-outline-primary" id="refresh-trades-btn">
+            <i class="fas fa-sync-alt me-1"></i>Refresh
+        </button>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-striped table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Symbol</th>
+                        <th>Strategy</th>
+                        <th>Side</th>
+                        <th>Type</th>
+                        <th>Position ID</th>
+                        <th>Entry Price</th>
+                        <th>Current Price</th>
+                        <th>Quantity</th>
+                        <th>Leverage</th>
+                        <th>Current PNL</th>
+                        <th>Opened</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="trades-tbody">
+                    <?php if (empty($open_trades)): ?>
+                        <tr>
+                            <td colspan="12" class="text-center py-3">No active trades</td>
+                        </tr>
+                    <?php else: ?>
+                        <?php foreach ($open_trades as $trade): ?>
+                            <?php
+                            $pnl_class = isset($trade->pnl) && $trade->pnl >= 0 ? 'text-profit' : 'text-loss';
+                            $side_class = $trade->side == 'BUY' ? 'text-success' : 'text-danger';
+                            $type_class = $trade->trade_type == 'futures' ? 'bg-warning text-dark' : 'bg-info';
+                            ?>
+                            <tr>
+                                <td><?= $trade->symbol ?></td>
+                                <td><?= $trade->strategy_name ?></td>
+                                <td class="<?= $side_class ?>"><?= $trade->side ?></td>
+                                <td>
+                                    <span class="badge <?= $type_class ?>">
+                                        <?= ucfirst($trade->trade_type) ?>
+                                    </span>
+                                </td>
+                                <td><?= isset($trade->position_id) ? $trade->position_id : 'N/A' ?></td>
+                                <td><?= number_format($trade->entry_price, 2) ?></td>
+                                <td class="current-price"><?= isset($trade->current_price) ? number_format($trade->current_price, 2) : number_format($trade->entry_price, 2) ?></td>
+                                <td><?= rtrim(rtrim(number_format($trade->quantity, 8), '0'), '.') ?></td>
+                                <td><?= $trade->leverage ?>x</td>
+                                <td class="<?= $pnl_class ?>">
+                                    <?= isset($trade->pnl) ? number_format($trade->pnl, 2) . ' USDT' : 'N/A' ?>
+                                </td>
+                                <td><?= date('Y-m-d H:i', strtotime($trade->created_at)) ?></td>
+                                <td>
+                                    <a href="<?= base_url('trades/close/' . $trade->id) ?>" class="btn btn-sm btn-danger" onclick="return confirm('Are you sure you want to close this trade?')">
+                                        <i class="fas fa-times-circle"></i> Close
+                                    </a>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
 <?php if ($is_admin): ?>
     <!-- Admin Simulation Panel -->
     <div class="card mb-4">
@@ -152,120 +265,6 @@
     </div>
 <?php endif; ?>
 
-<!-- Summary Dashboard -->
-<div class="row mb-4">
-    <div class="col-md-3">
-        <div class="card">
-            <div class="card-body">
-                <h5 class="card-title">Active Trades</h5>
-                <h2 class="mb-0"><?= count($open_trades) ?></h2>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="card">
-            <div class="card-body">
-                <h5 class="card-title">Strategies</h5>
-                <h2 class="mb-0"><?= count($strategies) ?></h2>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="card">
-            <div class="card-body">
-                <h5 class="card-title">Total PNL</h5>
-                <?php
-                $total_pnl = 0;
-                foreach ($open_trades as $trade) {
-                    $total_pnl += isset($trade->pnl) ? $trade->pnl : 0;
-                }
-                $pnl_class = $total_pnl >= 0 ? 'text-profit' : 'text-loss';
-                ?>
-                <h2 class="mb-0 <?= $pnl_class ?>" id="total-pnl"><?= number_format($total_pnl, 2) ?> USDT</h2>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="card">
-            <div class="card-body">
-                <h5 class="card-title">Last Updated</h5>
-                <h2 class="mb-0" id="last-updated">Now</h2>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Active Trades Table -->
-<div class="card">
-    <div class="card-header d-flex justify-content-between align-items-center">
-        <h5 class="mb-0">Active Trades</h5>
-        <button class="btn btn-sm btn-outline-primary" id="refresh-trades-btn">
-            <i class="fas fa-sync-alt me-1"></i>Refresh
-        </button>
-    </div>
-    <div class="card-body p-0">
-        <div class="table-responsive">
-            <table class="table table-striped table-hover mb-0">
-                <thead>
-                    <tr>
-                        <th>Symbol</th>
-                        <th>Strategy</th>
-                        <th>Side</th>
-                        <th>Type</th>
-                        <th>Position ID</th>
-                        <th>Entry Price</th>
-                        <th>Current Price</th>
-                        <th>Quantity</th>
-                        <th>Leverage</th>
-                        <th>Current PNL</th>
-                        <th>Opened</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody id="trades-tbody">
-                    <?php if (empty($open_trades)): ?>
-                        <tr>
-                            <td colspan="12" class="text-center py-3">No active trades</td>
-                        </tr>
-                    <?php else: ?>
-                        <?php foreach ($open_trades as $trade): ?>
-                            <?php
-                            $pnl_class = isset($trade->pnl) && $trade->pnl >= 0 ? 'text-profit' : 'text-loss';
-                            $side_class = $trade->side == 'BUY' ? 'text-success' : 'text-danger';
-                            $type_class = $trade->trade_type == 'futures' ? 'bg-warning text-dark' : 'bg-info';
-                            ?>
-                            <tr>
-                                <td><?= $trade->symbol ?></td>
-                                <td><?= $trade->strategy_name ?></td>
-                                <td class="<?= $side_class ?>"><?= $trade->side ?></td>
-                                <td>
-                                    <span class="badge <?= $type_class ?>">
-                                        <?= ucfirst($trade->trade_type) ?>
-                                    </span>
-                                </td>
-                                <td><?= isset($trade->position_id) ? $trade->position_id : 'N/A' ?></td>
-                                <td><?= number_format($trade->entry_price, 2) ?></td>
-                                <td class="current-price"><?= isset($trade->current_price) ? number_format($trade->current_price, 2) : number_format($trade->entry_price, 2) ?></td>
-                                <td><?= rtrim(rtrim(number_format($trade->quantity, 8), '0'), '.') ?></td>
-                                <td><?= $trade->leverage ?>x</td>
-                                <td class="<?= $pnl_class ?>">
-                                    <?= isset($trade->pnl) ? number_format($trade->pnl, 2) . ' USDT' : 'N/A' ?>
-                                </td>
-                                <td><?= date('Y-m-d H:i', strtotime($trade->created_at)) ?></td>
-                                <td>
-                                    <a href="<?= base_url('trades/close/' . $trade->id) ?>" class="btn btn-sm btn-danger" onclick="return confirm('Are you sure you want to close this trade?')">
-                                        <i class="fas fa-times-circle"></i> Close
-                                    </a>
-                                </td>
-                            </tr>
-                        <?php endforeach; ?>
-                    <?php endif; ?>
-                </tbody>
-            </table>
-        </div>
-    </div>
-</div>
-
 <!-- Webhook URL Information Card (Collapsible) -->
 <div class="card mt-4">
     <div class="card-header" role="button" data-bs-toggle="collapse" data-bs-target="#webhookInfo" aria-expanded="false" aria-controls="webhookInfo">
@@ -289,12 +288,13 @@
             <pre class="bg-light p-3 rounded"><code>{
   "user_id": <?= $this->session->userdata('user_id') ?>,
   "strategy_id": "YOUR_STRATEGY_ID",
-  "ticker": "BTCUSDT",
-  "timeframe": "1h",
-  "action": "BUY", // BUY, SELL, or CLOSE
-  "quantity": 0.01,
-  "leverage": 5, // Only used for futures
-  "position_id": 12345 // Optional - helps track specific positions
+  "ticker": "{{ticker}}",
+  "timeframe": "{{interval}}",
+  "action": "{{strategy.order.action}}",
+  "quantity": "{{strategy.order.contracts}}",
+  "position_id": "{{strategy.order.comment}}",
+  "leverage": 8,
+  "environment": "production"
 }</code></pre>
             
             <div class="alert alert-info mt-3">

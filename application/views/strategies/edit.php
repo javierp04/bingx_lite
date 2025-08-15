@@ -6,7 +6,7 @@
 </div>
 
 <div class="row">
-    <div class="col-md-8">
+    <div class="col-md-12">
         <div class="card">
             <div class="card-body">
                 <?= form_open_multipart('strategies/edit/' . $strategy->id) ?>
@@ -71,31 +71,6 @@
                         </button>
                     </div>
                 <?= form_close() ?>
-            </div>
-        </div>
-    </div>
-    
-    <div class="col-md-4">
-        <div class="card">
-            <div class="card-header">
-                <h5 class="mb-0">Strategy Setup Guide</h5>
-            </div>
-            <div class="card-body">
-                <h6>TradingView Strategy Example:</h6>
-                <pre class="bg-light p-2 rounded small"><code>// Create alert message
-alertMessage = '{
-  "user_id": <?= $this->session->userdata('user_id') ?>,
-  "strategy_id": "<?= $strategy->strategy_id ?>",
-  "ticker": "{{ticker}}",
-  "timeframe": "{{interval}}",
-  "action": "{{strategy.order.action}}",
-  "quantity": 0.01,
-  "leverage": 5
-}'
-
-// Send alert
-alert(alertMessage, alert.freq_once_per_bar_close)</code></pre>
-                <p class="small text-muted">Copy this example to your TradingView Pine Script strategy.</p>
             </div>
         </div>
     </div>

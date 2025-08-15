@@ -84,12 +84,14 @@
         <h6 class="mt-3">Example TradingView Alert Message:</h6>
         <pre class="bg-light p-3 rounded"><code>{
   "user_id": <?= $this->session->userdata('user_id') ?>,
-  "strategy_id": "BTCUSD_EMA_CROSS",
-  "ticker": "BTCUSDT",
-  "timeframe": "1h",
-  "action": "BUY",
-  "quantity": 0.01,
-  "leverage": 5
+  "strategy_id": "YOUR_STRATEGY_ID",
+  "ticker": "{{ticker}}",
+  "timeframe": "{{interval}}",
+  "action": "{{strategy.order.action}}",
+  "quantity": "{{strategy.order.contracts}}",
+  "position_id": "{{strategy.order.comment}}",
+  "leverage": 8,
+  "environment": "production"
 }</code></pre>
 
         <h6 class="mt-3">Strategy Types:</h6>
