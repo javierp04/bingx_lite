@@ -25,11 +25,8 @@ class Metatrader extends CI_Controller
             return;
         }
 
-        // Opción 2: NO convertimos las acciones, mantenemos las originales
-        // TradingView envía: buy, short, sell, cover
-        // Las mantenemos tal cual para el EA
-        
-        $result = $this->process_mt_webhook($json_data);
+        // Usar la librería para procesar la señal
+        $result = $this->mt_signal_processor->process_signal($json_data);
 
         if ($result === true) {
             $this->_send_response(200, 'Signal queued successfully');
@@ -49,7 +46,7 @@ class Metatrader extends CI_Controller
             return;
         }
 
-        $signals = $this->Mt_signal_model->get_pending_signals($user_id, $strategy_id);
+        $signals = $this->mt_signal_processor->get_pending_signals($user_id, $strategy_id);
         
         $this->_send_response(200, 'Success', $signals);
     }
@@ -66,7 +63,7 @@ class Metatrader extends CI_Controller
             return;
         }
 
-        $updated = $this->Mt_signal_model->update_signal_status($signal_id, $status, $ea_response);
+        $updated = $this->mt_signal_processor->mark_signal_processed($signal_id, $status, $ea_response);
         
         if ($updated) {
             $this->_send_response(200, 'Signal updated successfully');
@@ -75,68 +72,15 @@ class Metatrader extends CI_Controller
         }
     }
 
+    /**
+     * Public method to process webhook (for use by other controllers)
+     * 
+     * @param string $json_data JSON signal data
+     * @return mixed true on success, error message on failure
+     */
     public function process_mt_webhook($json_data)
     {
-        $data = json_decode($json_data);
-
-        // Validaciones similares al webhook existente
-        if (!isset($data->user_id)) {
-            return 'Missing user_id';
-        }
-
-        $user = $this->User_model->get_user_by_id($data->user_id);
-        if (!$user) {
-            return 'User not found';
-        }
-
-        $strategy = $this->Strategy_model->get_strategy_by_strategy_id($data->user_id, $data->strategy_id);
-        if (!$strategy) {
-            return 'Strategy not found';
-        }
-
-        if (!$strategy->active) {
-            return 'Strategy is inactive';
-        }
-
-        // Verificar que la estrategia es para MetaTrader
-        if ($strategy->platform !== 'metatrader') {
-            return 'Strategy is not configured for MetaTrader';
-        }
-
-        // Validar que la acción es válida (Opción 2: mantenemos las 4 originales)
-        $valid_actions = ['buy', 'short', 'sell', 'cover'];
-        if (!in_array($data->action, $valid_actions)) {
-            return 'Invalid action. Valid actions: ' . implode(', ', $valid_actions);
-        }
-
-        // Guardar señal como pendiente (sin convertir la acción)
-        $signal_data = array(
-            'user_id' => $data->user_id,
-            'strategy_id' => $strategy->id,
-            'signal_data' => $json_data,
-            'status' => 'pending'
-        );
-
-        $signal_id = $this->Mt_signal_model->add_signal($signal_data);
-
-        // Log con la acción original
-        $log_data = array(
-            'user_id' => $data->user_id,
-            'action' => 'mt_signal_queued',
-            'description' => 'MetaTrader signal queued (ID: ' . $signal_id . 
-                           ', Strategy: ' . $strategy->name . 
-                           ', Action: ' . $data->action . 
-                           ', Symbol: ' . (isset($data->ticker) ? $data->ticker : 'N/A') . ')'
-        );
-        $this->Log_model->add_log($log_data);
-
-        return true;
-    }
-
-    // Para testing desde el debug panel
-    public function process_mt_webhook_debug($json_data)
-    {
-        return $this->process_mt_webhook($json_data);
+        return $this->mt_signal_processor->process_signal($json_data);
     }
 
     private function _log_webhook_debug($message, $data)

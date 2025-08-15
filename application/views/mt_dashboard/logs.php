@@ -138,7 +138,7 @@
                                 <td><?= $log->ip_address ?></td>
                                 <td><?= date('Y-m-d H:i:s', strtotime($log->created_at)) ?></td>
                                 <td>
-                                    <button class="btn btn-sm btn-info" onclick="showLogDetails(<?= $log->id ?>, '<?= htmlspecialchars($log->description, ENT_QUOTES) ?>', '<?= $log->action ?>')">
+                                    <button class="btn btn-sm btn-info" onclick="showLogDetails(<?= $log->id ?>, <?= htmlspecialchars(json_encode($log->description), ENT_QUOTES) ?>, <?= htmlspecialchars(json_encode($log->action), ENT_QUOTES) ?>)">
                                         <i class="fas fa-eye"></i>
                                     </button>
                                 </td>

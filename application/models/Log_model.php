@@ -25,6 +25,11 @@ class Log_model extends CI_Model {
                 $this->db->like('action', $filters['action']);
             }
             
+            // Filter by multiple actions (for MT logs)
+            if (isset($filters['actions']) && is_array($filters['actions'])) {
+                $this->db->where_in('action', $filters['actions']);
+            }
+            
             // Filter by description
             if (isset($filters['description']) && $filters['description']) {
                 $this->db->like('description', $filters['description']);
@@ -38,6 +43,11 @@ class Log_model extends CI_Model {
             if (isset($filters['date_to']) && $filters['date_to']) {
                 $this->db->where('created_at <=', $filters['date_to'] . ' 23:59:59');
             }
+            
+            // Filter by user id
+            if (isset($filters['user_id']) && $filters['user_id']) {
+                $this->db->where('user_id', $filters['user_id']);
+            }
         }
         
         // Filter by user if specified
@@ -45,7 +55,8 @@ class Log_model extends CI_Model {
             $this->db->where('user_id', $user_id);
         }
         
-        $this->db->order_by('created_at', 'DESC');
+        // ORDER BY id DESC instead of created_at
+        $this->db->order_by('id', 'DESC');
         
         // Apply limit if specified
         if ($limit > 0) {
@@ -84,6 +95,11 @@ class Log_model extends CI_Model {
             // Filter by action type
             if (isset($filters['action']) && $filters['action']) {
                 $this->db->like('action', $filters['action']);
+            }
+            
+            // Filter by multiple actions (for MT logs)
+            if (isset($filters['actions']) && is_array($filters['actions'])) {
+                $this->db->where_in('action', $filters['actions']);
             }
             
             // Filter by description

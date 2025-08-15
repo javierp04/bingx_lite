@@ -67,7 +67,7 @@ class Mt_dashboard extends CI_Controller
         $data['title'] = 'MetaTrader Logs';
         
         // Get MT-specific logs
-        $mt_actions = ['mt_webhook_debug', 'mt_webhook_error', 'mt_signal_queued', 'mt_signal_processed', 'mt_signal_failed'];
+        $mt_actions = ['mt_webhook_debug', 'mt_webhook_error', 'mt_signal_queued', 'mt_signal_processed', 'mt_signal_failed', 'mt_debug_test'];
         
         $filters = array();
         $filters['actions'] = $mt_actions;
@@ -97,7 +97,7 @@ class Mt_dashboard extends CI_Controller
         $this->load->view('templates/footer');
     }
     
-    public function test_signal()
+public function test_signal()
     {
         if (!$this->input->post('signal_data')) {
             $this->session->set_flashdata('error', 'No signal data provided');
@@ -114,9 +114,8 @@ class Mt_dashboard extends CI_Controller
             'description' => 'Testing MT signal: ' . $signal_data
         ]);
         
-        // Process the signal using the same logic as the webhook
-        $this->load->controller('Metatrader');
-        $result = $this->metatrader->process_mt_webhook_debug($signal_data);
+        // Process the signal using the Mt_signal_processor library
+        $result = $this->mt_signal_processor->process_signal($signal_data);
         
         if ($result === true) {
             $this->session->set_flashdata('success', 'Signal processed successfully and queued for MetaTrader');

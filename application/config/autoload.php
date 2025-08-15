@@ -2,7 +2,7 @@
 defined('BASEPATH') OR exit('No direct script access allowed');
 
 $autoload['packages'] = array();
-$autoload['libraries'] = array('database', 'session', 'form_validation');
+$autoload['libraries'] = array('database', 'session', 'form_validation', 'Mt_signal_processor');
 $autoload['drivers'] = array();
 $autoload['helper'] = array('url', 'form', 'security', 'date', 'logs');
 $autoload['config'] = array();

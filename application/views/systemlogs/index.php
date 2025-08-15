@@ -112,7 +112,12 @@
                                 <td><?= $log->ip_address ?></td>
                                 <td><?= date('Y-m-d H:i:s', strtotime($log->created_at)) ?></td>
                                 <td>
-                                    <a href="<?= base_url('systemlogs/view/' . $log->id) ?>" class="btn btn-sm btn-info">
+                                    <!-- Botón Details (popup) -->
+                                    <button class="btn btn-sm btn-info" onclick="showLogDetails(<?= $log->id ?>, <?= htmlspecialchars(json_encode($log->description), ENT_QUOTES) ?>, <?= htmlspecialchars(json_encode($log->action), ENT_QUOTES) ?>)" title="Quick Details">
+                                        <i class="fas fa-info-circle"></i>
+                                    </button>
+                                    <!-- Botón View (página completa) -->
+                                    <a href="<?= base_url('systemlogs/view/' . $log->id) ?>" class="btn btn-sm btn-primary" title="Full View">
                                         <i class="fas fa-eye"></i>
                                     </a>
                                 </td>
@@ -142,6 +147,38 @@
     <?php endif; ?>
 </div>
 
+<!-- Modal for Log Details (copiado de MT logs) -->
+<div class="modal fade" id="logDetailsModal" tabindex="-1" aria-labelledby="logDetailsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="logDetailsModalLabel">Log Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-3">
+                        <strong>Log ID:</strong>
+                        <p id="logId"></p>
+                        
+                        <strong>Action:</strong>
+                        <p id="logAction"></p>
+                    </div>
+                    <div class="col-md-9">
+                        <strong>Description:</strong>
+                        <pre id="logDescription" class="bg-light p-3 rounded"></pre>
+                        
+                        <div id="webhookAnalysis" style="display: none;">
+                            <strong>Webhook Analysis:</strong>
+                            <div id="webhookContent" class="mt-2"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Cleanup Modal -->
 <div class="modal fade" id="cleanupModal" tabindex="-1" aria-labelledby="cleanupModalLabel" aria-hidden="true">
     <div class="modal-dialog">
@@ -169,3 +206,53 @@
         </div>
     </div>
 </div>
+
+<script>
+// JavaScript copiado exactamente de MT logs
+function showLogDetails(logId, description, action) {
+    document.getElementById('logId').textContent = logId;
+    document.getElementById('logAction').textContent = action;
+    
+    // Try to format JSON if it's webhook data
+    if (action.includes('webhook') && description.includes('. Data: ')) {
+        const parts = description.split('. Data: ');
+        const message = parts[0];
+        const data = parts[1];
+        
+        document.getElementById('logDescription').textContent = message;
+        
+        // Show webhook analysis
+        const webhookAnalysis = document.getElementById('webhookAnalysis');
+        const webhookContent = document.getElementById('webhookContent');
+        
+        try {
+            const parsedData = JSON.parse(data);
+            webhookContent.innerHTML = `
+                <div class="card">
+                    <div class="card-header">
+                        <h6 class="mb-0">Webhook Data</h6>
+                    </div>
+                    <div class="card-body">
+                        <pre class="bg-light p-3 rounded">${JSON.stringify(parsedData, null, 2)}</pre>
+                    </div>
+                </div>
+            `;
+            webhookAnalysis.style.display = 'block';
+        } catch (e) {
+            webhookContent.innerHTML = `
+                <div class="alert alert-warning">
+                    <strong>Raw Data:</strong><br>
+                    <pre>${data}</pre>
+                </div>
+            `;
+            webhookAnalysis.style.display = 'block';
+        }
+    } else {
+        document.getElementById('logDescription').textContent = description;
+        document.getElementById('webhookAnalysis').style.display = 'none';
+    }
+    
+    const modal = new bootstrap.Modal(document.getElementById('logDetailsModal'));
+    modal.show();
+}
+</script>
