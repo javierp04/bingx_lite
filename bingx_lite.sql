@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Servidor: localhost:3306
--- Tiempo de generación: 15-08-2025 a las 00:17:26
+-- Tiempo de generación: 15-08-2025 a las 13:07:49
 -- Versión del servidor: 10.5.28-MariaDB-0+deb11u1
 -- Versión de PHP: 7.4.33
 
@@ -102,7 +102,9 @@ CREATE TABLE `trades` (
   `symbol` varchar(20) NOT NULL,
   `timeframe` varchar(10) NOT NULL,
   `side` enum('BUY','SELL') NOT NULL,
-  `trade_type` enum('spot','futures') NOT NULL,
+  `trade_type` enum('spot','futures','forex','indices','commodities') NOT NULL,
+  `platform` enum('bingx','metatrader') NOT NULL DEFAULT 'bingx',
+  `mt_signal_id` int(11) DEFAULT NULL,
   `environment` enum('production','sandbox') NOT NULL DEFAULT 'production',
   `quantity` decimal(18,8) NOT NULL,
   `entry_price` decimal(18,8) NOT NULL,
@@ -178,7 +180,9 @@ ALTER TABLE `trades`
   ADD PRIMARY KEY (`id`),
   ADD KEY `user_id` (`user_id`),
   ADD KEY `strategy_id` (`strategy_id`),
-  ADD KEY `idx_position_id` (`position_id`);
+  ADD KEY `idx_position_id` (`position_id`),
+  ADD KEY `idx_platform_status` (`platform`,`status`),
+  ADD KEY `fk_mt_signal` (`mt_signal_id`);
 
 --
 -- Indices de la tabla `users`
@@ -261,6 +265,7 @@ ALTER TABLE `system_logs`
 -- Filtros para la tabla `trades`
 --
 ALTER TABLE `trades`
+  ADD CONSTRAINT `fk_mt_signal` FOREIGN KEY (`mt_signal_id`) REFERENCES `mt_signals` (`id`) ON DELETE SET NULL,
   ADD CONSTRAINT `trades_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
   ADD CONSTRAINT `trades_ibfk_2` FOREIGN KEY (`strategy_id`) REFERENCES `strategies` (`id`) ON DELETE CASCADE;
 COMMIT;
