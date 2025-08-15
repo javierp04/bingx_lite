@@ -196,218 +196,37 @@
     </div>
 </div>
 
-<?php if ($is_admin): ?>
-    <!-- Admin Simulation Panel -->
-    <div class="card mb-4">
-        <div class="card-header">
-            <h5 class="mb-0">
-                <i class="fas fa-tools me-1"></i>Order Simulation Panel
-            </h5>
-        </div>
-        <div class="card-body">
-            <!-- API Connection Tests -->
-            <div class="mb-4">
-                <h6 class="mb-3">API Connection Tests</h6>
-                <div class="row g-2">
-                    <div class="col-md-auto">
-                        <a href="<?= base_url('dashboard/test_spot_balance') ?>" class="btn btn-outline-primary">
-                            <i class="fas fa-wallet me-1"></i>Test Spot Balance
-                        </a>
-                    </div>
-                    <div class="col-md-auto">
-                        <a href="<?= base_url('dashboard/test_futures_balance') ?>" class="btn btn-outline-primary">
-                            <i class="fas fa-chart-line me-1"></i>Test Futures Balance
-                        </a>
-                    </div>
-
-                    <!-- Price Testing Controls -->
-                    <div class="col-md-12 mt-3">
-                        <label class="form-label">Test Symbol Price</label>
-                        <div class="d-flex gap-2">
-                            <div class="input-group" style="max-width: 300px;">
-                                <span class="input-group-text">Symbol</span>
-                                <input type="text" class="form-control" placeholder="BTCUSDT" id="test-symbol" value="BTCUSDT">
-                            </div>
-                            <a href="javascript:void(0);" class="btn btn-primary" id="test-spot-price-btn">
-                                <i class="fas fa-coins me-1"></i>Test Spot Price
-                            </a>
-                            <a href="javascript:void(0);" class="btn btn-danger" id="test-futures-price-btn">
-                                <i class="fas fa-chart-line me-1"></i>Test Futures Price
-                            </a>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <hr class="my-3">
-
-            <!-- Order Simulation Form -->
-            <h6 class="mb-3">Send Order</h6>
-            <?= form_open('webhook/simulate') ?>
-            <input type="hidden" name="simulate_data" id="simulate_data" value="">
-            <div class="row g-3">
-                <!-- First Row - Essential fields: Environment, Strategy, Ticker, Timeframe, Action -->
-                <div class="col-md-2">
-                    <label for="sim_environment" class="form-label">Environment</label>
-                    <select class="form-select" id="sim_environment">
-                        <option value="production">Production</option>
-                        <option value="sandbox">Sandbox (Futures Only)</option>
-                    </select>
-                </div>
-                
-                <div class="col-md-3">
-                    <label for="sim_strategy_id" class="form-label">Strategy</label>
-                    <select class="form-select" id="sim_strategy_id" required>
-                        <?php foreach ($all_strategies as $strategy): ?>
-                            <option value="<?= $strategy->strategy_id ?>" data-platform="<?= $strategy->platform ?>"><?= $strategy->name ?> (<?= $strategy->strategy_id ?>)</option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-                
-                <div class="col-md-2">
-                    <label for="sim_ticker" class="form-label">Ticker</label>
-                    <input type="text" class="form-control" id="sim_ticker" placeholder="e.g., BTCUSDT" required value="BTCUSDT">
-                </div>
-                
-                <div class="col-md-2">
-                    <label for="sim_timeframe" class="form-label">Timeframe</label>
-                    <select class="form-select" id="sim_timeframe" required>
-                        <option value="1m">1m</option>
-                        <option value="5m">5m</option>
-                        <option value="15m">15m</option>
-                        <option value="30m">30m</option>
-                        <option value="1h" selected>1h</option>
-                        <option value="4h">4h</option>
-                        <option value="1d">1d</option>
-                    </select>
-                </div>
-                
-                <div class="col-md-3">
-                    <label for="sim_action" class="form-label">Action</label>
-                    <select class="form-select" id="sim_action" required>
-                        <option value="BUY">BUY</option>
-                        <option value="SELL">SELL</option>
-                        <option value="CLOSE">CLOSE</option>
-                    </select>
-                </div>
-                
-                <!-- Second Row - Position ID, Quantity, Leverage, TP/SL -->
-                <div class="col-md-3">
-                    <label for="sim_position_id" class="form-label">Position ID</label>
-                    <input type="text" class="form-control" id="sim_position_id" placeholder="e.g., 12345">
-                    <div class="form-text small">Optional identifier for position tracking</div>
-                </div>
-                
-                <div class="col-md-2">
-                    <label for="sim_quantity" class="form-label">Quantity</label>
-                    <input type="number" class="form-control" id="sim_quantity" step="0.0001" min="0.0001" value="0.0001" required>
-                </div>
-                
-                <div class="col-md-2">
-                    <label for="sim_leverage" class="form-label">Leverage</label>
-                    <select class="form-select" id="sim_leverage">
-                        <option value="">--------</option>
-                        <option value="1">1x</option>
-                        <option value="2">2x</option>
-                        <option value="3">3x</option>
-                        <option value="5">5x</option>
-                        <option value="10">10x</option>
-                        <option value="20">20x</option>
-                        <option value="50">50x</option>
-                        <option value="100">100x</option>
-                    </select>
-                </div>
-                
-                <div class="col-md-2">
-                    <label for="sim_take_profit" class="form-label">Take Profit</label>
-                    <input type="number" class="form-control" id="sim_take_profit" step="0.01" placeholder="TP price">
-                </div>
-                
-                <div class="col-md-2">
-                    <label for="sim_stop_loss" class="form-label">Stop Loss</label>
-                    <input type="number" class="form-control" id="sim_stop_loss" step="0.01" placeholder="SL price">
-                </div>
-
-                <div class="col-12 mt-3">
-                    <button type="button" class="btn btn-primary" id="simulate-order-btn">
-                        <i class="fas fa-play me-1"></i>Simulate Order
+<!-- Webhook URLs Card (Simplified) -->
+<div class="card">
+    <div class="card-header">
+        <h5 class="mb-0">
+            <i class="fas fa-webhook me-1"></i>Webhook URLs
+        </h5>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-6">
+                <label class="form-label"><strong>BingX Webhook:</strong></label>
+                <div class="input-group">
+                    <input type="text" class="form-control" value="<?= base_url('webhook/tradingview') ?>" readonly>
+                    <button class="btn btn-outline-secondary" onclick="copyWebhookUrl(this.previousElementSibling)">
+                        <i class="fas fa-copy"></i>
                     </button>
                 </div>
             </div>
-            <?= form_close() ?>
+            <div class="col-md-6">
+                <label class="form-label"><strong>MetaTrader Webhook:</strong></label>
+                <div class="input-group">
+                    <input type="text" class="form-control" value="<?= base_url('metatrader/webhook') ?>" readonly>
+                    <button class="btn btn-outline-secondary" onclick="copyWebhookUrl(this.previousElementSibling)">
+                        <i class="fas fa-copy"></i>
+                    </button>
+                </div>
+            </div>
         </div>
-    </div>
-<?php endif; ?>
-
-<!-- Webhook URL Information Card (Collapsible) -->
-<div class="card mt-4">
-    <div class="card-header" role="button" data-bs-toggle="collapse" data-bs-target="#webhookInfo" aria-expanded="false" aria-controls="webhookInfo">
-        <div class="d-flex justify-content-between align-items-center">
-            <h5 class="mb-0">
-                <i class="fas fa-webhook me-1"></i>TradingView Webhook Information
-            </h5>
-            <i class="fas fa-chevron-down"></i>
-        </div>
-    </div>
-    <div class="collapse" id="webhookInfo">
-        <div class="card-body">
-            <div class="row">
-                <div class="col-md-6">
-                    <p><strong>BingX Webhook URL:</strong></p>
-                    <div class="input-group mb-3">
-                        <input type="text" class="form-control" value="<?= base_url('webhook/tradingview') ?>" readonly>
-                        <button class="btn btn-outline-secondary" type="button" onclick="copyWebhookUrl(this.previousElementSibling)">
-                            <i class="fas fa-copy"></i> Copy
-                        </button>
-                    </div>
-                </div>
-                <div class="col-md-6">
-                    <p><strong>MetaTrader Webhook URL:</strong></p>
-                    <div class="input-group mb-3">
-                        <input type="text" class="form-control" value="<?= base_url('metatrader/webhook') ?>" readonly>
-                        <button class="btn btn-outline-secondary" type="button" onclick="copyWebhookUrl(this.previousElementSibling)">
-                            <i class="fas fa-copy"></i> Copy
-                        </button>
-                    </div>
-                </div>
-            </div>
-            
-            <p>Required JSON format for TradingView webhook:</p>
-            <div class="row">
-                <div class="col-md-6">
-                    <h6>BingX Alert Format:</h6>
-                    <pre class="bg-light p-3 rounded"><code>{
-  "user_id": <?= $this->session->userdata('user_id') ?>,
-  "strategy_id": "YOUR_STRATEGY_ID",
-  "ticker": "{{ticker}}",
-  "timeframe": "{{interval}}",
-  "action": "{{strategy.order.action}}",
-  "quantity": "{{strategy.order.contracts}}",
-  "position_id": "{{strategy.order.comment}}",
-  "leverage": 8,
-  "environment": "production"
-}</code></pre>
-                </div>
-                <div class="col-md-6">
-                    <h6>MetaTrader Alert Format:</h6>
-                    <pre class="bg-light p-3 rounded"><code>{
-  "user_id": <?= $this->session->userdata('user_id') ?>,
-  "strategy_id": "YOUR_STRATEGY_ID",
-  "ticker": "{{ticker}}",
-  "timeframe": 60,
-  "action": "{{strategy.order.action}}",
-  "quantity": 0.1,
-  "price": {{close}},
-  "position_id": "{{strategy.order.comment}}"
-}</code></pre>
-                </div>
-            </div>
-            
-            <div class="alert alert-info mt-3">
-                <i class="fas fa-lightbulb me-2"></i><strong>Platform Differences:</strong><br>
-                <strong>BingX:</strong> Uses timeframe as strings (1h, 5m), supports leverage and environment<br>
-                <strong>MetaTrader:</strong> Uses timeframe in minutes (60), requires price field, no leverage/environment
-            </div>
+        <div class="alert alert-info mt-3 mb-0">
+            <i class="fas fa-info-circle me-2"></i>
+            Use these URLs in your TradingView alerts. Need to test signals or check API connections? Visit the <a href="<?= base_url('debug') ?>" class="alert-link">Debug Panel</a>.
         </div>
     </div>
 </div>
@@ -447,14 +266,6 @@
 
         // Iniciar actualizaciones de trades
         setupTradesRefresh();
-
-        // Configurar controles de simulación
-        if (document.getElementById('simulate-order-btn')) {
-            setupSimulationControls();
-        }
-
-        // Configurar eventos para el panel de webhooks
-        setupWebhookPanel();
     });
 
     // Setup platform filter
@@ -477,28 +288,6 @@
                 }
             });
         });
-    }
-
-    // Configurar panel de webhook
-    function setupWebhookPanel() {
-        const webhookInfoElement = document.getElementById('webhookInfo');
-        if (webhookInfoElement) {
-            webhookInfoElement.addEventListener('show.bs.collapse', function() {
-                const chevronIcon = document.querySelector('.card-header .fa-chevron-down');
-                if (chevronIcon) {
-                    chevronIcon.classList.remove('fa-chevron-down');
-                    chevronIcon.classList.add('fa-chevron-up');
-                }
-            });
-
-            webhookInfoElement.addEventListener('hide.bs.collapse', function() {
-                const chevronIcon = document.querySelector('.card-header .fa-chevron-up');
-                if (chevronIcon) {
-                    chevronIcon.classList.remove('fa-chevron-up');
-                    chevronIcon.classList.add('fa-chevron-down');
-                }
-            });
-        }
     }
 
     // Actualizar precio de BTC
@@ -733,128 +522,6 @@
         const minutes = now.getMinutes().toString().padStart(2, '0');
         const seconds = now.getSeconds().toString().padStart(2, '0');
         return `${hours}:${minutes}:${seconds}`;
-    }
-
-    // Configurar controles de simulación
-    function setupSimulationControls() {
-        // Botón de simulación de orden
-        const simulateBtn = document.getElementById('simulate-order-btn');
-        if (simulateBtn) {
-            simulateBtn.addEventListener('click', function() {
-                // Obtener valores del formulario
-                const selectedStrategy = document.getElementById('sim_strategy_id');
-                const platform = selectedStrategy.options[selectedStrategy.selectedIndex].getAttribute('data-platform');
-                
-                const formData = {
-                    strategy_id: selectedStrategy.value,
-                    ticker: document.getElementById('sim_ticker').value,
-                    timeframe: document.getElementById('sim_timeframe').value,
-                    action: document.getElementById('sim_action').value,
-                    quantity: document.getElementById('sim_quantity').value
-                };
-
-                // Add platform-specific fields
-                if (platform === 'bingx') {
-                    formData.leverage = document.getElementById('sim_leverage').value;
-                    formData.environment = document.getElementById('sim_environment').value;
-                    
-                    // Add take profit and stop loss if they have values
-                    const takeProfitEl = document.getElementById('sim_take_profit');
-                    if (takeProfitEl && takeProfitEl.value) {
-                        formData.take_profit = parseFloat(takeProfitEl.value);
-                    }
-                    
-                    const stopLossEl = document.getElementById('sim_stop_loss');
-                    if (stopLossEl && stopLossEl.value) {
-                        formData.stop_loss = parseFloat(stopLossEl.value);
-                    }
-                }
-                
-                // Add position_id if it has a value
-                const positionIdEl = document.getElementById('sim_position_id');
-                if (positionIdEl && positionIdEl.value) {
-                    formData.position_id = positionIdEl.value;
-                }
-                
-                // Establecer los datos JSON en el campo oculto
-                const dataField = document.getElementById('simulate_data');
-                if (dataField) {
-                    dataField.value = JSON.stringify(formData);
-                    // Enviar el formulario
-                    dataField.form.submit();
-                }
-            });
-        }
-
-        // Strategy change handler - adjust available fields
-        const strategySelect = document.getElementById('sim_strategy_id');
-        if (strategySelect) {
-            strategySelect.addEventListener('change', updateSimulationFields);
-            updateSimulationFields(); // Initial call
-        }
-
-        function updateSimulationFields() {
-            const selectedStrategy = strategySelect.options[strategySelect.selectedIndex];
-            const platform = selectedStrategy.getAttribute('data-platform');
-            
-            const environmentField = document.getElementById('sim_environment').closest('.col-md-2');
-            const leverageField = document.getElementById('sim_leverage').closest('.col-md-2');
-            const takeProfitField = document.getElementById('sim_take_profit').closest('.col-md-2');
-            const stopLossField = document.getElementById('sim_stop_loss').closest('.col-md-2');
-            
-            if (platform === 'metatrader') {
-                // Hide BingX-specific fields
-                environmentField.style.display = 'none';
-                leverageField.style.display = 'none';
-                takeProfitField.style.display = 'none';
-                stopLossField.style.display = 'none';
-                
-                // Update ticker placeholder for MT
-                document.getElementById('sim_ticker').placeholder = 'e.g., EURUSD, XAUUSD';
-                document.getElementById('sim_ticker').value = 'EURUSD';
-            } else {
-                // Show BingX fields
-                environmentField.style.display = 'block';
-                leverageField.style.display = 'block';
-                takeProfitField.style.display = 'block';
-                stopLossField.style.display = 'block';
-                
-                // Update ticker placeholder for BingX
-                document.getElementById('sim_ticker').placeholder = 'e.g., BTCUSDT';
-                document.getElementById('sim_ticker').value = 'BTCUSDT';
-            }
-        }
-
-        // Botón de prueba de precio spot
-        const testSpotPriceBtn = document.getElementById('test-spot-price-btn');
-        if (testSpotPriceBtn) {
-            testSpotPriceBtn.addEventListener('click', function() {
-                const symbol = document.getElementById('test-symbol').value;
-                window.location.href = '<?= base_url('dashboard/test_spot_price') ?>?symbol=' + encodeURIComponent(symbol);
-            });
-        }
-
-        // Botón de prueba de precio futures
-        const testFuturesPriceBtn = document.getElementById('test-futures-price-btn');
-        if (testFuturesPriceBtn) {
-            testFuturesPriceBtn.addEventListener('click', function() {
-                const symbol = document.getElementById('test-symbol').value;
-                window.location.href = '<?= base_url('dashboard/test_futures_price') ?>?symbol=' + encodeURIComponent(symbol);
-            });
-        }
-
-        // Manejar tecla Enter en el campo de símbolo
-        const testSymbolInput = document.getElementById('test-symbol');
-        if (testSymbolInput) {
-            testSymbolInput.addEventListener('keypress', function(e) {
-                if (e.key === 'Enter') {
-                    e.preventDefault();
-                    if (testSpotPriceBtn) {
-                        testSpotPriceBtn.click();
-                    }
-                }
-            });
-        }
     }
 
     // Función para copiar la URL del webhook

@@ -92,18 +92,23 @@
                             </a>
                         </li>
                         <li class="nav-item">
+                            <a class="nav-link" href="<?= base_url('signals') ?>">
+                                <i class="fas fa-signal me-1"></i>Signals
+                            </a>
+                        </li>
+                        <li class="nav-item">
                             <a class="nav-link" href="<?= base_url('strategies') ?>">
                                 <i class="fas fa-chart-line me-1"></i>Strategies
                             </a>
                         </li>
                         <li class="nav-item">
                             <a class="nav-link" href="<?= base_url('trades') ?>">
-                                <i class="fas fa-history me-1"></i>Trade History
+                                <i class="fas fa-history me-1"></i>Trades
                             </a>
                         </li>
                         <li class="nav-item">
-                            <a class="nav-link" href="<?= base_url('mt_dashboard') ?>">
-                                <i class="fas fa-chart-area me-1"></i>MetaTrader
+                            <a class="nav-link" href="<?= base_url('debug') ?>">
+                                <i class="fas fa-bug me-1"></i>Debug
                             </a>
                         </li>
                         <li class="nav-item">
@@ -121,7 +126,7 @@
                         <?php if ($this->session->userdata('role') == 'admin') : ?>
                             <li class="nav-item">
                                 <a class="nav-link" href="<?= base_url('systemlogs') ?>">
-                                    <i class="fas fa-history me-1"></i>System Logs
+                                    <i class="fas fa-file-alt me-1"></i>System Logs
                                 </a>
                             </li>
                         <?php endif; ?>
