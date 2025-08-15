@@ -44,3 +44,17 @@ $route['systemlogs/cleanup'] = 'SystemLogs/cleanup';
 
 // Webhook route
 $route['webhook/tradingview'] = 'webhook/tradingview';
+
+// MetaTrader routes
+$route['metatrader/webhook'] = 'metatrader/webhook';
+$route['api/mt/pending_signals'] = 'metatrader/get_pending_signals';
+$route['api/mt/mark_processed'] = 'metatrader/mark_signal_processed';
+
+// MetaTrader Dashboard routes
+$route['mt_dashboard'] = 'mt_dashboard';
+$route['mt_dashboard/signals'] = 'mt_dashboard/signals';
+$route['mt_dashboard/logs'] = 'mt_dashboard/logs';
+$route['mt_dashboard/debug'] = 'mt_dashboard/debug';
+$route['mt_dashboard/test_signal'] = 'mt_dashboard/test_signal';
+$route['mt_dashboard/retry_signal/(:num)'] = 'mt_dashboard/retry_signal/$1';
+$route['mt_dashboard/delete_signal/(:num)'] = 'mt_dashboard/delete_signal/$1';

@@ -35,6 +35,7 @@ class Strategies extends CI_Controller {
         // Form validation
         $this->form_validation->set_rules('strategy_id', 'Strategy ID', 'required');
         $this->form_validation->set_rules('name', 'Name', 'required');
+        $this->form_validation->set_rules('platform', 'Platform', 'required');
         $this->form_validation->set_rules('type', 'Type', 'required');
         
         if ($this->form_validation->run() === FALSE) {
@@ -68,6 +69,7 @@ class Strategies extends CI_Controller {
                 'user_id' => $user_id,
                 'strategy_id' => $this->input->post('strategy_id'),
                 'name' => $this->input->post('name'),
+                'platform' => $this->input->post('platform'),
                 'type' => $this->input->post('type'),
                 'description' => $this->input->post('description'),
                 'image' => $image_filename,
@@ -80,7 +82,7 @@ class Strategies extends CI_Controller {
             $log_data = array(
                 'user_id' => $user_id,
                 'action' => 'add_strategy',
-                'description' => 'Added strategy: ' . $this->input->post('name')
+                'description' => 'Added strategy: ' . $this->input->post('name') . ' (' . $this->input->post('platform') . ' - ' . $this->input->post('type') . ')'
             );
             $this->Log_model->add_log($log_data);
             
@@ -102,6 +104,7 @@ class Strategies extends CI_Controller {
         // Form validation
         $this->form_validation->set_rules('strategy_id', 'Strategy ID', 'required');
         $this->form_validation->set_rules('name', 'Name', 'required');
+        $this->form_validation->set_rules('platform', 'Platform', 'required');
         $this->form_validation->set_rules('type', 'Type', 'required');
         
         if ($this->form_validation->run() === FALSE) {
@@ -138,6 +141,7 @@ class Strategies extends CI_Controller {
             $strategy_data = array(
                 'strategy_id' => $this->input->post('strategy_id'),
                 'name' => $this->input->post('name'),
+                'platform' => $this->input->post('platform'),
                 'type' => $this->input->post('type'),
                 'description' => $this->input->post('description'),
                 'image' => $image_filename,
@@ -150,7 +154,7 @@ class Strategies extends CI_Controller {
             $log_data = array(
                 'user_id' => $this->session->userdata('user_id'),
                 'action' => 'edit_strategy',
-                'description' => 'Updated strategy: ' . $this->input->post('name')
+                'description' => 'Updated strategy: ' . $this->input->post('name') . ' (' . $this->input->post('platform') . ' - ' . $this->input->post('type') . ')'
             );
             $this->Log_model->add_log($log_data);
             

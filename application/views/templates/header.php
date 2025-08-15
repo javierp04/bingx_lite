@@ -59,13 +59,15 @@
         .nav-tabs .nav-link.active {
             font-weight: bold;
         }
+
         .table td {
-    white-space: normal !important;
-}
-.table .description-cell {
-    max-width: 300px;
-    word-wrap: break-word;
-}
+            white-space: normal !important;
+        }
+
+        .table .description-cell {
+            max-width: 300px;
+            word-wrap: break-word;
+        }
     </style>
 </head>
 
@@ -97,6 +99,11 @@
                         <li class="nav-item">
                             <a class="nav-link" href="<?= base_url('trades') ?>">
                                 <i class="fas fa-history me-1"></i>Trade History
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="<?= base_url('mt_dashboard') ?>">
+                                <i class="fas fa-chart-area me-1"></i>MetaTrader
                             </a>
                         </li>
                         <li class="nav-item">

@@ -49,4 +49,15 @@ class Strategy_model extends CI_Model
         $this->db->where('id', $id);
         return $this->db->delete('strategies');
     }
+
+    public function get_mt_strategies($user_id = null)
+    {
+        $this->db->where('platform', 'metatrader');
+        if ($user_id) {
+            $this->db->where('user_id', $user_id);
+        }
+        $this->db->order_by('active', 'DESC');
+        $this->db->order_by('name', 'ASC');
+        return $this->db->get('strategies')->result();
+    }
 }

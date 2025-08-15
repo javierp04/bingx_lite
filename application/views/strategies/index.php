@@ -17,6 +17,7 @@
                         <th>ID</th>
                         <th>Strategy Name</th>
                         <th>Strategy ID</th>
+                        <th>Platform</th>
                         <th>Type</th>
                         <th>Status</th>
                         <th>Image</th>
@@ -27,7 +28,7 @@
                 <tbody>
                     <?php if (empty($strategies)): ?>
                         <tr>
-                            <td colspan="8" class="text-center py-3">No strategies found</td>
+                            <td colspan="9" class="text-center py-3">No strategies found</td>
                         </tr>
                     <?php else: ?>
                         <?php foreach ($strategies as $strategy): ?>
@@ -36,7 +37,37 @@
                                 <td><?= $strategy->name ?></td>
                                 <td><code><?= $strategy->strategy_id ?></code></td>
                                 <td>
-                                    <span class="badge <?= $strategy->type == 'futures' ? 'bg-warning text-dark' : 'bg-info' ?>">
+                                    <?php
+                                    // Platform badge colors
+                                    $platform_badge = $strategy->platform == 'metatrader' ? 'bg-dark' : 'bg-info';
+                                    ?>
+                                    <span class="badge <?= $platform_badge ?>">
+                                        <?= ucfirst($strategy->platform) ?>
+                                    </span>
+                                </td>
+                                <td>
+                                    <?php
+                                    // Badge colors for strategy types
+                                    $badge_class = 'bg-secondary'; // default
+                                    switch ($strategy->type) {
+                                        case 'spot':
+                                            $badge_class = 'bg-info';
+                                            break;
+                                        case 'futures':
+                                            $badge_class = 'bg-warning text-dark';
+                                            break;
+                                        case 'forex':
+                                            $badge_class = 'bg-success';
+                                            break;
+                                        case 'indices':
+                                            $badge_class = 'bg-primary';
+                                            break;
+                                        case 'commodities':
+                                            $badge_class = 'bg-danger';
+                                            break;
+                                    }
+                                    ?>
+                                    <span class="badge <?= $badge_class ?>">
                                         <?= ucfirst($strategy->type) ?>
                                     </span>
                                 </td>
@@ -80,9 +111,54 @@
     </div>
     <div class="card-body">
         <p>Each strategy must have a unique Strategy ID that will be included in TradingView webhook alerts. This ID helps the system identify which strategy generated the signal.</p>
-        
-        <h6 class="mt-3">Example TradingView Alert Message:</h6>
-        <pre class="bg-light p-3 rounded"><code>{
+
+        <h6 class="mt-3">Platform & Type Combinations:</h6>
+        <div class="row">
+            <div class="col-md-6">
+                <h6><span class="badge bg-info">BingX Platform</span></h6>
+                <ul>
+                    <li><span class="badge bg-info">Spot</span> - Cryptocurrency spot trading (1x leverage)</li>
+                    <li><span class="badge bg-warning text-dark">Futures</span> - Cryptocurrency perpetual futures (leveraged)</li>
+                </ul>
+            </div>
+            <div class="col-md-6">
+                <h6><span class="badge bg-dark">MetaTrader Platform</span></h6>
+                <ul>
+                    <li><span class="badge bg-success">Forex</span> - Currency pairs (EUR/USD, GBP/USD, etc.)</li>
+                    <li><span class="badge bg-primary">Indices</span> - Stock indices (S&P500, NASDAQ, etc.)</li>
+                    <li><span class="badge bg-danger">Commodities</span> - Gold, Oil, Silver, etc.</li>
+                </ul>
+            </div>
+        </div>
+
+        <h6 class="mt-3">Webhook URLs:</h6>
+        <div class="row">
+            <div class="col-md-6">
+                <strong>BingX Strategies:</strong>
+                <div class="input-group input-group-sm">
+                    <input type="text" class="form-control" value="<?= base_url('webhook/tradingview') ?>" readonly>
+                    <button class="btn btn-outline-secondary" onclick="copyToClipboard(this.previousElementSibling)">
+                        <i class="fas fa-copy"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <strong>MetaTrader Strategies:</strong>
+                <div class="input-group input-group-sm">
+                    <input type="text" class="form-control" value="<?= base_url('metatrader/webhook') ?>" readonly>
+                    <button class="btn btn-outline-secondary" onclick="copyToClipboard(this.previousElementSibling)">
+                        <i class="fas fa-copy"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <h6 class="mt-3">Example TradingView Alert Messages:</h6>
+
+        <div class="row">
+            <div class="col-md-12">
+                <strong>Alert Format:</strong>
+                <pre class="bg-light p-3 rounded"><code>{
   "user_id": <?= $this->session->userdata('user_id') ?>,
   "strategy_id": "YOUR_STRATEGY_ID",
   "ticker": "{{ticker}}",
@@ -93,15 +169,32 @@
   "leverage": 8,
   "environment": "production"
 }</code></pre>
+            </div>
 
-        <h6 class="mt-3">Strategy Types:</h6>
-        <ul>
-            <li><span class="badge bg-info">Spot</span> - For spot trading with 1x leverage</li>
-            <li><span class="badge bg-warning text-dark">Futures</span> - For perpetual futures trading with configurable leverage</li>
-        </ul>
-        
-        <div class="alert alert-warning">
-            <i class="fas fa-exclamation-triangle me-2"></i>Make sure your TradingView alerts include the correct Strategy ID and are properly formatted in JSON.
+        </div>
+
+        <div class="alert alert-warning mt-3">
+            <i class="fas fa-exclamation-triangle me-2"></i>
+            <strong>Important:</strong> Make sure your TradingView alerts include the correct Strategy ID and are properly formatted in JSON.
+            BingX uses timeframe as strings (1h, 5m, etc.) while MetaTrader uses minutes as integers (60, 5, etc.).
         </div>
     </div>
 </div>
+
+<script>
+    function copyToClipboard(element) {
+        element.select();
+        document.execCommand('copy');
+
+        // Visual feedback
+        const button = element.nextElementSibling;
+        const originalHTML = button.innerHTML;
+        button.innerHTML = '<i class="fas fa-check"></i>';
+        button.classList.add('btn-success');
+
+        setTimeout(() => {
+            button.innerHTML = originalHTML;
+            button.classList.remove('btn-success');
+        }, 1500);
+    }
+</script>

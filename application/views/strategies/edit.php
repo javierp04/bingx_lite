@@ -13,7 +13,7 @@
                     <div class="mb-3">
                         <label for="strategy_id" class="form-label">Strategy ID</label>
                         <input type="text" class="form-control" id="strategy_id" name="strategy_id" value="<?= set_value('strategy_id', $strategy->strategy_id) ?>" required>
-                        <div class="form-text">Unique identifier for this strategy (e.g., BTCUSD_EMA_CROSS)</div>
+                        <div class="form-text">Unique identifier for this strategy (e.g., BTCUSD_EMA_CROSS or EURUSD_RSI_MT)</div>
                     </div>
                     
                     <div class="mb-3">
@@ -23,12 +23,21 @@
                     </div>
                     
                     <div class="mb-3">
+                        <label for="platform" class="form-label">Platform</label>
+                        <select class="form-select" id="platform" name="platform" required onchange="updateTypeOptions()">
+                            <option value="">Select Platform</option>
+                            <option value="bingx" <?= set_select('platform', 'bingx', $strategy->platform == 'bingx') ?>>BingX</option>
+                            <option value="metatrader" <?= set_select('platform', 'metatrader', $strategy->platform == 'metatrader') ?>>MetaTrader</option>
+                        </select>
+                        <div class="form-text">Choose the trading platform for this strategy</div>
+                    </div>
+                    
+                    <div class="mb-3">
                         <label for="type" class="form-label">Strategy Type</label>
                         <select class="form-select" id="type" name="type" required>
-                            <option value="spot" <?= set_select('type', 'spot', $strategy->type == 'spot') ?>>Spot</option>
-                            <option value="futures" <?= set_select('type', 'futures', $strategy->type == 'futures') ?>>Futures</option>
+                            <!-- Options will be populated by JavaScript -->
                         </select>
-                        <div class="form-text">Spot trading uses 1x leverage. Futures allows configurable leverage.</div>
+                        <div class="form-text" id="type-description">Asset class for your strategy</div>
                     </div>
                     
                     <div class="mb-3">
@@ -75,3 +84,40 @@
         </div>
     </div>
 </div>
+
+<script>
+function updateTypeOptions() {
+    const platform = document.getElementById('platform').value;
+    const typeSelect = document.getElementById('type');
+    const description = document.getElementById('type-description');
+    const currentType = '<?= $strategy->type ?>';
+    
+    // Clear current options
+    typeSelect.innerHTML = '';
+    
+    if (platform === 'bingx') {
+        typeSelect.innerHTML = `
+            <option value="">Select Type</option>
+            <option value="spot" ${currentType === 'spot' ? 'selected' : ''}>Spot</option>
+            <option value="futures" ${currentType === 'futures' ? 'selected' : ''}>Futures</option>
+        `;
+        description.textContent = 'Spot trading uses 1x leverage. Futures allows configurable leverage.';
+    } else if (platform === 'metatrader') {
+        typeSelect.innerHTML = `
+            <option value="">Select Type</option>
+            <option value="forex" ${currentType === 'forex' ? 'selected' : ''}>Forex</option>
+            <option value="indices" ${currentType === 'indices' ? 'selected' : ''}>Indices</option>
+            <option value="commodities" ${currentType === 'commodities' ? 'selected' : ''}>Commodities</option>
+        `;
+        description.textContent = 'Choose the asset class for your MetaTrader strategy.';
+    } else {
+        typeSelect.innerHTML = '<option value="">Select Platform First</option>';
+        description.textContent = 'Select a platform to see available types';
+    }
+}
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', function() {
+    updateTypeOptions();
+});
+</script>
