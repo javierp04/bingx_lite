@@ -9,6 +9,33 @@
     </div>
 </div>
 
+<!-- Platform Filter -->
+<div class="card mb-4">
+    <div class="card-body py-3">
+        <div class="row align-items-center">
+            <div class="col-md-6">
+                <h6 class="mb-0">Platform Filter</h6>
+            </div>
+            <div class="col-md-6">
+                <div class="btn-group w-100" role="group">
+                    <input type="radio" class="btn-check" name="platform-filter" id="platform-all" value="" <?= empty($current_platform) ? 'checked' : '' ?>>
+                    <label class="btn btn-outline-primary" for="platform-all">All Platforms</label>
+
+                    <input type="radio" class="btn-check" name="platform-filter" id="platform-bingx" value="bingx" <?= $current_platform === 'bingx' ? 'checked' : '' ?>>
+                    <label class="btn btn-outline-primary" for="platform-bingx">
+                        <i class="fas fa-bitcoin me-1"></i>BingX
+                    </label>
+
+                    <input type="radio" class="btn-check" name="platform-filter" id="platform-mt" value="metatrader" <?= $current_platform === 'metatrader' ? 'checked' : '' ?>>
+                    <label class="btn btn-outline-primary" for="platform-mt">
+                        <i class="fas fa-chart-area me-1"></i>MetaTrader
+                    </label>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Summary Dashboard -->
 <div class="row">
     <div class="col-md-3">
@@ -16,6 +43,13 @@
             <div class="card-body">
                 <h5 class="card-title">Active Trades</h5>
                 <h2 class="mb-0"><?= count($open_trades) ?></h2>
+                <?php
+                $bingx_count = count(array_filter($open_trades, function($t) { return $t->platform === 'bingx'; }));
+                $mt_count = count(array_filter($open_trades, function($t) { return $t->platform === 'metatrader'; }));
+                ?>
+                <?php if (empty($current_platform)): ?>
+                    <small class="text-muted">BingX: <?= $bingx_count ?> | MT: <?= $mt_count ?></small>
+                <?php endif; ?>
             </div>
         </div>
     </div>
@@ -32,13 +66,17 @@
             <div class="card-body">
                 <h5 class="card-title">Total PNL</h5>
                 <?php
+                // Calculate PNL only for BingX trades (MT doesn't have real-time PNL)
                 $total_pnl = 0;
                 foreach ($open_trades as $trade) {
-                    $total_pnl += isset($trade->pnl) ? $trade->pnl : 0;
+                    if ($trade->platform === 'bingx' && isset($trade->pnl)) {
+                        $total_pnl += $trade->pnl;
+                    }
                 }
                 $pnl_class = $total_pnl >= 0 ? 'text-profit' : 'text-loss';
                 ?>
                 <h2 class="mb-0 <?= $pnl_class ?>" id="total-pnl"><?= number_format($total_pnl, 2) ?> USDT</h2>
+                <small class="text-muted">BingX only (real-time)</small>
             </div>
         </div>
     </div>
@@ -65,6 +103,7 @@
             <table class="table table-striped table-hover mb-0">
                 <thead>
                     <tr>
+                        <th>Platform</th>
                         <th>Symbol</th>
                         <th>Strategy</th>
                         <th>Side</th>
@@ -82,16 +121,33 @@
                 <tbody id="trades-tbody">
                     <?php if (empty($open_trades)): ?>
                         <tr>
-                            <td colspan="12" class="text-center py-3">No active trades</td>
+                            <td colspan="13" class="text-center py-3">No active trades</td>
                         </tr>
                     <?php else: ?>
                         <?php foreach ($open_trades as $trade): ?>
                             <?php
                             $pnl_class = isset($trade->pnl) && $trade->pnl >= 0 ? 'text-profit' : 'text-loss';
                             $side_class = $trade->side == 'BUY' ? 'text-success' : 'text-danger';
-                            $type_class = $trade->trade_type == 'futures' ? 'bg-warning text-dark' : 'bg-info';
+                            
+                            // Platform-specific badges
+                            $platform_badge = $trade->platform === 'metatrader' ? 'bg-dark' : 'bg-info';
+                            
+                            // Type badges
+                            $type_badges = [
+                                'futures' => 'bg-warning text-dark',
+                                'spot' => 'bg-info',
+                                'forex' => 'bg-success',
+                                'indices' => 'bg-primary', 
+                                'commodities' => 'bg-danger'
+                            ];
+                            $type_class = $type_badges[$trade->trade_type] ?? 'bg-secondary';
                             ?>
                             <tr>
+                                <td>
+                                    <span class="badge <?= $platform_badge ?>">
+                                        <?= ucfirst($trade->platform) ?>
+                                    </span>
+                                </td>
                                 <td><?= $trade->symbol ?></td>
                                 <td><?= $trade->strategy_name ?></td>
                                 <td class="<?= $side_class ?>"><?= $trade->side ?></td>
@@ -102,17 +158,34 @@
                                 </td>
                                 <td><?= isset($trade->position_id) ? $trade->position_id : 'N/A' ?></td>
                                 <td><?= number_format($trade->entry_price, 2) ?></td>
-                                <td class="current-price"><?= isset($trade->current_price) ? number_format($trade->current_price, 2) : number_format($trade->entry_price, 2) ?></td>
+                                <td class="current-price">
+                                    <?php if ($trade->platform === 'bingx'): ?>
+                                        <?= isset($trade->current_price) ? number_format($trade->current_price, 2) : number_format($trade->entry_price, 2) ?>
+                                    <?php else: ?>
+                                        <span class="text-muted">N/A</span>
+                                        <small class="d-block text-muted">No real-time</small>
+                                    <?php endif; ?>
+                                </td>
                                 <td><?= rtrim(rtrim(number_format($trade->quantity, 8), '0'), '.') ?></td>
                                 <td><?= $trade->leverage ?>x</td>
                                 <td class="<?= $pnl_class ?>">
-                                    <?= isset($trade->pnl) ? number_format($trade->pnl, 2) . ' USDT' : 'N/A' ?>
+                                    <?php if ($trade->platform === 'bingx' && isset($trade->pnl)): ?>
+                                        <?= number_format($trade->pnl, 2) . ' USDT' ?>
+                                    <?php else: ?>
+                                        <span class="text-muted">At close</span>
+                                    <?php endif; ?>
                                 </td>
                                 <td><?= date('Y-m-d H:i', strtotime($trade->created_at)) ?></td>
                                 <td>
-                                    <a href="<?= base_url('trades/close/' . $trade->id) ?>" class="btn btn-sm btn-danger" onclick="return confirm('Are you sure you want to close this trade?')">
-                                        <i class="fas fa-times-circle"></i> Close
-                                    </a>
+                                    <?php if ($trade->platform === 'bingx'): ?>
+                                        <a href="<?= base_url('trades/close/' . $trade->id) ?>" class="btn btn-sm btn-danger" onclick="return confirm('Are you sure you want to close this trade?')">
+                                            <i class="fas fa-times-circle"></i> Close
+                                        </a>
+                                    <?php else: ?>
+                                        <button class="btn btn-sm btn-outline-secondary" disabled title="Close via MT EA">
+                                            <i class="fas fa-robot"></i> EA
+                                        </button>
+                                    <?php endif; ?>
                                 </td>
                             </tr>
                         <?php endforeach; ?>
@@ -122,6 +195,7 @@
         </div>
     </div>
 </div>
+
 <?php if ($is_admin): ?>
     <!-- Admin Simulation Panel -->
     <div class="card mb-4">
@@ -185,7 +259,7 @@
                     <label for="sim_strategy_id" class="form-label">Strategy</label>
                     <select class="form-select" id="sim_strategy_id" required>
                         <?php foreach ($all_strategies as $strategy): ?>
-                            <option value="<?= $strategy->strategy_id ?>"><?= $strategy->name ?> (<?= $strategy->strategy_id ?>)</option>
+                            <option value="<?= $strategy->strategy_id ?>" data-platform="<?= $strategy->platform ?>"><?= $strategy->name ?> (<?= $strategy->strategy_id ?>)</option>
                         <?php endforeach; ?>
                     </select>
                 </div>
@@ -277,15 +351,32 @@
     </div>
     <div class="collapse" id="webhookInfo">
         <div class="card-body">
-            <p>Use the following webhook URL in your TradingView alerts:</p>
-            <div class="input-group mb-3">
-                <input type="text" class="form-control" value="<?= base_url('webhook/tradingview') ?>" id="webhook-url" readonly>
-                <button class="btn btn-outline-secondary" type="button" onclick="copyWebhookUrl()">
-                    <i class="fas fa-copy"></i> Copy
-                </button>
+            <div class="row">
+                <div class="col-md-6">
+                    <p><strong>BingX Webhook URL:</strong></p>
+                    <div class="input-group mb-3">
+                        <input type="text" class="form-control" value="<?= base_url('webhook/tradingview') ?>" readonly>
+                        <button class="btn btn-outline-secondary" type="button" onclick="copyWebhookUrl(this.previousElementSibling)">
+                            <i class="fas fa-copy"></i> Copy
+                        </button>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <p><strong>MetaTrader Webhook URL:</strong></p>
+                    <div class="input-group mb-3">
+                        <input type="text" class="form-control" value="<?= base_url('metatrader/webhook') ?>" readonly>
+                        <button class="btn btn-outline-secondary" type="button" onclick="copyWebhookUrl(this.previousElementSibling)">
+                            <i class="fas fa-copy"></i> Copy
+                        </button>
+                    </div>
+                </div>
             </div>
+            
             <p>Required JSON format for TradingView webhook:</p>
-            <pre class="bg-light p-3 rounded"><code>{
+            <div class="row">
+                <div class="col-md-6">
+                    <h6>BingX Alert Format:</h6>
+                    <pre class="bg-light p-3 rounded"><code>{
   "user_id": <?= $this->session->userdata('user_id') ?>,
   "strategy_id": "YOUR_STRATEGY_ID",
   "ticker": "{{ticker}}",
@@ -296,33 +387,26 @@
   "leverage": 8,
   "environment": "production"
 }</code></pre>
-            
-            <div class="alert alert-info mt-3">
-                <i class="fas fa-lightbulb me-2"></i><strong>Using Position IDs in TradingView</strong><br>
-                For reliable position tracking across different symbols and timeframes, include complete position information in your alerts:
-                <pre class="bg-light p-2 mt-2 mb-0"><code>// In your TradingView Pine Script
-strategy("My Strategy", ...)
-
-// When opening a position, store the bar_index and side
-if (strategy.position_size == 0 and longCondition)
-    strategy.entry("long", strategy.long, ...)
-    positionBarIndex := bar_index
-    positionSide := "BUY"
-    
-// When closing a specific position
-if (strategy.position_size > 0 and exitLongCondition)
-    strategy.close("long", ...)
-    
-    // In your alert message - include side for hedged mode
-    alertMessage = '{
+                </div>
+                <div class="col-md-6">
+                    <h6>MetaTrader Alert Format:</h6>
+                    <pre class="bg-light p-3 rounded"><code>{
   "user_id": <?= $this->session->userdata('user_id') ?>,
   "strategy_id": "YOUR_STRATEGY_ID",
   "ticker": "{{ticker}}",
-  "timeframe": "{{interval}}",
-  "action": "CLOSE",
-  "position_id": ' + tostring(positionBarIndex) + ',
-  "side": "BUY"  // Critical for hedged futures
-}'</code></pre>
+  "timeframe": 60,
+  "action": "{{strategy.order.action}}",
+  "quantity": 0.1,
+  "price": {{close}},
+  "position_id": "{{strategy.order.comment}}"
+}</code></pre>
+                </div>
+            </div>
+            
+            <div class="alert alert-info mt-3">
+                <i class="fas fa-lightbulb me-2"></i><strong>Platform Differences:</strong><br>
+                <strong>BingX:</strong> Uses timeframe as strings (1h, 5m), supports leverage and environment<br>
+                <strong>MetaTrader:</strong> Uses timeframe in minutes (60), requires price field, no leverage/environment
             </div>
         </div>
     </div>
@@ -352,9 +436,12 @@ if (strategy.position_size > 0 and exitLongCondition)
     }
 </style>
 
-<!-- JavaScript para actualizaciones en tiempo real (solo REST API) -->
+<!-- JavaScript para actualizaciones en tiempo real y filtros -->
 <script>
     document.addEventListener('DOMContentLoaded', function() {
+        // Platform filter functionality
+        setupPlatformFilter();
+
         // Iniciar actualizaciones de precio BTC
         updateBtcPrice();
 
@@ -362,11 +449,35 @@ if (strategy.position_size > 0 and exitLongCondition)
         setupTradesRefresh();
 
         // Configurar controles de simulación
-        setupSimulationControls();
+        if (document.getElementById('simulate-order-btn')) {
+            setupSimulationControls();
+        }
 
         // Configurar eventos para el panel de webhooks
         setupWebhookPanel();
     });
+
+    // Setup platform filter
+    function setupPlatformFilter() {
+        const filterInputs = document.querySelectorAll('input[name="platform-filter"]');
+        
+        filterInputs.forEach(input => {
+            input.addEventListener('change', function() {
+                if (this.checked) {
+                    const platform = this.value;
+                    const currentUrl = new URL(window.location);
+                    
+                    if (platform) {
+                        currentUrl.searchParams.set('platform', platform);
+                    } else {
+                        currentUrl.searchParams.delete('platform');
+                    }
+                    
+                    window.location.href = currentUrl.toString();
+                }
+            });
+        });
+    }
 
     // Configurar panel de webhook
     function setupWebhookPanel() {
@@ -457,7 +568,10 @@ if (strategy.position_size > 0 and exitLongCondition)
 
     // Función para actualizar trades
     function refreshTrades() {
-        fetch('<?= base_url('dashboard/refresh_trades') ?>')
+        const currentPlatform = document.querySelector('input[name="platform-filter"]:checked')?.value || '';
+        const url = '<?= base_url('dashboard/refresh_trades') ?>' + (currentPlatform ? '?platform=' + currentPlatform : '');
+        
+        fetch(url)
             .then(response => response.json())
             .then(data => {
                 updateTradesTable(data);
@@ -467,8 +581,8 @@ if (strategy.position_size > 0 and exitLongCondition)
                     lastUpdatedElement.textContent = getCurrentTime();
                 }
 
-                // Calcular PNL total
-                const totalPnl = calculateTotalPnl(data);
+                // Calcular PNL total solo para BingX
+                const totalPnl = calculateBingXPnl(data);
                 const pnlClass = totalPnl >= 0 ? 'text-profit' : 'text-loss';
 
                 // Actualizar visualización del PNL
@@ -486,96 +600,128 @@ if (strategy.position_size > 0 and exitLongCondition)
 
     // Actualizar tabla de trades
     function updateTradesTable(trades) {
-    const tbody = document.getElementById('trades-tbody');
-    if (!tbody) return;
+        const tbody = document.getElementById('trades-tbody');
+        if (!tbody) return;
 
-    // Limpiar tabla actual
-    tbody.innerHTML = '';
+        // Limpiar tabla actual
+        tbody.innerHTML = '';
 
-    if (trades.length === 0) {
-        const emptyRow = document.createElement('tr');
-        emptyRow.innerHTML = '<td colspan="12" class="text-center py-3">No active trades</td>';
-        tbody.appendChild(emptyRow);
-        return;
+        if (trades.length === 0) {
+            const emptyRow = document.createElement('tr');
+            emptyRow.innerHTML = '<td colspan="13" class="text-center py-3">No active trades</td>';
+            tbody.appendChild(emptyRow);
+            return;
+        }
+
+        // Crear filas para cada trade
+        trades.forEach(function(trade) {
+            const pnlClass = (parseFloat(trade.pnl || 0) >= 0) ? 'text-profit' : 'text-loss';
+            const sideClass = (trade.side === 'BUY') ? 'text-success' : 'text-danger';
+            
+            // Platform badge
+            const platformBadge = trade.platform === 'metatrader' ? 'bg-dark' : 'bg-info';
+            
+            // Type badges
+            const typeBadges = {
+                'futures': 'bg-warning text-dark',
+                'spot': 'bg-info',
+                'forex': 'bg-success',
+                'indices': 'bg-primary',
+                'commodities': 'bg-danger'
+            };
+            const typeBadge = typeBadges[trade.trade_type] || 'bg-secondary';
+
+            // Format quantity - remove trailing zeros
+            const quantity = formatQuantity(trade.quantity);
+            
+            // Usar valores formateados o aplicar formato a los originales
+            const entryPrice = trade.entry_price_formatted || formatNumber(trade.entry_price, 2);
+            const currentPrice = trade.platform === 'bingx' ? 
+                (trade.current_price_formatted || (trade.current_price ? formatNumber(trade.current_price, 2) : entryPrice)) :
+                'N/A';
+            
+            const formattedPnl = trade.platform === 'bingx' ? 
+                (trade.pnl_formatted ? trade.pnl_formatted + ' USDT' : 
+                ((trade.pnl !== null) ? formatNumber(trade.pnl, 2) + ' USDT' : 'N/A')) :
+                'At close';
+
+            const formattedDate = new Date(trade.created_at).toLocaleString();
+            
+            // Display position ID or N/A
+            const positionId = trade.position_id || 'N/A';
+
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>
+                    <span class="badge ${platformBadge}">
+                        ${trade.platform.charAt(0).toUpperCase() + trade.platform.slice(1)}
+                    </span>
+                </td>
+                <td>${trade.symbol}</td>
+                <td>${trade.strategy_name}</td>
+                <td class="${sideClass}">${trade.side}</td>
+                <td>
+                    <span class="badge ${typeBadge}">
+                        ${trade.trade_type.charAt(0).toUpperCase() + trade.trade_type.slice(1)}
+                    </span>
+                </td>
+                <td>${positionId}</td>
+                <td>${entryPrice}</td>
+                <td class="current-price">
+                    ${trade.platform === 'bingx' ? currentPrice : '<span class="text-muted">N/A</span><small class="d-block text-muted">No real-time</small>'}
+                </td>
+                <td>${quantity}</td>
+                <td>${trade.leverage}x</td>
+                <td class="${pnlClass}">
+                    ${trade.platform === 'bingx' ? formattedPnl : '<span class="text-muted">At close</span>'}
+                </td>
+                <td>${formattedDate}</td>
+                <td>
+                    ${trade.platform === 'bingx' ? 
+                        `<a href="<?= base_url('trades/close/') ?>${trade.id}" class="btn btn-sm btn-danger" onclick="return confirm('Are you sure you want to close this trade?')">
+                            <i class="fas fa-times-circle"></i> Close
+                        </a>` :
+                        `<button class="btn btn-sm btn-outline-secondary" disabled title="Close via MT EA">
+                            <i class="fas fa-robot"></i> EA
+                        </button>`
+                    }
+                </td>
+            `;
+
+            tbody.appendChild(row);
+        });
     }
 
-    // Crear filas para cada trade
-    trades.forEach(function(trade) {
-        const pnlClass = (parseFloat(trade.pnl || 0) >= 0) ? 'text-profit' : 'text-loss';
-        const sideClass = (trade.side === 'BUY') ? 'text-success' : 'text-danger';
-        const typeClass = (trade.trade_type === 'futures') ? 'bg-warning text-dark' : 'bg-info';
-
-        // Format quantity - remove trailing zeros
-        const quantity = formatQuantity(trade.quantity);
-        
-        // Usar valores formateados o aplicar formato a los originales
-        const entryPrice = trade.entry_price_formatted || formatNumber(trade.entry_price, 2);
-        const currentPrice = trade.current_price_formatted ||
-            (trade.current_price ? formatNumber(trade.current_price, 2) : entryPrice);
-        const formattedPnl = trade.pnl_formatted ? trade.pnl_formatted + ' USDT' :
-            ((trade.pnl !== null) ? formatNumber(trade.pnl, 2) + ' USDT' : 'N/A');
-
-        const formattedDate = new Date(trade.created_at).toLocaleString();
-        
-        // Display position ID or N/A
-        const positionId = trade.position_id || 'N/A';
-
-        const row = document.createElement('tr');
-        row.innerHTML = `
-            <td>${trade.symbol}</td>
-            <td>${trade.strategy_name}</td>
-            <td class="${sideClass}">${trade.side}</td>
-            <td>
-                <span class="badge ${typeClass}">
-                    ${trade.trade_type.charAt(0).toUpperCase() + trade.trade_type.slice(1)}
-                </span>
-            </td>
-            <td>${positionId}</td>
-            <td>${entryPrice}</td>
-            <td class="current-price">${currentPrice}</td>
-            <td>${quantity}</td>
-            <td>${trade.leverage}x</td>
-            <td class="${pnlClass}">${formattedPnl}</td>
-            <td>${formattedDate}</td>
-            <td>
-                <a href="<?= base_url('trades/close/') ?>${trade.id}" class="btn btn-sm btn-danger" onclick="return confirm('Are you sure you want to close this trade?')">
-                    <i class="fas fa-times-circle"></i> Close
-                </a>
-            </td>
-        `;
-
-        tbody.appendChild(row);
-    });
-}
-
-// Formatear números con número fijo de decimals
-function formatNumber(number, decimals) {
-    return parseFloat(number).toFixed(decimals);
-}
-
-// Formatear quantity sin ceros a la derecha
-function formatQuantity(number) {
-    if (!number) return "0";
-    
-    // First format with 8 decimal places
-    let formatted = parseFloat(number).toFixed(8);
-    
-    // Remove trailing zeros
-    formatted = formatted.replace(/\.?0+$/, '');
-    
-    // If we accidentally removed the decimal point too, add it back if needed
-    if (formatted.endsWith('.')) {
-        formatted = formatted.slice(0, -1);
+    // Formatear números con número fijo de decimals
+    function formatNumber(number, decimals) {
+        return parseFloat(number).toFixed(decimals);
     }
-    
-    return formatted;
-}
 
-    // Calcular PNL total de todos los trades
-    function calculateTotalPnl(trades) {
+    // Formatear quantity sin ceros a la derecha
+    function formatQuantity(number) {
+        if (!number) return "0";
+        
+        // First format with 8 decimal places
+        let formatted = parseFloat(number).toFixed(8);
+        
+        // Remove trailing zeros
+        formatted = formatted.replace(/\.?0+$/, '');
+        
+        // If we accidentally removed the decimal point too, add it back if needed
+        if (formatted.endsWith('.')) {
+            formatted = formatted.slice(0, -1);
+        }
+        
+        return formatted;
+    }
+
+    // Calcular PNL total de trades BingX solamente
+    function calculateBingXPnl(trades) {
         let totalPnl = 0;
         trades.forEach(function(trade) {
-            totalPnl += parseFloat(trade.pnl || 0);
+            if (trade.platform === 'bingx') {
+                totalPnl += parseFloat(trade.pnl || 0);
+            }
         });
         return totalPnl;
     }
@@ -596,25 +742,32 @@ function formatQuantity(number) {
         if (simulateBtn) {
             simulateBtn.addEventListener('click', function() {
                 // Obtener valores del formulario
+                const selectedStrategy = document.getElementById('sim_strategy_id');
+                const platform = selectedStrategy.options[selectedStrategy.selectedIndex].getAttribute('data-platform');
+                
                 const formData = {
-                    strategy_id: document.getElementById('sim_strategy_id').value,
+                    strategy_id: selectedStrategy.value,
                     ticker: document.getElementById('sim_ticker').value,
                     timeframe: document.getElementById('sim_timeframe').value,
                     action: document.getElementById('sim_action').value,
-                    quantity: document.getElementById('sim_quantity').value,
-                    leverage: document.getElementById('sim_leverage').value,
-                    environment: document.getElementById('sim_environment').value
+                    quantity: document.getElementById('sim_quantity').value
                 };
-                
-                // Añadir take profit y stop loss si tienen valores
-                const takeProfitEl = document.getElementById('sim_take_profit');
-                if (takeProfitEl && takeProfitEl.value) {
-                    formData.take_profit = parseFloat(takeProfitEl.value);
-                }
-                
-                const stopLossEl = document.getElementById('sim_stop_loss');
-                if (stopLossEl && stopLossEl.value) {
-                    formData.stop_loss = parseFloat(stopLossEl.value);
+
+                // Add platform-specific fields
+                if (platform === 'bingx') {
+                    formData.leverage = document.getElementById('sim_leverage').value;
+                    formData.environment = document.getElementById('sim_environment').value;
+                    
+                    // Add take profit and stop loss if they have values
+                    const takeProfitEl = document.getElementById('sim_take_profit');
+                    if (takeProfitEl && takeProfitEl.value) {
+                        formData.take_profit = parseFloat(takeProfitEl.value);
+                    }
+                    
+                    const stopLossEl = document.getElementById('sim_stop_loss');
+                    if (stopLossEl && stopLossEl.value) {
+                        formData.stop_loss = parseFloat(stopLossEl.value);
+                    }
                 }
                 
                 // Add position_id if it has a value
@@ -633,64 +786,42 @@ function formatQuantity(number) {
             });
         }
 
-        // Environment change handler - disable sandbox for spot strategies
-        const environmentSelect = document.getElementById('sim_environment');
+        // Strategy change handler - adjust available fields
         const strategySelect = document.getElementById('sim_strategy_id');
-        const takeProfitInput = document.getElementById('sim_take_profit');
-        const stopLossInput = document.getElementById('sim_stop_loss');
-        
-        if (environmentSelect && strategySelect) {
-            // Initial check
-            checkStrategyTypeForSandbox();
+        if (strategySelect) {
+            strategySelect.addEventListener('change', updateSimulationFields);
+            updateSimulationFields(); // Initial call
+        }
 
-            // Listen for strategy changes
-            strategySelect.addEventListener('change', checkStrategyTypeForSandbox);
-
-            function checkStrategyTypeForSandbox() {
-                const selectedOption = strategySelect.options[strategySelect.selectedIndex];
-                const strategyName = selectedOption.text.toLowerCase();
+        function updateSimulationFields() {
+            const selectedStrategy = strategySelect.options[strategySelect.selectedIndex];
+            const platform = selectedStrategy.getAttribute('data-platform');
+            
+            const environmentField = document.getElementById('sim_environment').closest('.col-md-2');
+            const leverageField = document.getElementById('sim_leverage').closest('.col-md-2');
+            const takeProfitField = document.getElementById('sim_take_profit').closest('.col-md-2');
+            const stopLossField = document.getElementById('sim_stop_loss').closest('.col-md-2');
+            
+            if (platform === 'metatrader') {
+                // Hide BingX-specific fields
+                environmentField.style.display = 'none';
+                leverageField.style.display = 'none';
+                takeProfitField.style.display = 'none';
+                stopLossField.style.display = 'none';
                 
-                // Check if strategy is spot type - Check by name pattern
-                const isSpot = !strategyName.includes('futures') && !strategyName.includes('fut_');
+                // Update ticker placeholder for MT
+                document.getElementById('sim_ticker').placeholder = 'e.g., EURUSD, XAUUSD';
+                document.getElementById('sim_ticker').value = 'EURUSD';
+            } else {
+                // Show BingX fields
+                environmentField.style.display = 'block';
+                leverageField.style.display = 'block';
+                takeProfitField.style.display = 'block';
+                stopLossField.style.display = 'block';
                 
-                // Handle sandbox option
-                if (isSpot) {
-                    // Always set to production for spot
-                    environmentSelect.value = 'production';
-                    
-                    // Disable sandbox option
-                    environmentSelect.querySelector('option[value="sandbox"]').disabled = true;
-                    
-                    // Hide/disable take profit and stop loss for spot
-                    if (takeProfitInput) {
-                        takeProfitInput.disabled = true;
-                        takeProfitInput.value = '';
-                        takeProfitInput.closest('.col-md-2').style.opacity = '0.5';
-                    }
-                    
-                    if (stopLossInput) {
-                        stopLossInput.disabled = true;
-                        stopLossInput.value = '';
-                        stopLossInput.closest('.col-md-2').style.opacity = '0.5';
-                    }
-                } else {
-                    // Set default to sandbox for futures
-                    environmentSelect.value = 'sandbox';
-                    
-                    // Enable sandbox option for futures
-                    environmentSelect.querySelector('option[value="sandbox"]').disabled = false;
-                    
-                    // Enable take profit and stop loss for futures
-                    if (takeProfitInput) {
-                        takeProfitInput.disabled = false;
-                        takeProfitInput.closest('.col-md-2').style.opacity = '1';
-                    }
-                    
-                    if (stopLossInput) {
-                        stopLossInput.disabled = false;
-                        stopLossInput.closest('.col-md-2').style.opacity = '1';
-                    }
-                }
+                // Update ticker placeholder for BingX
+                document.getElementById('sim_ticker').placeholder = 'e.g., BTCUSDT';
+                document.getElementById('sim_ticker').value = 'BTCUSDT';
             }
         }
 
@@ -727,22 +858,19 @@ function formatQuantity(number) {
     }
 
     // Función para copiar la URL del webhook
-    function copyWebhookUrl() {
-        const webhookUrl = document.getElementById('webhook-url');
-        if (webhookUrl) {
-            webhookUrl.select();
-            document.execCommand('copy');
+    function copyWebhookUrl(element) {
+        element.select();
+        document.execCommand('copy');
 
-            // Mostrar confirmación
-            const button = document.querySelector('#webhook-url + button');
-            if (button) {
-                const originalText = button.innerHTML;
-                button.innerHTML = '<i class="fas fa-check"></i> Copied!';
+        // Mostrar confirmación
+        const button = element.nextElementSibling;
+        if (button) {
+            const originalText = button.innerHTML;
+            button.innerHTML = '<i class="fas fa-check"></i> Copied!';
 
-                setTimeout(function() {
-                    button.innerHTML = originalText;
-                }, 2000);
-            }
+            setTimeout(function() {
+                button.innerHTML = originalText;
+            }, 2000);
         }
     }
 </script>

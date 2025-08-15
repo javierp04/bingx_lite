@@ -22,8 +22,11 @@ class Dashboard extends CI_Controller
         $data['title'] = 'Dashboard';
         $user_id = $this->session->userdata('user_id');
 
-        // Get all open trades for the user
-        $data['open_trades'] = $this->Trade_model->get_all_trades($user_id, 'open');
+        // Get platform filter
+        $platform_filter = $this->input->get('platform');
+
+        // Get all open trades for the user with platform filter
+        $data['open_trades'] = $this->Trade_model->get_trades_by_platform($user_id, 'open', $platform_filter);
 
         // Get API key
         $data['api_key'] = $this->Api_key_model->get_api_key($user_id);
@@ -34,14 +37,14 @@ class Dashboard extends CI_Controller
         // Check if user is admin (for simulation panel)
         $data['is_admin'] = ($this->session->userdata('role') == 'admin');
 
-        // If user is admin, get additional data for the simulation panel
+        // Filter data for admin simulation panel
         if ($data['is_admin']) {
-            // Get all users for the simulation panel dropdown
             $data['all_users'] = $this->User_model->get_all_users();
-
-            // Get all strategies
             $data['all_strategies'] = $this->Strategy_model->get_all_strategies();
         }
+
+        // Current filter
+        $data['current_platform'] = $platform_filter;
 
         // Load view
         $this->load->view('templates/header', $data);
@@ -52,104 +55,114 @@ class Dashboard extends CI_Controller
     public function refresh_trades()
     {
         $user_id = $this->session->userdata('user_id');
-    
-        // Get all open trades
-        $trades = $this->Trade_model->get_all_trades($user_id, 'open');
-    
-        // Get API key for this user
+
+        // Get platform filter
+        $platform_filter = $this->input->get('platform');
+
+        // Get all open trades with platform filter
+        $trades = $this->Trade_model->get_trades_by_platform($user_id, 'open', $platform_filter);
+
+        // Get API key for BingX operations
         $api_key = $this->Api_key_model->get_api_key($user_id);
-    
-        // Update PNL for each trade
+
+        // Update PNL ONLY for BingX trades (MT trades don't have real-time prices)
         if ($api_key && !empty($trades)) {
-            // Collect unique symbol-environment-type combinations
-            $price_requests = [];
-            
-            foreach ($trades as $trade) {
-                $key = $trade->symbol . '_' . $trade->environment . '_' . $trade->trade_type;
-                if (!isset($price_requests[$key])) {
-                    $price_requests[$key] = [
-                        'symbol' => $trade->symbol,
-                        'environment' => $trade->environment,
-                        'trade_type' => $trade->trade_type
-                    ];
+            // Filter BingX trades for price updates
+            $bingx_trades = array_filter($trades, function ($trade) {
+                return $trade->platform === 'bingx';
+            });
+
+            if (!empty($bingx_trades)) {
+                // Collect unique symbol-environment-type combinations for BingX
+                $price_requests = [];
+
+                foreach ($bingx_trades as $trade) {
+                    $key = $trade->symbol . '_' . $trade->environment . '_' . $trade->trade_type;
+                    if (!isset($price_requests[$key])) {
+                        $price_requests[$key] = [
+                            'symbol' => $trade->symbol,
+                            'environment' => $trade->environment,
+                            'trade_type' => $trade->trade_type
+                        ];
+                    }
                 }
-            }
-            
-            // Fetch prices for unique combinations
-            $price_cache = [];
-            foreach ($price_requests as $key => $request) {
-                try {
-                    // Set the correct environment for the API
-                    $this->bingxapi->set_environment($request['environment']);
-    
-                    // Get price based on trade type
-                    if ($request['trade_type'] == 'futures') {
-                        $price_info = $this->bingxapi->get_futures_price($api_key, $request['symbol'], true);
-                    } else {
-                        $price_info = $this->bingxapi->get_spot_price($api_key, $request['symbol'], true);
+
+                // Fetch prices for unique combinations
+                $price_cache = [];
+                foreach ($price_requests as $key => $request) {
+                    try {
+                        $this->bingxapi->set_environment($request['environment']);
+
+                        if ($request['trade_type'] == 'futures') {
+                            $price_info = $this->bingxapi->get_futures_price($api_key, $request['symbol'], true);
+                        } else {
+                            $price_info = $this->bingxapi->get_spot_price($api_key, $request['symbol'], true);
+                        }
+
+                        if ($price_info && isset($price_info->price)) {
+                            $price_cache[$key] = $price_info->price;
+                        }
+                    } catch (Exception $e) {
+                        $this->Log_model->add_log([
+                            'user_id' => $user_id,
+                            'action' => 'refresh_error',
+                            'description' => 'Error fetching price for ' . $request['symbol'] . ': ' . $e->getMessage()
+                        ]);
                     }
-    
-                    if ($price_info && isset($price_info->price)) {
-                        $price_cache[$key] = $price_info->price;
-                    }
-                } catch (Exception $e) {
-                    // Log error but continue with other requests
-                    $this->Log_model->add_log([
-                        'user_id' => $user_id,
-                        'action' => 'refresh_error',
-                        'description' => 'Error fetching price for ' . $request['symbol'] . ': ' . $e->getMessage()
-                    ]);
                 }
-            }
-            
-            // Update each trade with cached prices
-            foreach ($trades as $trade) {
-                $key = $trade->symbol . '_' . $trade->environment . '_' . $trade->trade_type;
-                
-                if (isset($price_cache[$key])) {
-                    $current_price = $price_cache[$key];
-    
-                    // Calculate PNL
-                    if ($trade->side == 'BUY') {
-                        $pnl = ($current_price - $trade->entry_price) * $trade->quantity;
-                    } else {
-                        $pnl = ($trade->entry_price - $current_price) * $trade->quantity;
+
+                // Update BingX trades with cached prices
+                foreach ($bingx_trades as $trade) {
+                    $key = $trade->symbol . '_' . $trade->environment . '_' . $trade->trade_type;
+
+                    if (isset($price_cache[$key])) {
+                        $current_price = $price_cache[$key];
+
+                        // Calculate PNL
+                        if ($trade->side == 'BUY') {
+                            $pnl = ($current_price - $trade->entry_price) * $trade->quantity;
+                        } else {
+                            $pnl = ($trade->entry_price - $current_price) * $trade->quantity;
+                        }
+
+                        // Update trade with current price and PNL
+                        $this->Trade_model->update_trade($trade->id, array(
+                            'current_price' => $current_price,
+                            'pnl' => $pnl
+                        ));
+
+                        // Update object for JSON response
+                        $trade->current_price = $current_price;
+                        $trade->pnl = $pnl;
                     }
-    
-                    // Update trade with current price and PNL
-                    $this->Trade_model->update_trade($trade->id, array(
-                        'current_price' => $current_price,
-                        'pnl' => $pnl
-                    ));
-    
-                    // Update object for JSON response
-                    $trade->current_price = $current_price;
-                    $trade->pnl = $pnl;
                 }
             }
         }
-    
-        // Format values for JSON response
+
+        // Format values for JSON response (all trades)
         foreach ($trades as $trade) {
             // Format price values
             if (isset($trade->current_price)) {
                 $trade->current_price_formatted = number_format($trade->current_price, 2);
             }
-            
+
             if (isset($trade->entry_price)) {
                 $trade->entry_price_formatted = number_format($trade->entry_price, 2);
             }
-            
+
             if (isset($trade->pnl)) {
                 $trade->pnl_formatted = number_format($trade->pnl, 2);
             }
-            
-            // Format quantity (el cliente JavaScript se encargará de eliminar los ceros)
+
             if (isset($trade->quantity)) {
                 $trade->quantity_formatted = rtrim(rtrim(number_format($trade->quantity, 8), '0'), '.');
             }
+
+            // Add platform-specific formatting
+            $trade->platform_badge_class = $trade->platform === 'metatrader' ? 'bg-dark' : 'bg-info';
+            $trade->platform_display = ucfirst($trade->platform);
         }
-    
+
         // Return JSON response
         echo json_encode($trades);
     }

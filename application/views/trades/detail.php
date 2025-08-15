@@ -25,24 +25,46 @@
             <div class="card-body">
                 <div class="row">
                     <div class="col-md-6">
+                        <p><strong>Platform:</strong>
+                            <span class="badge <?= $trade->platform === 'metatrader' ? 'bg-dark' : 'bg-info' ?>">
+                                <?= ucfirst($trade->platform) ?>
+                            </span>
+                        </p>
                         <p><strong>Symbol:</strong> <?= $trade->symbol ?></p>
                         <p><strong>Strategy:</strong> <?= $trade->strategy_name ?> (<?= $trade->strategy_external_id ?>)</p>
                         <p><strong>Side:</strong> <span class="<?= $trade->side == 'BUY' ? 'text-success' : 'text-danger' ?>"><?= $trade->side ?></span></p>
-                        <p><strong>Type:</strong> 
-                            <span class="badge <?= $trade->trade_type == 'futures' ? 'bg-warning text-dark' : 'bg-info' ?>">
+                        <p><strong>Type:</strong>
+                            <?php
+                            $type_badges = [
+                                'futures' => 'bg-warning text-dark',
+                                'spot' => 'bg-info',
+                                'forex' => 'bg-success',
+                                'indices' => 'bg-primary',
+                                'commodities' => 'bg-danger'
+                            ];
+                            $type_class = $type_badges[$trade->trade_type] ?? 'bg-secondary';
+                            ?>
+                            <span class="badge <?= $type_class ?>">
                                 <?= ucfirst($trade->trade_type) ?>
                             </span>
                         </p>
                         <p><strong>Timeframe:</strong> <?= $trade->timeframe ?></p>
                         <p><strong>Position ID:</strong> <?= isset($trade->position_id) ? $trade->position_id : 'N/A' ?></p>
                     </div>
-                    <div class="col-md-6">                        
-                        <p><strong>Status:</strong> 
+                    <div class="col-md-6">
+                        <p><strong>Status:</strong>
                             <span class="badge <?= $trade->status == 'open' ? 'bg-primary' : 'bg-success' ?>">
                                 <?= ucfirst($trade->status) ?>
                             </span>
                         </p>
                         <p><strong>Order ID:</strong> <?= $trade->order_id ? $trade->order_id : 'N/A' ?></p>
+                        <?php if ($trade->mt_signal_id): ?>
+                            <p><strong>MT Signal ID:</strong>
+                                <a href="<?= base_url('mt_dashboard/signals?signal_id=' . $trade->mt_signal_id) ?>">
+                                    <?= $trade->mt_signal_id ?>
+                                </a>
+                            </p>
+                        <?php endif; ?>
                         <p><strong>Opened:</strong> <?= date('Y-m-d H:i:s', strtotime($trade->created_at)) ?></p>
                         <?php if ($trade->status == 'closed' && $trade->closed_at): ?>
                             <p><strong>Closed:</strong> <?= date('Y-m-d H:i:s', strtotime($trade->closed_at)) ?></p>
@@ -51,7 +73,7 @@
                 </div>
             </div>
         </div>
-        
+
         <div class="card mb-4">
             <div class="card-header">
                 <h5 class="mb-0">Trade Performance</h5>
@@ -70,11 +92,11 @@
                         <?php if (isset($trade->pnl)): ?>
                             <?php $pnl_class = $trade->pnl >= 0 ? 'text-profit' : 'text-loss'; ?>
                             <p><strong>PNL:</strong> <span class="<?= $pnl_class ?>"><?= number_format($trade->pnl, 2) ?> USDT</span></p>
-                            
+
                             <?php if ($trade->entry_price > 0 && $trade->quantity > 0): ?>
-                                <?php 
-                                    $total_invested = $trade->entry_price * $trade->quantity / $trade->leverage;
-                                    $pnl_percentage = $total_invested > 0 ? ($trade->pnl / $total_invested) * 100 : 0;
+                                <?php
+                                $total_invested = $trade->entry_price * $trade->quantity / $trade->leverage;
+                                $pnl_percentage = $total_invested > 0 ? ($trade->pnl / $total_invested) * 100 : 0;
                                 ?>
                                 <p><strong>PNL %:</strong> <span class="<?= $pnl_class ?>"><?= number_format($pnl_percentage, 2) ?>%</span></p>
                             <?php endif; ?>
@@ -84,7 +106,7 @@
             </div>
         </div>
     </div>
-    
+
     <div class="col-md-4">
         <div class="card mb-4">
             <div class="card-header">

@@ -8,21 +8,29 @@
 <div class="card mb-4">
     <div class="card-body">
         <?= form_open('trades', ['method' => 'get', 'class' => 'row g-3']) ?>
-            <div class="col-md-3">
-                <label for="status" class="form-label">Status</label>
-                <select class="form-select" id="status" name="status">
-                    <option value="" <?= $this->input->get('status') === null ? 'selected' : '' ?>>All</option>
-                    <option value="open" <?= $this->input->get('status') === 'open' ? 'selected' : '' ?>>Open</option>
-                    <option value="closed" <?= $this->input->get('status') === 'closed' ? 'selected' : '' ?>>Closed</option>
+            <div class="col-md-2">
+                <label for="platform" class="form-label">Platform</label>
+                <select class="form-select" id="platform" name="platform">
+                    <option value="" <?= empty($current_platform) ? 'selected' : '' ?>>All Platforms</option>
+                    <option value="bingx" <?= $current_platform === 'bingx' ? 'selected' : '' ?>>BingX</option>
+                    <option value="metatrader" <?= $current_platform === 'metatrader' ? 'selected' : '' ?>>MetaTrader</option>
                 </select>
             </div>
-            <div class="col-md-6">
+            <div class="col-md-2">
+                <label for="status" class="form-label">Status</label>
+                <select class="form-select" id="status" name="status">
+                    <option value="" <?= empty($current_status) ? 'selected' : '' ?>>All</option>
+                    <option value="open" <?= $current_status === 'open' ? 'selected' : '' ?>>Open</option>
+                    <option value="closed" <?= $current_status === 'closed' ? 'selected' : '' ?>>Closed</option>
+                </select>
+            </div>
+            <div class="col-md-5">
                 <label for="strategy" class="form-label">Strategy</label>
                 <select class="form-select" id="strategy" name="strategy">
-                    <option value="">All</option>
+                    <option value="">All Strategies</option>
                     <?php foreach ($strategies as $strategy): ?>
-                        <option value="<?= $strategy->id ?>" <?= $this->input->get('strategy') == $strategy->id ? 'selected' : '' ?>>
-                            <?= $strategy->name ?>
+                        <option value="<?= $strategy->id ?>" <?= $current_strategy == $strategy->id ? 'selected' : '' ?>>
+                            <?= $strategy->name ?> (<?= ucfirst($strategy->platform) ?> - <?= ucfirst($strategy->type) ?>)
                         </option>
                     <?php endforeach; ?>
                 </select>
@@ -33,6 +41,14 @@
                 </button>
             </div>
         <?= form_close() ?>
+        
+        <?php if (!empty($current_platform) || !empty($current_status) || !empty($current_strategy)): ?>
+            <div class="mt-2">
+                <a href="<?= base_url('trades') ?>" class="btn btn-sm btn-outline-secondary">
+                    <i class="fas fa-times me-1"></i>Clear Filters
+                </a>
+            </div>
+        <?php endif; ?>
     </div>
 </div>
 
@@ -43,6 +59,7 @@
                 <thead>
                     <tr>
                         <th>ID</th>
+                        <th>Platform</th>
                         <th>Symbol</th>
                         <th>Strategy</th>
                         <th>Side</th>
@@ -61,7 +78,7 @@
                 <tbody>
                     <?php if (empty($trades)): ?>
                         <tr>
-                            <td colspan="14" class="text-center py-3">No trades found</td>
+                            <td colspan="15" class="text-center py-3">No trades found</td>
                         </tr>
                     <?php else: ?>
                         <?php foreach ($trades as $trade): ?>
@@ -69,14 +86,35 @@
                                 $pnl_class = isset($trade->pnl) && $trade->pnl >= 0 ? 'text-profit' : 'text-loss';
                                 $side_class = $trade->side == 'BUY' ? 'text-success' : 'text-danger';
                                 $status_class = $trade->status == 'open' ? 'bg-primary' : 'bg-success';
+                                
+                                // Platform badge
+                                $platform_badge = $trade->platform === 'metatrader' ? 'bg-dark' : 'bg-info';
+                                
+                                // Type badges with more variety for MT
+                                $type_badges = [
+                                    'futures' => 'bg-warning text-dark',
+                                    'spot' => 'bg-info',
+                                    'forex' => 'bg-success',
+                                    'indices' => 'bg-primary',
+                                    'commodities' => 'bg-danger'
+                                ];
+                                $type_badge = $type_badges[$trade->trade_type] ?? 'bg-secondary';
                             ?>
                             <tr>
                                 <td><?= $trade->id ?></td>
+                                <td>
+                                    <span class="badge <?= $platform_badge ?>">
+                                        <?= ucfirst($trade->platform) ?>
+                                    </span>
+                                </td>
                                 <td><?= $trade->symbol ?></td>
-                                <td><?= $trade->strategy_name ?></td>
+                                <td>
+                                    <?= $trade->strategy_name ?>
+                                    <br><small class="text-muted"><?= $trade->strategy_external_id ?></small>
+                                </td>
                                 <td class="<?= $side_class ?>"><?= $trade->side ?></td>
                                 <td>
-                                    <span class="badge <?= $trade->trade_type == 'futures' ? 'bg-warning text-dark' : 'bg-info' ?>">
+                                    <span class="badge <?= $type_badge ?>">
                                         <?= ucfirst($trade->trade_type) ?>
                                     </span>
                                 </td>
@@ -99,9 +137,15 @@
                                         <i class="fas fa-eye"></i>
                                     </a>
                                     <?php if ($trade->status == 'open'): ?>
-                                        <a href="<?= base_url('trades/close/' . $trade->id) ?>" class="btn btn-sm btn-danger" onclick="return confirm('Are you sure you want to close this trade?')">
-                                            <i class="fas fa-times-circle"></i>
-                                        </a>
+                                        <?php if ($trade->platform === 'bingx'): ?>
+                                            <a href="<?= base_url('trades/close/' . $trade->id) ?>" class="btn btn-sm btn-danger" onclick="return confirm('Are you sure you want to close this trade?')">
+                                                <i class="fas fa-times-circle"></i>
+                                            </a>
+                                        <?php else: ?>
+                                            <button class="btn btn-sm btn-outline-secondary" disabled title="Close via MT EA">
+                                                <i class="fas fa-robot"></i>
+                                            </button>
+                                        <?php endif; ?>
                                     <?php endif; ?>
                                 </td>
                             </tr>
@@ -119,6 +163,13 @@
     <div class="card-header">
         <h5 class="mb-0">
             <i class="fas fa-chart-pie me-1"></i>Trading Statistics
+            <?php if (!empty($current_platform)): ?>
+                <span class="badge <?= $current_platform === 'metatrader' ? 'bg-dark' : 'bg-info' ?> ms-2">
+                    <?= ucfirst($current_platform) ?>
+                </span>
+            <?php else: ?>
+                <span class="badge bg-secondary ms-2">All Platforms</span>
+            <?php endif; ?>
         </h5>
     </div>
     <div class="card-body">
@@ -200,8 +251,10 @@
                         <h6 class="text-muted">Performance Summary</h6>
                         <p class="mb-2">
                             <i class="fas fa-info-circle me-1 text-primary"></i>
-                            These statistics reflect only your closed trades. The PNL percentage takes leverage into account by measuring
-                            gains against your real invested capital.
+                            These statistics reflect only your closed trades<?= !empty($current_platform) ? ' on ' . ucfirst($current_platform) : ' across all platforms' ?>.
+                            <?php if (empty($current_platform) || $current_platform === 'bingx'): ?>
+                                The PNL percentage accounts for leverage on BingX trades.
+                            <?php endif; ?>
                         </p>
                         <?php if ($stats['total_pnl'] >= 0): ?>
                             <div class="alert alert-success py-2 mb-0">
@@ -218,6 +271,61 @@
                 </div>
             </div>
         </div>
+        
+        <!-- Platform Breakdown (only if viewing all platforms) -->
+        <?php if (empty($current_platform)): ?>
+            <div class="row mt-3">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header">
+                            <h6 class="mb-0">Platform Breakdown</h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <?php 
+                                // Count trades by platform
+                                $bingx_trades = array_filter($trades, function($t) { return $t->platform === 'bingx' && $t->status === 'closed'; });
+                                $mt_trades = array_filter($trades, function($t) { return $t->platform === 'metatrader' && $t->status === 'closed'; });
+                                
+                                $bingx_pnl = array_sum(array_map(function($t) { return $t->pnl ?? 0; }, $bingx_trades));
+                                $mt_pnl = array_sum(array_map(function($t) { return $t->pnl ?? 0; }, $mt_trades));
+                                ?>
+                                <div class="col-md-6">
+                                    <div class="d-flex justify-content-between align-items-center p-2 border rounded">
+                                        <div>
+                                            <span class="badge bg-info">BingX</span>
+                                            <div class="mt-1">
+                                                <small class="text-muted"><?= count($bingx_trades) ?> trades</small>
+                                            </div>
+                                        </div>
+                                        <div class="text-end">
+                                            <div class="<?= $bingx_pnl >= 0 ? 'text-success' : 'text-danger' ?>">
+                                                <?= number_format($bingx_pnl, 2) ?> USDT
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="d-flex justify-content-between align-items-center p-2 border rounded">
+                                        <div>
+                                            <span class="badge bg-dark">MetaTrader</span>
+                                            <div class="mt-1">
+                                                <small class="text-muted"><?= count($mt_trades) ?> trades</small>
+                                            </div>
+                                        </div>
+                                        <div class="text-end">
+                                            <div class="<?= $mt_pnl >= 0 ? 'text-success' : 'text-danger' ?>">
+                                                <?= number_format($mt_pnl, 2) ?> USDT
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        <?php endif; ?>
     </div>
 </div>
 <?php endif; ?>
