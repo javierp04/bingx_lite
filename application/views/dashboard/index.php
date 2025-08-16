@@ -42,14 +42,7 @@
         <div class="card">
             <div class="card-body">
                 <h5 class="card-title">Active Trades</h5>
-                <h2 class="mb-0"><?= count($open_trades) ?></h2>
-                <?php
-                $bingx_count = count(array_filter($open_trades, function($t) { return $t->platform === 'bingx'; }));
-                $mt_count = count(array_filter($open_trades, function($t) { return $t->platform === 'metatrader'; }));
-                ?>
-                <?php if (empty($current_platform)): ?>
-                    <small class="text-muted">BingX: <?= $bingx_count ?> | MT: <?= $mt_count ?></small>
-                <?php endif; ?>
+                <h2 class="mb-0"><?= count($open_trades) ?></h2>                
             </div>
         </div>
     </div>
@@ -75,8 +68,7 @@
                 }
                 $pnl_class = $total_pnl >= 0 ? 'text-profit' : 'text-loss';
                 ?>
-                <h2 class="mb-0 <?= $pnl_class ?>" id="total-pnl"><?= number_format($total_pnl, 2) ?> USDT</h2>
-                <small class="text-muted">BingX only (real-time)</small>
+                <h2 class="mb-0 <?= $pnl_class ?>" id="total-pnl"><?= number_format($total_pnl, 2) ?> USDT</h2>                
             </div>
         </div>
     </div>
@@ -195,42 +187,6 @@
         </div>
     </div>
 </div>
-
-<!-- Webhook URLs Card (Simplified) -->
-<div class="card">
-    <div class="card-header">
-        <h5 class="mb-0">
-            <i class="fas fa-webhook me-1"></i>Webhook URLs
-        </h5>
-    </div>
-    <div class="card-body">
-        <div class="row">
-            <div class="col-md-6">
-                <label class="form-label"><strong>BingX Webhook:</strong></label>
-                <div class="input-group">
-                    <input type="text" class="form-control" value="<?= base_url('webhook/tradingview') ?>" readonly>
-                    <button class="btn btn-outline-secondary" onclick="copyWebhookUrl(this.previousElementSibling)">
-                        <i class="fas fa-copy"></i>
-                    </button>
-                </div>
-            </div>
-            <div class="col-md-6">
-                <label class="form-label"><strong>MetaTrader Webhook:</strong></label>
-                <div class="input-group">
-                    <input type="text" class="form-control" value="<?= base_url('metatrader/webhook') ?>" readonly>
-                    <button class="btn btn-outline-secondary" onclick="copyWebhookUrl(this.previousElementSibling)">
-                        <i class="fas fa-copy"></i>
-                    </button>
-                </div>
-            </div>
-        </div>
-        <div class="alert alert-info mt-3 mb-0">
-            <i class="fas fa-info-circle me-2"></i>
-            Use these URLs in your TradingView alerts. Need to test signals or check API connections? Visit the <a href="<?= base_url('debug') ?>" class="alert-link">Debug Panel</a>.
-        </div>
-    </div>
-</div>
-
 <!-- Estilos adicionales para el precio de BTC -->
 <style>
     .btc-price-container {
@@ -522,22 +478,5 @@
         const minutes = now.getMinutes().toString().padStart(2, '0');
         const seconds = now.getSeconds().toString().padStart(2, '0');
         return `${hours}:${minutes}:${seconds}`;
-    }
-
-    // Función para copiar la URL del webhook
-    function copyWebhookUrl(element) {
-        element.select();
-        document.execCommand('copy');
-
-        // Mostrar confirmación
-        const button = element.nextElementSibling;
-        if (button) {
-            const originalText = button.innerHTML;
-            button.innerHTML = '<i class="fas fa-check"></i> Copied!';
-
-            setTimeout(function() {
-                button.innerHTML = originalText;
-            }, 2000);
-        }
     }
 </script>
