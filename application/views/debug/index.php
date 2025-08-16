@@ -1,6 +1,6 @@
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h1 class="h3 mb-0">
-        <i class="fas fa-bug me-2"></i>Debug Panel
+        <i class="fas fa-bug me-2"></i>Debug Panel - MT Circuit Updated
     </h1>
     <div class="btn-group">
         <a href="<?= base_url('dashboard') ?>" class="btn btn-secondary">
@@ -22,16 +22,11 @@
                 </h5>
             </div>
             <div class="card-body">
-                <p class="text-muted mb-3">
-                    Test webhook signals for both platforms. Use the templates below to generate proper JSON format,
-                    then send to either MetaTrader or BingX for testing.
-                </p>
-
                 <div class="mb-3">
                     <label for="signal_data" class="form-label">Signal JSON Data</label>
                     <textarea class="form-control" id="signal_data" name="signal_data" rows="15" placeholder="Paste or generate your webhook JSON here..." required></textarea>
                     <div class="form-text">
-                        This should be the exact JSON that TradingView would send to the webhook endpoint.
+                        Position IDs now use TradingView format: "open long|123456", "close short|789012", etc.
                     </div>
                 </div>
 
@@ -53,6 +48,41 @@
                     <button type="button" class="btn btn-info" onclick="testSignal('bingx')">
                         <i class="fas fa-bitcoin me-1"></i>Test BingX
                     </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- EA Testing Section -->
+        <div class="card mt-4">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-robot me-1"></i>EA Execution Testing
+                </h5>
+            </div>
+            <div class="card-body">
+                <p class="text-muted mb-3">
+                    Test the EA confirmation flow. First send a MT signal above, then use these tools to simulate EA responses.
+                </p>
+
+                <div class="row">
+                    <div class="col-md-6">
+                        <label for="test_position_id" class="form-label">Position ID</label>
+                        <input type="text" class="form-control" id="test_position_id" placeholder="e.g., open long|123456">
+                    </div>
+                    <div class="col-md-3">
+                        <label for="test_execution_price" class="form-label">Execution Price</label>
+                        <input type="number" class="form-control" id="test_execution_price" step="0.00001" placeholder="1.08923">
+                    </div>
+                    <div class="col-md-3 d-flex align-items-end">
+                        <div class="btn-group w-100">
+                            <button class="btn btn-success" onclick="confirmExecution('success')">
+                                <i class="fas fa-check me-1"></i>Success
+                            </button>
+                            <button class="btn btn-danger" onclick="confirmExecution('failed')">
+                                <i class="fas fa-times me-1"></i>Failed
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -116,6 +146,11 @@
                     </div>
                 </div>
 
+                <!-- Test Results - Unified -->
+                <div id="test_results" class="mt-3" style="display: none;">
+                    <h6><i class="fas fa-clipboard-list me-1"></i>Test Results:</h6>
+                    <div id="test_content" class="border rounded p-3 bg-light"></div>
+                </div>
                 <!-- API Response Display -->
                 <div id="api_response" class="mt-3" style="display: none;">
                     <h6>API Response:</h6>
@@ -173,10 +208,10 @@
                 </div>
 
                 <div class="mb-3">
-                    <label for="template_operation" class="form-label">Tipo de Operación</label>
+                    <label for="template_operation" class="form-label">Operation Type</label>
                     <select class="form-select form-select-sm" id="template_operation">
-                        <option value="ABRIR">ABRIR</option>
-                        <option value="CERRAR">CERRAR</option>
+                        <option value="ABRIR">OPEN</option>
+                        <option value="CERRAR">CLOSE</option>
                     </select>
                 </div>
 
@@ -189,8 +224,6 @@
                     <label for="template_quantity" class="form-label">Quantity</label>
                     <input type="number" class="form-control form-control-sm" id="template_quantity" value="0.001" step="0.0001">
                 </div>
-
-
 
                 <div class="mb-3">
                     <label for="template_leverage" class="form-label">Leverage</label>
@@ -212,9 +245,6 @@
                         <option value="240">4 Hours</option>
                     </select>
                 </div>
-
-
-
             </div>
         </div>
 
@@ -255,6 +285,16 @@
                         </button>
                     </div>
                 </div>
+
+                <div class="mb-2">
+                    <strong>MT Confirm Execution:</strong>
+                    <div class="input-group input-group-sm">
+                        <input type="text" class="form-control" value="<?= base_url('api/mt/confirm_execution') ?>" readonly>
+                        <button class="btn btn-outline-secondary" onclick="copyToClipboard(this.previousElementSibling)">
+                            <i class="fas fa-copy"></i>
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -275,9 +315,6 @@
     </div>
 </div>
 
-<!-- Success/Error Messages Display -->
-<div id="alert_container" class="mt-3"></div>
-
 <script>
     // Signal templates for different platforms
     const signalTemplates = {
@@ -287,7 +324,7 @@
                 strategy_id: null,
                 ticker: null,
                 timeframe: null,
-                action: null, // Will be set based on operation type
+                action: null,
                 quantity: null,
                 leverage: null,
                 environment: null,
@@ -298,7 +335,7 @@
                 strategy_id: null,
                 ticker: null,
                 timeframe: null,
-                action: null, // Will be set based on operation type
+                action: null,
                 quantity: null,
                 leverage: null,
                 environment: null,
@@ -311,7 +348,7 @@
                 strategy_id: null,
                 ticker: null,
                 timeframe: null,
-                action: null, // Will be set based on operation type
+                action: null,
                 quantity: null,
                 position_id: null
             },
@@ -320,7 +357,7 @@
                 strategy_id: null,
                 ticker: null,
                 timeframe: null,
-                action: null, // Will be set based on operation type
+                action: null,
                 quantity: null,
                 position_id: null
             }
@@ -328,16 +365,16 @@
     };
 
     function updatePlatformFields() {
-        const platform = document.getElementById('template_platform').value;        
+        const platform = document.getElementById('template_platform').value;
         const environmentField = document.getElementById('environment_field');
         const symbolInput = document.getElementById('template_symbol');
 
-        if (platform === 'metatrader') {            
-            environmentField.style.display = 'none'; // Hide environment for MT
+        if (platform === 'metatrader') {
+            environmentField.style.display = 'none';
             symbolInput.value = 'EURUSD';
             symbolInput.placeholder = 'e.g., EURUSD, GBPUSD';
-        } else {            
-            environmentField.style.display = 'block'; // Show environment for BingX
+        } else {
+            environmentField.style.display = 'block';
             symbolInput.value = 'BTCUSDT';
             symbolInput.placeholder = 'e.g., BTCUSDT';
         }
@@ -367,9 +404,21 @@
         template.leverage = parseInt(document.getElementById('template_leverage').value);
         template.environment = document.getElementById('template_environment').value;
 
-
-        // Generate random position ID
-        template.position_id = Math.floor(100000 + Math.random() * 900000).toString();
+        // Generate TradingView-style position ID
+        const randomId = Math.floor(100000 + Math.random() * 900000);
+        if (direction === 'long') {
+            if (operation === 'ABRIR') {
+                template.position_id = `open long|${randomId}`;
+            } else {
+                template.position_id = `close long|${randomId}`;
+            }
+        } else { // short
+            if (operation === 'ABRIR') {
+                template.position_id = `open short|${randomId}`;
+            } else {
+                template.position_id = `close short|${randomId}`;
+            }
+        }
 
         // Load into textarea
         document.getElementById('signal_data').value = JSON.stringify(template, null, 2);
@@ -382,7 +431,7 @@
         const signalData = document.getElementById('signal_data').value;
 
         if (!signalData.trim()) {
-            showAlert('Please enter signal data before testing.', 'warning');
+            showTestResult(false, 'Please enter signal data before testing.');
             return;
         }
 
@@ -390,13 +439,15 @@
         try {
             JSON.parse(signalData);
         } catch (e) {
-            showAlert('Invalid JSON format. Please check your signal data.', 'danger');
+            showTestResult(false, 'Invalid JSON format. Please check your signal data.');
             return;
         }
 
         const url = platform === 'metatrader' ?
             '<?= base_url('debug/test_mt_signal') ?>' :
             '<?= base_url('debug/test_bingx_signal') ?>';
+
+        showTestInProgress(`Testing ${platform.toUpperCase()} signal...`);
 
         fetch(url, {
                 method: 'POST',
@@ -408,14 +459,184 @@
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    showAlert(`${platform.toUpperCase()} signal sent successfully!`, 'success');
+                    let successMsg = `${platform.toUpperCase()} signal sent successfully!`;
+                    if (platform === 'metatrader') {
+                        successMsg += ' Signal queued for EA processing. Use EA testing below to confirm execution.';
+                    }
+                    showTestResult(true, successMsg);
                 } else {
-                    showAlert(`${platform.toUpperCase()} signal failed: ${data.message}`, 'danger');
+                    showTestResult(false, `${platform.toUpperCase()} signal failed: ${data.message}`);
                 }
             })
             .catch(error => {
-                showAlert(`Error testing ${platform} signal: ${error.message}`, 'danger');
+                showTestResult(false, `Error testing ${platform} signal: ${error.message}`);
             });
+    }
+
+    function confirmExecution(status) {
+        const positionId = document.getElementById('test_position_id').value;
+        const executionPrice = document.getElementById('test_execution_price').value;
+
+        if (!positionId) {
+            showTestResult(false, 'Please enter a position ID');
+            return;
+        }
+
+        const data = {
+            position_id: positionId,
+            status: status
+        };
+
+        if (status === 'success' && executionPrice) {
+            data.execution_price = parseFloat(executionPrice);
+        }
+
+        if (status === 'failed') {
+            data.error_message = 'Simulated failure from debug panel';
+        }
+
+        showTestInProgress(`Confirming execution as ${status.toUpperCase()}...`);
+
+        fetch('<?= base_url('debug/test_confirm_execution') ?>', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                },
+                body: new URLSearchParams(data)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showTestResult(true, `Execution confirmed as ${status.toUpperCase()}! Check trades table for results.`);
+                } else {
+                    showTestResult(false, `Confirmation failed: ${data.message}`);
+                }
+            })
+            .catch(error => {
+                showTestResult(false, `Error confirming execution: ${error.message}`);
+            });
+    }
+
+    // BingX API Testing Functions - AJAX Version
+    function testSpotBalance() {
+        showTestInProgress('Testing Spot Balance...');
+
+        fetch('<?= base_url('debug/test_spot_balance') ?>', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                showTestResult(data.success, data.message, data.data);
+            })
+            .catch(error => {
+                showTestResult(false, 'Error: ' + error.message);
+            });
+    }
+
+    function testFuturesBalance() {
+        showTestInProgress('Testing Futures Balance...');
+
+        fetch('<?= base_url('debug/test_futures_balance') ?>', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                showTestResult(data.success, data.message, data.data);
+            })
+            .catch(error => {
+                showTestResult(false, 'Error: ' + error.message);
+            });
+    }
+
+    function testSpotPrice() {
+        const symbol = document.getElementById('test_symbol').value;
+        showTestInProgress('Testing Spot Price...');
+
+        fetch('<?= base_url('debug/test_spot_price') ?>', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                },
+                body: `symbol=${encodeURIComponent(symbol)}`
+            })
+            .then(response => response.json())
+            .then(data => {
+                showTestResult(data.success, data.message, data.data);
+            })
+            .catch(error => {
+                showTestResult(false, 'Error: ' + error.message);
+            });
+    }
+
+    function testFuturesPrice() {
+        const symbol = document.getElementById('test_symbol').value;
+        showTestInProgress('Testing Futures Price...');
+
+        fetch('<?= base_url('debug/test_futures_price') ?>', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                },
+                body: `symbol=${encodeURIComponent(symbol)}`
+            })
+            .then(response => response.json())
+            .then(data => {
+                showTestResult(data.success, data.message, data.data);
+            })
+            .catch(error => {
+                showTestResult(false, 'Error: ' + error.message);
+            });
+    }
+
+    function showTestInProgress(message) {
+        const status = document.getElementById('connection_status');
+        status.innerHTML = `<span class="badge bg-warning"><i class="fas fa-spinner fa-spin me-1"></i>${message}</span>`;
+
+        // Hide previous results
+        document.getElementById('test_results').style.display = 'none';
+    }
+
+    function showTestResult(success, message, data = null) {
+        const status = document.getElementById('connection_status');
+        const resultsDiv = document.getElementById('test_results');
+        const contentDiv = document.getElementById('test_content');
+
+        // Update status
+        if (success) {
+            status.innerHTML = '<span class="badge bg-success"><i class="fas fa-check me-1"></i>Test Completed</span>';
+        } else {
+            status.innerHTML = '<span class="badge bg-danger"><i class="fas fa-times me-1"></i>Test Failed</span>';
+        }
+
+        // Show results with timestamp
+        const timestamp = new Date().toLocaleTimeString();
+        let resultHtml = `
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <h6 class="mb-0">Latest Test Result</h6>
+                <small class="text-muted">${timestamp}</small>
+            </div>
+            <div class="alert alert-${success ? 'success' : 'danger'} mb-2">
+                <strong><i class="fas fa-${success ? 'check-circle' : 'exclamation-triangle'} me-1"></i>${success ? 'Success' : 'Error'}:</strong> ${message}
+            </div>`;
+
+        if (data) {
+            resultHtml += data;
+        }
+
+        contentDiv.innerHTML = resultHtml;
+        resultsDiv.style.display = 'block';
+
+        // Scroll to results
+        resultsDiv.scrollIntoView({
+            behavior: 'smooth',
+            block: 'nearest'
+        });
     }
 
     function validateJson() {
@@ -458,34 +679,6 @@
         }
     }
 
-    // BingX API Testing Functions
-    function testSpotBalance() {
-        showApiTest('Testing Spot Balance...');
-        window.location.href = '<?= base_url('debug/test_spot_balance') ?>';
-    }
-
-    function testFuturesBalance() {
-        showApiTest('Testing Futures Balance...');
-        window.location.href = '<?= base_url('debug/test_futures_balance') ?>';
-    }
-
-    function testSpotPrice() {
-        const symbol = document.getElementById('test_symbol').value;
-        showApiTest('Testing Spot Price...');
-        window.location.href = `<?= base_url('debug/test_spot_price') ?>?symbol=${encodeURIComponent(symbol)}`;
-    }
-
-    function testFuturesPrice() {
-        const symbol = document.getElementById('test_symbol').value;
-        showApiTest('Testing Futures Price...');
-        window.location.href = `<?= base_url('debug/test_futures_price') ?>?symbol=${encodeURIComponent(symbol)}`;
-    }
-
-    function showApiTest(message) {
-        const status = document.getElementById('connection_status');
-        status.innerHTML = `<span class="badge bg-warning">${message}</span>`;
-    }
-
     function copyToClipboard(element) {
         element.select();
         document.execCommand('copy');
@@ -501,23 +694,10 @@
         }, 1500);
     }
 
+    // Legacy function for backwards compatibility (remove showAlert calls)
     function showAlert(message, type) {
-        const container = document.getElementById('alert_container');
-        const alertHtml = `
-        <div class="alert alert-${type} alert-dismissible fade show" role="alert">
-            ${message}
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        </div>
-    `;
-        container.innerHTML = alertHtml;
-
-        // Auto dismiss after 5 seconds
-        setTimeout(() => {
-            const alert = container.querySelector('.alert');
-            if (alert) {
-                alert.remove();
-            }
-        }, 5000);
+        // Convert to new unified system
+        showTestResult(type === 'success', message);
     }
 
     // Initialize page

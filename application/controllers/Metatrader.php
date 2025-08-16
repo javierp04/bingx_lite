@@ -51,24 +51,25 @@ class Metatrader extends CI_Controller
         $this->_send_response(200, 'Success', $signals);
     }
 
-    // Endpoint para marcar señal como procesada
-    public function mark_signal_processed()
+    // Endpoint para confirmar ejecución desde EA
+    public function confirm_execution()
     {
-        $signal_id = $this->input->post('signal_id');
-        $status = $this->input->post('status'); // 'processed' o 'failed'
-        $ea_response = $this->input->post('response'); // Respuesta del EA
+        $position_id = $this->input->post('position_id');
+        $status = $this->input->post('status'); // 'success' o 'failed'
+        $execution_price = $this->input->post('execution_price'); // Precio real de ejecución
+        $error_message = $this->input->post('error_message'); // Si failed
         
-        if (!$signal_id || !$status) {
-            $this->_send_response(400, 'signal_id and status required');
+        if (!$position_id || !$status) {
+            $this->_send_response(400, 'position_id and status required');
             return;
         }
 
-        $updated = $this->mt_signal_processor->mark_signal_processed($signal_id, $status, $ea_response);
+        $result = $this->mt_signal_processor->confirm_execution($position_id, $status, $execution_price, $error_message);
         
-        if ($updated) {
-            $this->_send_response(200, 'Signal updated successfully');
+        if ($result === true) {
+            $this->_send_response(200, 'Execution confirmed successfully');
         } else {
-            $this->_send_response(400, 'Failed to update signal');
+            $this->_send_response(400, $result);
         }
     }
 

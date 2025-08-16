@@ -42,6 +42,15 @@ class Mt_signal_model extends CI_Model {
         return $this->db->get_where('mt_signals', array('id' => $id))->row();
     }
     
+    public function get_signal_by_position_id($position_id) {
+        $this->db->where('status', 'pending');
+        $this->db->like('signal_data', '"position_id":"' . $position_id . '"');
+        $this->db->order_by('created_at', 'DESC');
+        $this->db->limit(1);
+        
+        return $this->db->get('mt_signals')->row();
+    }
+    
     public function get_signals_by_user($user_id, $limit = 100) {
         $this->db->select('mt_signals.*, strategies.strategy_id as strategy_external_id, strategies.name as strategy_name');
         $this->db->from('mt_signals');

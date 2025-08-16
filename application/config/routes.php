@@ -54,7 +54,7 @@ $route['webhook/tradingview'] = 'webhook/tradingview';
 // MetaTrader routes
 $route['metatrader/webhook'] = 'metatrader/webhook';
 $route['api/mt/pending_signals'] = 'metatrader/get_pending_signals';
-$route['api/mt/mark_processed'] = 'metatrader/mark_signal_processed';
+$route['api/mt/confirm_execution'] = 'metatrader/confirm_execution';
 
 // Debug routes
 $route['debug'] = 'debug';

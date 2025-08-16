@@ -99,9 +99,6 @@ class Mt_signal_processor
 
         $this->_log_debug('Signal processed successfully', $json_data);
         
-        // Create or close MT trade
-        $this->_handle_mt_trade($data, $strategy, $signal_id);
-
         return true;
     }
 
@@ -118,194 +115,194 @@ class Mt_signal_processor
     }
 
     /**
-     * Mark signal as processed
+     * Confirm execution from EA
      * 
-     * @param int $signal_id Signal ID
-     * @param string $status Status (processed, failed)
-     * @param string $ea_response Optional EA response
-     * @return bool Success status
+     * @param string $position_id Position ID from TradingView
+     * @param string $status 'success' or 'failed'
+     * @param float $execution_price Actual execution price (optional)
+     * @param string $error_message Error message if failed (optional)
+     * @return mixed true on success, error message string on failure
      */
-    public function mark_signal_processed($signal_id, $status, $ea_response = null)
+    public function confirm_execution($position_id, $status, $execution_price = null, $error_message = null)
     {
-        $result = $this->CI->Mt_signal_model->update_signal_status($signal_id, $status, $ea_response);
-
-        if ($result) {
-            // Log the action
-            $log_data = array(
-                'user_id' => $this->CI->session->userdata('user_id'),
-                'action' => 'mt_signal_' . $status,
-                'description' => 'Signal ' . $signal_id . ' marked as ' . $status .
-                    ($ea_response ? ' with response: ' . $ea_response : '')
+        // Find pending signal with this position_id
+        $signal = $this->_find_signal_by_position_id($position_id);
+        
+        if (!$signal) {
+            $this->_log_error('No pending signal found for position_id', $position_id);
+            return 'No pending signal found for position_id: ' . $position_id;
+        }
+        
+        $signal_data = json_decode($signal->signal_data);
+        
+        if ($status === 'success') {
+            // Determine if this is an open or close action
+            if (in_array($signal_data->action, ['buy', 'short'])) {
+                // Opening position - create trade
+                $result = $this->_create_trade_from_execution($signal, $execution_price);
+            } else {
+                // Closing position - close existing trade
+                $result = $this->_close_trade_from_execution($signal, $execution_price);
+            }
+            
+            if ($result === true) {
+                // Mark signal as processed
+                $this->CI->Mt_signal_model->update_signal_status(
+                    $signal->id, 
+                    'processed', 
+                    'Execution confirmed by EA'
+                );
+                
+                $this->_log_debug('Execution confirmed successfully', 
+                    "Signal ID: {$signal->id}, Position ID: {$position_id}, Action: {$signal_data->action}");
+                
+                return true;
+            } else {
+                // Mark signal as failed
+                $this->CI->Mt_signal_model->update_signal_status(
+                    $signal->id, 
+                    'failed', 
+                    'Failed to process execution: ' . $result
+                );
+                
+                return $result;
+            }
+        } else {
+            // Execution failed
+            $this->CI->Mt_signal_model->update_signal_status(
+                $signal->id, 
+                'failed', 
+                $error_message ?: 'Execution failed in EA'
             );
-            $this->CI->Log_model->add_log($log_data);
+            
+            $this->_log_error('Execution failed', 
+                "Signal ID: {$signal->id}, Position ID: {$position_id}, Error: " . ($error_message ?: 'Unknown'));
+            
+            return true; // Return true because we handled the failure correctly
         }
-
-        return $result;
     }
 
     /**
-     * Create or close MetaTrader trade based on signal action
+     * Find signal by position_id
      * 
-     * @param object $signal_data Decoded signal data
-     * @param object $strategy Strategy object  
-     * @param int $signal_id Signal ID
-     * @return bool Success status
+     * @param string $position_id Position ID from TradingView
+     * @return object|null Signal object or null
      */
-    private function _handle_mt_trade($signal_data, $strategy, $signal_id)
+    private function _find_signal_by_position_id($position_id)
     {
-        // Load Trade model
+        // Load Trade model if not loaded
         $this->CI->load->model('Trade_model');
-
-        if (in_array($signal_data->action, ['buy', 'short'])) {
-            // Open position
-            return $this->_create_mt_trade($signal_data, $strategy, $signal_id);
-        } else if (in_array($signal_data->action, ['sell', 'cover'])) {
-            // Close position
-            return $this->_close_mt_trade($signal_data, $strategy, $signal_id);
-        }
-
-        return true; // Unknown action, but don't fail
+        
+        return $this->CI->Mt_signal_model->get_signal_by_position_id($position_id);
     }
 
     /**
-     * Create MT trade for buy/short signals
+     * Create trade from successful execution
      * 
-     * @param object $signal_data Signal data
-     * @param object $strategy Strategy object
-     * @param int $signal_id Signal ID
-     * @return bool Success status
+     * @param object $signal Signal object
+     * @param float $execution_price Actual execution price
+     * @return mixed true on success, error message on failure
      */
-    private function _create_mt_trade($signal_data, $strategy, $signal_id)
+    private function _create_trade_from_execution($signal, $execution_price = null)
     {
+        $signal_data = json_decode($signal->signal_data);
+        
+        // Load Trade model if not loaded
+        $this->CI->load->model('Trade_model');
+        
+        // Get strategy
+        $strategy = $this->CI->Strategy_model->get_strategy_by_id($signal->strategy_id);
+        if (!$strategy) {
+            return 'Strategy not found for signal';
+        }
+        
         // Determine side
         $side = $signal_data->action == 'buy' ? 'BUY' : 'SELL';
-
-        // Get price from signal or use 0 as placeholder
-        $price = isset($signal_data->price) ? (float)$signal_data->price : 0;
-
+        
+        // Use execution price or signal price or 0 as fallback
+        $price = $execution_price ?: (isset($signal_data->price) ? (float)$signal_data->price : 0);
+        
         $trade_data = array(
             'user_id' => $signal_data->user_id,
             'strategy_id' => $strategy->id,
             'symbol' => $signal_data->ticker,
             'timeframe' => isset($signal_data->timeframe) ? $signal_data->timeframe . 'm' : '60m',
             'side' => $side,
-            'trade_type' => $strategy->type, // forex, indices, commodities
+            'trade_type' => $strategy->type,
             'platform' => 'metatrader',
-            'environment' => 'production', // MT doesn't have sandbox
+            'environment' => 'production',
             'quantity' => isset($signal_data->quantity) ? (float)$signal_data->quantity : 0.01,
             'entry_price' => $price,
             'current_price' => $price,
-            'leverage' => 1, // MT doesn't use leverage concept like crypto
+            'leverage' => 1,
             'pnl' => 0,
             'status' => 'open',
-            'position_id' => isset($signal_data->position_id) ? $signal_data->position_id : null,
-            'mt_signal_id' => $signal_id,
-            'webhook_data' => json_encode($signal_data)
+            'position_id' => $signal_data->position_id,
+            'mt_signal_id' => $signal->id,
+            'webhook_data' => $signal->signal_data
         );
-
+        
         $trade_id = $this->CI->Trade_model->add_trade($trade_data);
-
+        
         if ($trade_id) {
-            $this->_log_debug('MT Trade created', "Trade ID: $trade_id, Signal ID: $signal_id, Action: {$signal_data->action}");
+            $this->_log_debug('MT Trade created from execution', 
+                "Trade ID: $trade_id, Signal ID: {$signal->id}, Position ID: {$signal_data->position_id}, Price: $price");
             return true;
         }
-
-        $this->_log_error('Failed to create MT trade', "Signal ID: $signal_id");
-        return false;
+        
+        return 'Failed to create trade in database';
     }
 
     /**
-     * Close MT trade for sell/cover signals
+     * Close trade from successful execution
      * 
-     * @param object $signal_data Signal data
-     * @param object $strategy Strategy object
-     * @param int $signal_id Signal ID
-     * @return bool Success status
+     * @param object $signal Signal object
+     * @param float $execution_price Actual execution price
+     * @return mixed true on success, error message on failure
      */
-    private function _close_mt_trade($signal_data, $strategy, $signal_id)
+    private function _close_trade_from_execution($signal, $execution_price = null)
     {
-        // Find matching open trade
-        $trade = $this->_find_mt_trade_to_close($signal_data, $strategy);
-
+        $signal_data = json_decode($signal->signal_data);
+        
+        // Load Trade model if not loaded
+        $this->CI->load->model('Trade_model');
+        
+        // Find the trade to close by position_id
+        $trade = $this->CI->Trade_model->get_trade_by_position_id(
+            $signal_data->position_id,
+            $signal_data->user_id,
+            $signal_data->ticker
+        );
+        
         if (!$trade) {
-            $this->_log_error(
-                'No matching MT trade found to close',
-                "Position ID: " . (isset($signal_data->position_id) ? $signal_data->position_id : 'N/A') .
-                    ", Symbol: {$signal_data->ticker}, Strategy: {$strategy->id}"
-            );
-            return false;
+            return 'No open trade found with position_id: ' . $signal_data->position_id;
         }
-
-        // Get exit price from signal or use entry price
-        $exit_price = isset($signal_data->price) ? (float)$signal_data->price : $trade->entry_price;
-
+        
+        if ($trade->status !== 'open') {
+            return 'Trade is already closed';
+        }
+        
+        // Use execution price or signal price or current entry price as fallback
+        $exit_price = $execution_price ?: 
+                     (isset($signal_data->price) ? (float)$signal_data->price : $trade->entry_price);
+        
         // Calculate PNL
         if ($trade->side == 'BUY') {
             $pnl = ($exit_price - $trade->entry_price) * $trade->quantity;
         } else {
             $pnl = ($trade->entry_price - $exit_price) * $trade->quantity;
         }
-
+        
         // Close trade
         $closed = $this->CI->Trade_model->close_trade($trade->id, $exit_price, $pnl);
-
+        
         if ($closed) {
-            $this->_log_debug(
-                'MT Trade closed',
-                "Trade ID: {$trade->id}, Signal ID: $signal_id, PNL: " . number_format($pnl, 2)
-            );
+            $this->_log_debug('MT Trade closed from execution', 
+                "Trade ID: {$trade->id}, Signal ID: {$signal->id}, Position ID: {$signal_data->position_id}, PNL: " . number_format($pnl, 2));
             return true;
         }
-
-        $this->_log_error('Failed to close MT trade', "Trade ID: {$trade->id}, Signal ID: $signal_id");
-        return false;
-    }
-
-    /**
-     * Find MT trade to close based on signal data
-     * 
-     * @param object $signal_data Signal data
-     * @param object $strategy Strategy object
-     * @return object|null Trade object or null
-     */
-    private function _find_mt_trade_to_close($signal_data, $strategy)
-    {
-        // Try to find by position_id first (most reliable)
-        if (isset($signal_data->position_id) && $signal_data->position_id) {
-            $trade = $this->CI->Trade_model->get_trade_by_position_id(
-                $signal_data->position_id,
-                $signal_data->user_id,
-                $signal_data->ticker,
-                null, // timeframe
-                null  // side - let it match any
-            );
-
-            if ($trade && $trade->platform == 'metatrader' && $trade->status == 'open') {
-                return $trade;
-            }
-        }
-
-        // Fallback: find by symbol + strategy + platform
-        $trades = $this->CI->Trade_model->get_all_trades($signal_data->user_id, 'open');
-
-        foreach ($trades as $trade) {
-            if (
-                $trade->platform == 'metatrader' &&
-                $trade->symbol == $signal_data->ticker &&
-                $trade->strategy_id == $strategy->id
-            ) {
-                // For sell action, find BUY trade (close long)
-                // For cover action, find SELL trade (close short)
-                if (
-                    ($signal_data->action == 'sell' && $trade->side == 'BUY') ||
-                    ($signal_data->action == 'cover' && $trade->side == 'SELL')
-                ) {
-                    return $trade;
-                }
-            }
-        }
-
-        return null;
+        
+        return 'Failed to close trade in database';
     }
 
     /**
