@@ -42,6 +42,12 @@ $route['systemlogs/view/(:num)'] = 'SystemLogs/view/$1';
 $route['systemlogs/search'] = 'SystemLogs/search';
 $route['systemlogs/cleanup'] = 'SystemLogs/cleanup';
 
+// Signals routes (MetaTrader only)
+$route['signals'] = 'signals';
+$route['signals/retry_signal/(:num)'] = 'signals/retry_signal/$1';
+$route['signals/delete_signal/(:num)'] = 'signals/delete_signal/$1';
+$route['signals/get_stats'] = 'signals/get_stats';
+
 // Webhook route
 $route['webhook/tradingview'] = 'webhook/tradingview';
 
@@ -50,11 +56,11 @@ $route['metatrader/webhook'] = 'metatrader/webhook';
 $route['api/mt/pending_signals'] = 'metatrader/get_pending_signals';
 $route['api/mt/mark_processed'] = 'metatrader/mark_signal_processed';
 
-// MetaTrader Dashboard routes
-$route['mt_dashboard'] = 'mt_dashboard';
-$route['mt_dashboard/signals'] = 'mt_dashboard/signals';
-$route['mt_dashboard/logs'] = 'mt_dashboard/logs';
-$route['mt_dashboard/debug'] = 'mt_dashboard/debug';
-$route['mt_dashboard/test_signal'] = 'mt_dashboard/test_signal';
-$route['mt_dashboard/retry_signal/(:num)'] = 'mt_dashboard/retry_signal/$1';
-$route['mt_dashboard/delete_signal/(:num)'] = 'mt_dashboard/delete_signal/$1';
+// Debug routes
+$route['debug'] = 'debug';
+$route['debug/test_mt_signal'] = 'debug/test_mt_signal';
+$route['debug/test_bingx_signal'] = 'debug/test_bingx_signal';
+$route['debug/test_spot_balance'] = 'debug/test_spot_balance';
+$route['debug/test_futures_balance'] = 'debug/test_futures_balance';
+$route['debug/test_spot_price'] = 'debug/test_spot_price';
+$route['debug/test_futures_price'] = 'debug/test_futures_price';

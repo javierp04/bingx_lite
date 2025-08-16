@@ -37,14 +37,11 @@
                 
                 <div class="d-flex justify-content-between align-items-center mb-3">
                     <div class="btn-group">
-                        <button type="button" class="btn btn-outline-secondary" onclick="loadTemplate('buy')">
-                            <i class="fas fa-arrow-up text-success me-1"></i>Buy Template
+                        <button type="button" class="btn btn-outline-success" onclick="loadTemplate('long')">
+                            <i class="fas fa-arrow-up me-1"></i>Long Template
                         </button>
-                        <button type="button" class="btn btn-outline-secondary" onclick="loadTemplate('sell')">
-                            <i class="fas fa-arrow-down text-danger me-1"></i>Sell Template
-                        </button>
-                        <button type="button" class="btn btn-outline-secondary" onclick="loadTemplate('close')">
-                            <i class="fas fa-times text-warning me-1"></i>Close Template
+                        <button type="button" class="btn btn-outline-danger" onclick="loadTemplate('short')">
+                            <i class="fas fa-arrow-down me-1"></i>Short Template
                         </button>
                     </div>
                 </div>
@@ -146,6 +143,15 @@
                     </select>
                 </div>
                 
+                <!-- Environment field - only for BingX -->
+                <div class="mb-3" id="environment_field">
+                    <label for="template_environment" class="form-label">Environment</label>
+                    <select class="form-select form-select-sm" id="template_environment">
+                        <option value="production">Production</option>
+                        <option value="sandbox">Sandbox</option>
+                    </select>
+                </div>
+                
                 <div class="mb-3">
                     <label for="template_user" class="form-label">User</label>
                     <select class="form-select form-select-sm" id="template_user">
@@ -163,6 +169,14 @@
                                 <?= $strategy->name ?> (<?= ucfirst($strategy->platform) ?>)
                             </option>
                         <?php endforeach; ?>
+                    </select>
+                </div>
+                
+                <div class="mb-3">
+                    <label for="template_operation" class="form-label">Tipo de Operación</label>
+                    <select class="form-select form-select-sm" id="template_operation">
+                        <option value="ABRIR">ABRIR</option>
+                        <option value="CERRAR">CERRAR</option>
                     </select>
                 </div>
                 
@@ -280,63 +294,45 @@
 // Signal templates for different platforms
 const signalTemplates = {
     bingx: {
-        buy: {
+        long: {
             user_id: null,
             strategy_id: null,
             ticker: null,
             timeframe: null,
-            action: "BUY",
+            action: null, // Will be set based on operation type
             quantity: null,
             leverage: null,
-            environment: "production",
+            environment: null,
             position_id: null
         },
-        sell: {
+        short: {
             user_id: null,
             strategy_id: null,
             ticker: null,
             timeframe: null,
-            action: "SELL",
+            action: null, // Will be set based on operation type
             quantity: null,
             leverage: null,
-            environment: "production",
-            position_id: null
-        },
-        close: {
-            user_id: null,
-            strategy_id: null,
-            ticker: null,
-            timeframe: null,
-            action: "CLOSE",
-            quantity: null,
+            environment: null,
             position_id: null
         }
     },
     metatrader: {
-        buy: {
+        long: {
             user_id: null,
             strategy_id: null,
             ticker: null,
             timeframe: null,
-            action: "buy",
+            action: null, // Will be set based on operation type
             quantity: null,
             position_id: null
         },
-        sell: {
+        short: {
             user_id: null,
             strategy_id: null,
             ticker: null,
             timeframe: null,
-            action: "short",
-            quantity: null,
-            position_id: null
-        },
-        close: {
-            user_id: null,
-            strategy_id: null,
-            ticker: null,
-            timeframe: null,
-            action: "sell", // or "cover" for shorts
+            action: null, // Will be set based on operation type
             quantity: null,
             position_id: null
         }
@@ -347,24 +343,28 @@ function updatePlatformFields() {
     const platform = document.getElementById('template_platform').value;
     const bingxFields = document.getElementById('bingx_fields');
     const mtFields = document.getElementById('mt_fields');
+    const environmentField = document.getElementById('environment_field');
     const symbolInput = document.getElementById('template_symbol');
     
     if (platform === 'metatrader') {
         bingxFields.style.display = 'none';
         mtFields.style.display = 'block';
+        environmentField.style.display = 'none'; // Hide environment for MT
         symbolInput.value = 'EURUSD';
         symbolInput.placeholder = 'e.g., EURUSD, GBPUSD';
     } else {
         bingxFields.style.display = 'block';
         mtFields.style.display = 'none';
+        environmentField.style.display = 'block'; // Show environment for BingX
         symbolInput.value = 'BTCUSDT';
         symbolInput.placeholder = 'e.g., BTCUSDT';
     }
 }
 
-function loadTemplate(action) {
+function loadTemplate(direction) {
     const platform = document.getElementById('template_platform').value;
-    const template = { ...signalTemplates[platform][action] };
+    const operation = document.getElementById('template_operation').value;
+    const template = { ...signalTemplates[platform][direction] };
     
     // Fill template with current form values
     template.user_id = parseInt(document.getElementById('template_user').value);
@@ -372,11 +372,26 @@ function loadTemplate(action) {
     template.ticker = document.getElementById('template_symbol').value;
     template.quantity = parseFloat(document.getElementById('template_quantity').value);
     
+    // Set action based on direction and operation type
     if (platform === 'bingx') {
+        // BingX uses uppercase actions
+        if (direction === 'long') {
+            template.action = operation === 'ABRIR' ? 'BUY' : 'SELL';
+        } else { // short
+            template.action = operation === 'ABRIR' ? 'SELL' : 'BUY';
+        }
+        
         template.timeframe = document.getElementById('template_timeframe').value;
         template.leverage = parseInt(document.getElementById('template_leverage').value);
-        template.environment = document.getElementById('api_environment').value;
+        template.environment = document.getElementById('template_environment').value;
     } else {
+        // MetaTrader uses lowercase actions
+        if (direction === 'long') {
+            template.action = operation === 'ABRIR' ? 'buy' : 'sell';
+        } else { // short
+            template.action = operation === 'ABRIR' ? 'short' : 'cover';
+        }
+        
         template.timeframe = parseInt(document.getElementById('template_timeframe_mt').value);
     }
     
@@ -546,7 +561,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     
     // Load default template
-    loadTemplate('buy');
+    loadTemplate('long');
 });
 </script>
 

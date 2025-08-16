@@ -50,6 +50,12 @@ class Strategy_model extends CI_Model
         return $this->db->delete('strategies');
     }
 
+    /**
+     * Get MetaTrader strategies only
+     * 
+     * @param int $user_id Optional user ID filter
+     * @return array MetaTrader strategies
+     */
     public function get_mt_strategies($user_id = null)
     {
         $this->db->where('platform', 'metatrader');

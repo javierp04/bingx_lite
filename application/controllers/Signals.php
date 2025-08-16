@@ -12,7 +12,7 @@ class Signals extends CI_Controller
             redirect('auth');
         }
         
-        // Check if user is admin (optional - adjust based on requirements)
+        // Check if user is admin
         if ($this->session->userdata('role') !== 'admin') {
             $this->session->set_flashdata('error', 'Access denied. Signals management requires admin privileges.');
             redirect('dashboard');
@@ -21,25 +21,7 @@ class Signals extends CI_Controller
     
     public function index()
     {
-        $data['title'] = 'Signals Management';
-        
-        // Get signal statistics
-        $data['stats'] = $this->get_signal_statistics();
-        
-        // Get recent signals (last 20 for overview)
-        $data['recent_signals'] = $this->Mt_signal_model->get_recent_signals(20);
-        
-        // Get EA activity (last polling times) - MT specific
-        $data['ea_activity'] = $this->Mt_signal_model->get_ea_activity();
-        
-        $this->load->view('templates/header', $data);
-        $this->load->view('signals/index', $data);
-        $this->load->view('templates/footer');
-    }
-    
-    public function management()
-    {
-        $data['title'] = 'Signal Management';
+        $data['title'] = 'MetaTrader Signals Management';
         
         // Get filter params
         $filters = array();
@@ -49,42 +31,19 @@ class Signals extends CI_Controller
         $filters['date_from'] = $this->input->get('date_from') ?: '';
         $filters['date_to'] = $this->input->get('date_to') ?: '';
         
-        // Get signals with filters (currently only MT signals exist)
+        // Get signals with filters (MetaTrader only)
         $data['signals'] = $this->Mt_signal_model->get_signals_with_filters($filters);
         
         // Get filter options
         $data['users'] = $this->User_model->get_all_users();
-        $data['strategies'] = $this->Strategy_model->get_all_strategies(); // All strategies, not just MT
+        $data['strategies'] = $this->Strategy_model->get_mt_strategies(); // Only MT strategies
         $data['filters'] = $filters;
         
-        $this->load->view('templates/header', $data);
-        $this->load->view('signals/management', $data);
-        $this->load->view('templates/footer');
-    }
-    
-    public function logs()
-    {
-        $data['title'] = 'Signal Logs';
-        
-        // Get signal-specific logs (both MT and BingX related)
-        $signal_actions = [
-            'mt_webhook_debug', 'mt_webhook_error', 'mt_signal_queued', 
-            'mt_signal_processed', 'mt_signal_failed', 'mt_debug_test',
-            'bingx_debug_test', 'webhook_debug', 'webhook_error'
-        ];
-        
-        $filters = array();
-        $filters['actions'] = $signal_actions;
-        $filters['date_from'] = $this->input->get('date_from') ?: '';
-        $filters['date_to'] = $this->input->get('date_to') ?: '';
-        $filters['user_id'] = $this->input->get('user_id') ?: '';
-        
-        $data['logs'] = $this->Log_model->get_logs(100, null, $filters);
-        $data['users'] = $this->User_model->get_all_users();
-        $data['filters'] = $filters;
+        // Get EA activity monitor
+        $data['ea_activity'] = $this->Mt_signal_model->get_ea_activity();
         
         $this->load->view('templates/header', $data);
-        $this->load->view('signals/logs', $data);
+        $this->load->view('signals/index', $data);
         $this->load->view('templates/footer');
     }
     
@@ -94,7 +53,7 @@ class Signals extends CI_Controller
         
         if (!$signal) {
             $this->session->set_flashdata('error', 'Signal not found');
-            redirect('signals/management');
+            redirect('signals');
             return;
         }
         
@@ -109,7 +68,7 @@ class Signals extends CI_Controller
         ]);
         
         $this->session->set_flashdata('success', 'Signal marked as pending for retry');
-        redirect('signals/management');
+        redirect('signals');
     }
     
     public function delete_signal($signal_id)
@@ -118,7 +77,7 @@ class Signals extends CI_Controller
         
         if (!$signal) {
             $this->session->set_flashdata('error', 'Signal not found');
-            redirect('signals/management');
+            redirect('signals');
             return;
         }
         
@@ -133,21 +92,15 @@ class Signals extends CI_Controller
         ]);
         
         $this->session->set_flashdata('success', 'Signal deleted successfully');
-        redirect('signals/management');
+        redirect('signals');
     }
     
     // AJAX endpoint for real-time updates
     public function get_stats()
     {
-        $stats = $this->get_signal_statistics();
-        echo json_encode(['success' => true, 'stats' => $stats]);
-    }
-    
-    private function get_signal_statistics()
-    {
         $stats = array();
         
-        // Count signals by status (currently only MT signals exist)
+        // Count signals by status (MetaTrader only)
         $stats['pending'] = $this->Mt_signal_model->count_signals_by_status('pending');
         $stats['processed'] = $this->Mt_signal_model->count_signals_by_status('processed');
         $stats['failed'] = $this->Mt_signal_model->count_signals_by_status('failed');
@@ -155,11 +108,6 @@ class Signals extends CI_Controller
         // Last 24h activity
         $stats['last_24h'] = $this->Mt_signal_model->count_signals_last_24h();
         
-        // Processing rate (today)
-        $today_total = $this->Mt_signal_model->count_signals_today();
-        $today_processed = $this->Mt_signal_model->count_signals_today('processed');
-        $stats['success_rate'] = $today_total > 0 ? round(($today_processed / $today_total) * 100, 1) : 0;
-        
-        return $stats;
+        echo json_encode(['success' => true, 'stats' => $stats]);
     }
 }
