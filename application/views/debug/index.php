@@ -26,17 +26,14 @@
                     <label for="signal_data" class="form-label">Signal JSON Data</label>
                     <textarea class="form-control" id="signal_data" name="signal_data" rows="15" placeholder="Paste or generate your webhook JSON here..." required></textarea>
                     <div class="form-text">
-                        Position IDs now use TradingView format: "open long|123456", "close short|789012", etc.
+                        Position IDs now use simplified format: "buy|123456", "sell|789012", etc.
                     </div>
                 </div>
 
                 <div class="d-flex justify-content-between align-items-center mb-3">
-                    <div class="btn-group">
-                        <button type="button" class="btn btn-outline-success" onclick="loadTemplate('long')">
-                            <i class="fas fa-arrow-up me-1"></i>Long Template
-                        </button>
-                        <button type="button" class="btn btn-outline-danger" onclick="loadTemplate('short')">
-                            <i class="fas fa-arrow-down me-1"></i>Short Template
+                    <div>
+                        <button type="button" class="btn btn-outline-primary" onclick="loadTemplate()">
+                            <i class="fas fa-file-code me-1"></i>Load Template
                         </button>
                     </div>
                 </div>
@@ -67,7 +64,7 @@
                 <div class="row">
                     <div class="col-md-6">
                         <label for="test_position_id" class="form-label">Position ID</label>
-                        <input type="text" class="form-control" id="test_position_id" placeholder="e.g., open long|123456">
+                        <input type="text" class="form-control" id="test_position_id" placeholder="e.g., buy|123456">
                     </div>
                     <div class="col-md-3">
                         <label for="test_execution_price" class="form-label">Execution Price</label>
@@ -210,8 +207,8 @@
                 <div class="mb-3">
                     <label for="template_operation" class="form-label">Operation Type</label>
                     <select class="form-select form-select-sm" id="template_operation">
-                        <option value="ABRIR">OPEN</option>
-                        <option value="CERRAR">CLOSE</option>
+                        <option value="buy">BUY</option>
+                        <option value="sell">SELL</option>
                     </select>
                 </div>
 
@@ -316,59 +313,13 @@
 </div>
 
 <script>
-    // Signal templates for different platforms
-    const signalTemplates = {
-        bingx: {
-            long: {
-                user_id: null,
-                strategy_id: null,
-                ticker: null,
-                timeframe: null,
-                action: null,
-                quantity: null,
-                leverage: null,
-                environment: null,
-                position_id: null
-            },
-            short: {
-                user_id: null,
-                strategy_id: null,
-                ticker: null,
-                timeframe: null,
-                action: null,
-                quantity: null,
-                leverage: null,
-                environment: null,
-                position_id: null
-            }
-        },
-        metatrader: {
-            long: {
-                user_id: null,
-                strategy_id: null,
-                ticker: null,
-                timeframe: null,
-                action: null,
-                quantity: null,
-                position_id: null
-            },
-            short: {
-                user_id: null,
-                strategy_id: null,
-                ticker: null,
-                timeframe: null,
-                action: null,
-                quantity: null,
-                position_id: null
-            }
-        }
-    };
-
     function updatePlatformFields() {
         const platform = document.getElementById('template_platform').value;
         const environmentField = document.getElementById('environment_field');
         const symbolInput = document.getElementById('template_symbol');
+        const strategySelect = document.getElementById('template_strategy');
 
+        // Update symbol based on platform
         if (platform === 'metatrader') {
             environmentField.style.display = 'none';
             symbolInput.value = 'EURUSD';
@@ -378,52 +329,51 @@
             symbolInput.value = 'BTCUSDT';
             symbolInput.placeholder = 'e.g., BTCUSDT';
         }
+
+        // Filter strategies by platform
+        const options = strategySelect.options;
+        let firstVisible = null;
+
+        for (let i = 0; i < options.length; i++) {
+            const option = options[i];
+            if (option.dataset.platform === platform) {
+                option.style.display = '';
+                if (!firstVisible) firstVisible = option;
+            } else {
+                option.style.display = 'none';
+            }
+        }
+
+        // Select first visible strategy or clear selection
+        strategySelect.value = firstVisible ? firstVisible.value : '';
     }
 
-    function loadTemplate(direction) {
-        const platform = document.getElementById('template_platform').value;
-        const operation = document.getElementById('template_operation').value;
-        const template = {
-            ...signalTemplates[platform][direction]
+    function loadTemplate() {
+        // Validate strategy selection
+        const strategyValue = document.getElementById('template_strategy').value;
+        if (!strategyValue) {
+            showTestResult(false, 'Please select a strategy for the selected platform');
+            return;
+        }
+
+        const action = document.getElementById('template_operation').value;
+        const randomId = Math.floor(100000 + Math.random() * 900000);
+
+        // Build signal object directly from form inputs
+        const signal = {
+            user_id: parseInt(document.getElementById('template_user').value),
+            strategy_id: strategyValue,
+            ticker: document.getElementById('template_symbol').value,
+            timeframe: document.getElementById('template_timeframe').value,
+            action: action,
+            quantity: parseFloat(document.getElementById('template_quantity').value),
+            leverage: parseInt(document.getElementById('template_leverage').value),
+            environment: document.getElementById('template_environment').value,
+            position_id: `${action}|${randomId}`
         };
 
-        // Fill template with current form values
-        template.user_id = parseInt(document.getElementById('template_user').value);
-        template.strategy_id = document.getElementById('template_strategy').value;
-        template.ticker = document.getElementById('template_symbol').value;
-        template.quantity = parseFloat(document.getElementById('template_quantity').value);
-
-        // Set action based on direction and operation type
-        if (direction === 'long') {
-            template.action = operation === 'ABRIR' ? 'buy' : 'sell';
-        } else { // short
-            template.action = operation === 'ABRIR' ? 'short' : 'cover';
-        }
-
-        template.timeframe = document.getElementById('template_timeframe').value;
-        template.leverage = parseInt(document.getElementById('template_leverage').value);
-        template.environment = document.getElementById('template_environment').value;
-
-        // Generate TradingView-style position ID
-        const randomId = Math.floor(100000 + Math.random() * 900000);
-        if (direction === 'long') {
-            if (operation === 'ABRIR') {
-                template.position_id = `open long|${randomId}`;
-            } else {
-                template.position_id = `close long|${randomId}`;
-            }
-        } else { // short
-            if (operation === 'ABRIR') {
-                template.position_id = `open short|${randomId}`;
-            } else {
-                template.position_id = `close short|${randomId}`;
-            }
-        }
-
-        // Load into textarea
-        document.getElementById('signal_data').value = JSON.stringify(template, null, 2);
-
-        // Validate automatically
+        // Load into textarea and validate
+        document.getElementById('signal_data').value = JSON.stringify(signal, null, 2);
         validateJson();
     }
 
@@ -714,7 +664,7 @@
         });
 
         // Load default template
-        loadTemplate('long');
+        loadTemplate();
     });
 </script>
 

@@ -67,6 +67,99 @@ class Trade_model extends CI_Model
         return $this->db->get('trades')->row();
     }
 
+    /**
+     * Find trade by position_id and strategy_id for closing
+     * 
+     * @param string $position_id Position ID from webhook
+     * @param int $strategy_id Internal strategy ID 
+     * @param string $environment production/sandbox
+     * @return object|null Trade object or null if not found
+     */
+    public function find_trade_by_position_and_strategy($position_id, $strategy_id, $environment)
+    {
+        $this->db->where('position_id', $position_id);
+        $this->db->where('strategy_id', $strategy_id);
+        $this->db->where('environment', $environment);
+        $this->db->where('status', 'open');
+        $this->db->limit(1);
+
+        return $this->db->get('trades')->row();
+    }
+
+    /**
+     * Find trade by comprehensive criteria (fallback method)
+     * 
+     * @param int $user_id User ID
+     * @param int $strategy_id Internal strategy ID
+     * @param string $symbol Trading symbol
+     * @param string $timeframe Timeframe
+     * @param string $environment production/sandbox
+     * @param float $quantity Quantity to match
+     * @param string $side Side to look for (opposite of incoming action)
+     * @return object|null Trade object or null if not found
+     */
+    public function find_trade_by_criteria($user_id, $strategy_id, $symbol, $timeframe, $environment, $quantity, $side)
+    {
+        $this->db->where('user_id', $user_id);
+        $this->db->where('strategy_id', $strategy_id);
+        $this->db->where('symbol', $symbol);
+        $this->db->where('timeframe', $timeframe);
+        $this->db->where('environment', $environment);
+        $this->db->where('quantity', $quantity);
+        $this->db->where('side', $side);
+        $this->db->where('status', 'open');
+        $this->db->order_by('created_at', 'DESC'); // Get most recent if multiple matches
+        $this->db->limit(1);
+
+        return $this->db->get('trades')->row();
+    }
+
+    /**
+     * Find trade for fallback - busca posiciones abiertas con el side OPUESTO
+     * 
+     * @param int $user_id User ID
+     * @param int $strategy_id Internal strategy ID
+     * @param string $symbol Trading symbol
+     * @param string $environment production/sandbox
+     * @param float $quantity Quantity to match
+     * @param string $incoming_action Action from webhook (BUY/SELL)
+     * @return object|null Trade object or null if not found
+     */
+    public function find_trade_for_fallback($user_id, $strategy_id, $symbol, $environment, $quantity, $incoming_action)
+    {
+        // 🔥 Determinar el side OPUESTO al action que viene
+        $opposite_side = ($incoming_action == 'BUY') ? 'SELL' : 'BUY';
+        
+        // Buscar posición abierta con el side opuesto
+        $this->db->where('user_id', $user_id);
+        $this->db->where('strategy_id', $strategy_id);
+        $this->db->where('symbol', $symbol);
+        $this->db->where('environment', $environment);
+        $this->db->where('quantity', $quantity);
+        $this->db->where('side', $opposite_side);
+        $this->db->where('status', 'open');
+        $this->db->order_by('created_at', 'ASC'); // FIFO - close oldest first
+        $this->db->limit(1);
+
+        $result = $this->db->get('trades')->row();
+        
+        // Si no encuentra con quantity exacta, busca sin quantity
+        if (!$result) {
+            $this->db->where('user_id', $user_id);
+            $this->db->where('strategy_id', $strategy_id);
+            $this->db->where('symbol', $symbol);
+            $this->db->where('environment', $environment);
+            $this->db->where('side', $opposite_side);
+            $this->db->where('status', 'open');
+            $this->db->order_by('created_at', 'ASC'); // FIFO
+            $this->db->limit(1);
+            
+            $result = $this->db->get('trades')->row();
+        }
+
+        return $result;
+    }
+
     public function add_trade($data)
     {
         $this->db->insert('trades', $data);

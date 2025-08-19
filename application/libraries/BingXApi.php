@@ -319,6 +319,7 @@ class BingxApi
      */
     public function open_spot_position($api_key, $symbol, $side, $quantity)
     {
+        $side = strtoupper($side);
         // For spot, always use production environment
         $saved_env = $this->environment;
         if ($this->environment == 'sandbox') {
@@ -365,6 +366,7 @@ class BingxApi
      */
     public function close_spot_position($api_key, $symbol, $side, $quantity)
     {
+        $side = strtoupper($side);
         // For spot, always use production environment
         $saved_env = $this->environment;
         if ($this->environment == 'sandbox') {
@@ -412,6 +414,7 @@ class BingxApi
      */
     public function set_futures_leverage($api_key, $symbol, $leverage, $side)
     {
+        $side = strtoupper($side);
         $formatted_symbol = $this->format_symbol($symbol);
 
         $endpoint = '/openApi/swap/v2/trade/leverage';
@@ -475,6 +478,7 @@ class BingxApi
      */
     public function open_futures_position($api_key, $symbol, $side, $quantity, $take_profit = null, $stop_loss = null)
     {
+        $side = strtoupper($side);
         $formatted_symbol = $this->format_symbol($symbol);
 
         // Use LONG for BUY orders and SHORT for SELL orders
@@ -551,6 +555,7 @@ class BingxApi
      */
     public function close_futures_position($api_key, $symbol, $side, $quantity)
     {
+        $side = strtoupper($side);
         // In hedged mode, to close a position, we need to do the opposite action
         $close_side = $side == 'BUY' ? 'SELL' : 'BUY';
     

@@ -134,13 +134,15 @@
                                             break;
                                     }
 
-                                    // Action badge colors for MT actions
+                                    // Action badge colors - simplified for BUY/SELL only
                                     $action_badge = 'bg-secondary';
                                     if (isset($signal_data->action)) {
                                         $action_upper = strtoupper($signal_data->action);
-                                        if ($action_upper === 'BUY') $action_badge = 'bg-success';
-                                        elseif (in_array($action_upper, ['SHORT', 'SELL'])) $action_badge = 'bg-danger';
-                                        elseif ($action_upper === 'COVER') $action_badge = 'bg-warning text-dark';
+                                        if ($action_upper === 'BUY') {
+                                            $action_badge = 'bg-success';
+                                        } elseif ($action_upper === 'SELL') {
+                                            $action_badge = 'bg-danger';
+                                        }
                                     }
                                     ?>
                                     <tr>

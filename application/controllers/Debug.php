@@ -20,6 +20,9 @@ class Debug extends CI_Controller
 
         // Load BingX API library
         $this->load->library('BingxApi');
+        
+        // Load Webhook processor library
+        $this->load->library('Webhook_processor');
     }
 
     public function index()
@@ -99,9 +102,8 @@ class Debug extends CI_Controller
             'description' => 'Testing BingX signal from debug panel: ' . $json_data
         ]);
 
-        // Load the webhook controller to process the signal
-        $this->load->library('../controllers/Webhook', null, 'webhook_lib');
-        $result = $this->webhook_lib->process_webhook_data($json_data);
+        // Use the webhook processor library to process the signal
+        $result = $this->webhook_processor->process_webhook_data($json_data);
 
         if ($result === true) {
             $this->_send_json_response(true, 'BingX signal processed successfully');
@@ -288,7 +290,6 @@ class Debug extends CI_Controller
             $this->_send_json_response(false, 'Failed to get futures price for ' . $symbol . ': ' . $this->bingxapi->get_last_error());
         }
     }
-
 
     /**
      * Test EA execution confirmation (for testing the new MT circuit)

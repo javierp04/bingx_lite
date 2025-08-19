@@ -65,7 +65,7 @@ class Mt_signal_processor
         }
 
         // Validate that the action is valid (keeping original 4 actions)
-        $valid_actions = ['buy', 'short', 'sell', 'cover'];
+        $valid_actions = ['buy', 'sell'];
         if (!in_array($data->action, $valid_actions)) {
             $this->_log_error('Invalid action: ' . $data->action, $json_data);
             return 'Invalid action. Valid actions: ' . implode(', ', $valid_actions);
@@ -137,7 +137,7 @@ class Mt_signal_processor
         
         if ($status === 'success') {
             // Determine if this is an open or close action
-            if (in_array($signal_data->action, ['buy', 'short'])) {
+            if (in_array($signal_data->action, ['buy', 'sell'])) {
                 // Opening position - create trade
                 $result = $this->_create_trade_from_execution($signal, $execution_price);
             } else {
