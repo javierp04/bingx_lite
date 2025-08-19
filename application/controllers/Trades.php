@@ -28,7 +28,12 @@ class Trades extends CI_Controller
         $data['strategies'] = $this->Strategy_model->get_all_strategies($user_id);
 
         // Get all trades with filters (using new method)
-        $data['trades'] = $this->Trade_model->get_trades_by_platform($user_id, $status, $platform, $strategy);
+        $data['trades'] = $this->Trade_model->find_trades([
+            'user_id' => $user_id,
+            'status' => $status,
+            'platform' => $platform,
+            'strategy_id' => $strategy
+        ], ['with_relations' => true]);
 
         // Calculate trading statistics (unified for selected platform)
         $stats = $this->Trade_model->get_platform_statistics($user_id, $platform);
@@ -44,92 +49,15 @@ class Trades extends CI_Controller
         $this->load->view('templates/footer');
     }
 
-    /**
-     * Calculate trading statistics from trades array
-     * 
-     * @param array $trades List of trades
-     * @return array Statistics array
-     */
-    private function calculate_trade_statistics($trades)
-    {
-        // Initialize statistics
-        $stats = [
-            'total_pnl' => 0,
-            'total_pnl_percentage' => 0,
-            'total_invested' => 0,
-            'winrate' => 0,
-            'profit_per_trade' => 0,
-            'total_trades' => 0,
-            'winning_trades' => 0,
-            'losing_trades' => 0
-        ];
-
-        if (empty($trades)) {
-            return $stats;
-        }
-
-        $closed_trades = array_filter($trades, function ($trade) {
-            return $trade->status == 'closed';
-        });
-
-        $stats['total_trades'] = count($closed_trades);
-
-        if ($stats['total_trades'] == 0) {
-            return $stats;
-        }
-
-        foreach ($closed_trades as $trade) {
-            // Calculate total PNL
-            $stats['total_pnl'] += $trade->pnl;
-
-            // Count winning trades
-            if ($trade->pnl > 0) {
-                $stats['winning_trades']++;
-            } else {
-                $stats['losing_trades']++;
-            }
-
-            // Calculate real investment (considering leverage)
-            $real_investment = ($trade->quantity * $trade->entry_price) / $trade->leverage;
-            $stats['total_invested'] += $real_investment;
-
-            // Store PNL percentage for each trade
-            if ($real_investment > 0) {
-                $stats['trades_pnl_percentages'][] = [
-                    'pnl_percentage' => ($trade->pnl / $real_investment) * 100,
-                    'investment' => $real_investment
-                ];
-            }
-        }
-
-        // Calculate winrate
-        $stats['winrate'] = ($stats['winning_trades'] / $stats['total_trades']) * 100;
-
-        // Calculate profit per trade
-        $stats['profit_per_trade'] = $stats['total_pnl'] / $stats['total_trades'];
-
-        // Calculate weighted PNL percentage (weighted by investment size)
-        if ($stats['total_invested'] > 0) {
-            $weighted_percentage = 0;
-            foreach ($stats['trades_pnl_percentages'] as $trade_pnl) {
-                $weighted_percentage += ($trade_pnl['investment'] / $stats['total_invested']) * $trade_pnl['pnl_percentage'];
-            }
-            $stats['total_pnl_percentage'] = $weighted_percentage;
-        }
-
-        // Remove temporary data
-        unset($stats['trades_pnl_percentages']);
-
-        return $stats;
-    }
-
     public function detail($id)
     {
         $data['title'] = 'Trade Detail';
         $user_id = $this->session->userdata('user_id');
 
         // Get trade
-        $data['trade'] = $this->Trade_model->get_trade_by_id($id);
+        $data['trade'] = $this->Trade_model->find_trade([
+            'trades.id' => $id
+        ], ['with_relations' => true]);
 
         // Check if trade exists and belongs to user
         if (empty($data['trade']) || $data['trade']->user_id != $user_id) {
@@ -147,7 +75,9 @@ class Trades extends CI_Controller
         $user_id = $this->session->userdata('user_id');
 
         // Get trade
-        $trade = $this->Trade_model->get_trade_by_id($id);
+        $trade = $this->Trade_model->find_trade([
+            'trades.id' => $id
+        ]);
 
         // Check if trade exists, belongs to user, and is open
         if (empty($trade) || $trade->user_id != $user_id || $trade->status != 'open') {

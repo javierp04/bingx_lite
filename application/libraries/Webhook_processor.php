@@ -20,7 +20,7 @@ class Webhook_processor
         $this->CI->load->library('BingxApi');
     }
 
-   public function process_webhook_data($json_data)
+    public function process_webhook_data($json_data)
     {
         // Decode JSON data
         $data = json_decode($json_data);
@@ -98,12 +98,13 @@ class Webhook_processor
 
         // 1. Search by position_id + strategy_id if available
         if ($position_id) {
-            $trade_to_close = $this->CI->Trade_model->find_trade_by_position_and_strategy(
-                $position_id, 
-                $strategy->id, 
-                $environment
-            );
-            
+            $trade_to_close = $this->CI->Trade_model->find_trade([
+                'position_id' => $position_id,
+                'strategy_id' => $strategy->id,
+                'environment' => $environment,
+                'status' => 'open'
+            ]);
+
             if ($trade_to_close) {
                 $operation = 'CLOSE';
                 $this->_log_webhook_debug('Found trade to close by position_id', json_encode([
@@ -119,18 +120,19 @@ class Webhook_processor
             // 🔥 Si viene SELL -> buscar posiciones BUY abiertas para cerrar
             // 🔥 Si viene BUY -> buscar posiciones SELL abiertas para cerrar
             $opposite_side = ($$data->action == 'BUY') ? 'SELL' : 'BUY';
-            $trade_to_close = $this->CI->Trade_model->find_trade_for_fallback(
-                $data->user_id,
-                $strategy->id,
-                $data->ticker,
-                $environment,
-                $quantity,
-                $opposite_side
-            );
-            
+            $trade_to_close = $this->CI->Trade_model->find_trade([
+                'user_id' => $data->user_id,
+                'strategy_id' => $strategy->id,
+                'symbol' => $data->ticker,
+                'environment' => $environment,
+                'quantity' => $quantity,
+                'side' => $same_side,
+                'status' => 'open'
+            ], ['order_by' => 'created_at ASC']); // FIFO
+
             if ($trade_to_close) {
                 $operation = 'CLOSE';
-                
+
                 $this->_log_webhook_debug('Found trade to close by fallback (opposite side)', json_encode([
                     'trade_id' => $trade_to_close->id,
                     'found_side' => $trade_to_close->side,
@@ -237,10 +239,10 @@ class Webhook_processor
     {
         // Determine close quantity
         $close_quantity = isset($data->quantity) ? $data->quantity : $trade_to_close->quantity;
-        
+
         // Validate close quantity
         if ($close_quantity > $trade_to_close->quantity) {
-            $this->_log_webhook_error('Close quantity (' . $close_quantity . 
+            $this->_log_webhook_error('Close quantity (' . $close_quantity .
                 ') exceeds open quantity (' . $trade_to_close->quantity . ')', $json_data);
             return 'Close quantity exceeds open quantity';
         }
@@ -282,7 +284,7 @@ class Webhook_processor
             if ($close_quantity < $trade_to_close->quantity) {
                 // Partial close - update the trade
                 $new_quantity = $trade_to_close->quantity - $close_quantity;
-                
+
                 $this->CI->Trade_model->update_trade($trade_to_close->id, array(
                     'quantity' => $new_quantity,
                     'updated_at' => date('Y-m-d H:i:s')
@@ -291,10 +293,10 @@ class Webhook_processor
                 $log_data = array(
                     'user_id' => $data->user_id,
                     'action' => 'partial_close_trade',
-                    'description' => 'Partially closed ' . $close_quantity . ' of ' . $trade_to_close->quantity . 
-                        ' ' . $trade_to_close->symbol . ' with PNL: ' . number_format($pnl, 2) . 
-                        ' via webhook (Strategy: ' . $strategy->name . 
-                        ', Environment: ' . $environment . ', Position ID: ' . $trade_to_close->position_id . 
+                    'description' => 'Partially closed ' . $close_quantity . ' of ' . $trade_to_close->quantity .
+                        ' ' . $trade_to_close->symbol . ' with PNL: ' . number_format($pnl, 2) .
+                        ' via webhook (Strategy: ' . $strategy->name .
+                        ', Environment: ' . $environment . ', Position ID: ' . $trade_to_close->position_id .
                         '. New quantity: ' . $new_quantity . ')'
                 );
             } else {
@@ -309,7 +311,7 @@ class Webhook_processor
                         ', Environment: ' . $environment . ', Position ID: ' . $trade_to_close->position_id . ')'
                 );
             }
-            
+
             $this->CI->Log_model->add_log($log_data);
             return true;
         } else {

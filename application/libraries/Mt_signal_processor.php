@@ -268,11 +268,12 @@ class Mt_signal_processor
         $this->CI->load->model('Trade_model');
         
         // Find the trade to close by position_id
-        $trade = $this->CI->Trade_model->get_trade_by_position_id(
-            $signal_data->position_id,
-            $signal_data->user_id,
-            $signal_data->ticker
-        );
+        $trade = $this->CI->Trade_model->find_trade([
+    'position_id' => $signal_data->position_id,
+    'user_id' => $signal_data->user_id,
+    'symbol' => $signal_data->ticker,
+    'status' => 'open'
+]);
         
         if (!$trade) {
             return 'No open trade found with position_id: ' . $signal_data->position_id;

@@ -3,160 +3,112 @@ defined('BASEPATH') or exit('No direct script access allowed');
 
 class Trade_model extends CI_Model
 {
-
     public function __construct()
     {
         parent::__construct();
     }
 
-    public function get_all_trades($user_id = null, $status = null)
+    /**
+     * Unified method to find multiple trades
+     * 
+     * @param array $filters Associative array of filters (null values ignored)
+     * @param array $options Query options (joins, order_by, limit, etc.)
+     * @return array Array of trade objects
+     */
+    public function find_trades($filters = [], $options = [])
     {
-        if ($user_id) {
-            $this->db->where('trades.user_id', $user_id);
+        // Default options
+        $defaults = [
+            'with_relations' => false,
+            'order_by' => 'trades.created_at DESC',
+            'limit' => null
+        ];
+        $options = array_merge($defaults, $options);
+
+        // Base query
+        if ($options['with_relations']) {
+            $this->db->select('trades.*, strategies.name as strategy_name, strategies.strategy_id as strategy_external_id, users.username');
+            $this->db->join('strategies', 'strategies.id = trades.strategy_id', 'left');
+            $this->db->join('users', 'users.id = trades.user_id', 'left');
         }
 
-        if ($status) {
-            $this->db->where('trades.status', $status);
+        // Apply filters (only non-null values)
+        foreach ($filters as $field => $value) {
+            if ($value !== null) {
+                // Handle special field mappings
+                if ($field === 'user_id' && $options['with_relations']) {
+                    $this->db->where('trades.user_id', $value);
+                } elseif ($field === 'status' && $options['with_relations']) {
+                    $this->db->where('trades.status', $value);
+                } else {
+                    $this->db->where($field, $value);
+                }
+            }
         }
 
-        $this->db->select('trades.*, strategies.name as strategy_name, strategies.strategy_id as strategy_external_id, users.username');
-        $this->db->join('strategies', 'strategies.id = trades.strategy_id', 'left');
-        $this->db->join('users', 'users.id = trades.user_id', 'left');
-        $this->db->order_by('trades.created_at', 'DESC');
+        // Apply ordering
+        if ($options['order_by']) {
+            $order_parts = explode(' ', $options['order_by']);
+            $field = $order_parts[0];
+            $direction = isset($order_parts[1]) ? $order_parts[1] : 'ASC';
+            $this->db->order_by($field, $direction);
+        }
+
+        // Apply limit
+        if ($options['limit']) {
+            $this->db->limit($options['limit']);
+        }
 
         return $this->db->get('trades')->result();
     }
 
-    public function get_trade_by_id($id)
+    /**
+     * Unified method to find a single trade
+     * 
+     * @param array $filters Associative array of filters (null values ignored)
+     * @param array $options Query options (joins, order_by)
+     * @return object|null Single trade object or null
+     */
+    public function find_trade($filters = [], $options = [])
     {
-        $this->db->select('trades.*, strategies.name as strategy_name, strategies.strategy_id as strategy_external_id, users.username');
-        $this->db->join('strategies', 'strategies.id = trades.strategy_id', 'left');
-        $this->db->join('users', 'users.id = trades.user_id', 'left');
-        return $this->db->get_where('trades', array('trades.id' => $id))->row();
-    }
-
-    public function get_trade_by_order_id($order_id)
-    {
-        return $this->db->get_where('trades', array(
-            'order_id' => $order_id
-        ))->row();
-    }
-
-    public function get_trade_by_position_id($position_id, $user_id = null, $symbol = null, $timeframe = null, $side = null)
-    {
-        if ($user_id) {
-            $this->db->where('user_id', $user_id);
-        }
-
-        $this->db->where('position_id', $position_id);
-        $this->db->where('status', 'open');
-
-        // Add additional filters for more specificity
-        if ($symbol) {
-            $this->db->where('symbol', $symbol);
-        }
-
-        if ($timeframe) {
-            $this->db->where('timeframe', $timeframe);
-        }
-
-        if ($side) {
-            $this->db->where('side', $side);
-        }
-
-        return $this->db->get('trades')->row();
+        $options['limit'] = 1;
+        $results = $this->find_trades($filters, $options);
+        return !empty($results) ? $results[0] : null;
     }
 
     /**
-     * Find trade by position_id and strategy_id for closing
+     * Add new trade
      * 
-     * @param string $position_id Position ID from webhook
-     * @param int $strategy_id Internal strategy ID 
-     * @param string $environment production/sandbox
-     * @return object|null Trade object or null if not found
+     * @param array $data Trade data
+     * @return int Insert ID
      */
-    public function find_trade_by_position_and_strategy($position_id, $strategy_id, $environment)
-    {
-        $this->db->where('position_id', $position_id);
-        $this->db->where('strategy_id', $strategy_id);
-        $this->db->where('environment', $environment);
-        $this->db->where('status', 'open');
-        $this->db->limit(1);
-
-        return $this->db->get('trades')->row();
-    }
-
-    /**
-     * Find trade by comprehensive criteria (fallback method)
-     * 
-     * @param int $user_id User ID
-     * @param int $strategy_id Internal strategy ID
-     * @param string $symbol Trading symbol
-     * @param string $timeframe Timeframe
-     * @param string $environment production/sandbox
-     * @param float $quantity Quantity to match
-     * @param string $side Side to look for (opposite of incoming action)
-     * @return object|null Trade object or null if not found
-     */
-    public function find_trade_by_criteria($user_id, $strategy_id, $symbol, $timeframe, $environment, $quantity, $side)
-    {
-        $this->db->where('user_id', $user_id);
-        $this->db->where('strategy_id', $strategy_id);
-        $this->db->where('symbol', $symbol);
-        $this->db->where('timeframe', $timeframe);
-        $this->db->where('environment', $environment);
-        $this->db->where('quantity', $quantity);
-        $this->db->where('side', $side);
-        $this->db->where('status', 'open');
-        $this->db->order_by('created_at', 'DESC'); // Get most recent if multiple matches
-        $this->db->limit(1);
-
-        return $this->db->get('trades')->row();
-    }
-
-    /**
-     * Find trade for fallback - busca posiciones abiertas con el side OPUESTO
-     * 
-     * @param int $user_id User ID
-     * @param int $strategy_id Internal strategy ID
-     * @param string $symbol Trading symbol
-     * @param string $environment production/sandbox
-     * @param float $quantity Quantity to match
-     * @param string $incoming_action Action from webhook (BUY/SELL)
-     * @return object|null Trade object or null if not found
-     */
-    public function find_trade_for_fallback($user_id, $strategy_id, $symbol, $environment, $quantity, $side)
-    {
-        // 🔥 Determinar el side OPUESTO al action que viene
-        
-        
-        // Buscar posición abierta con el side opuesto
-        $this->db->where('user_id', $user_id);
-        $this->db->where('strategy_id', $strategy_id);
-        $this->db->where('symbol', $symbol);
-        $this->db->where('environment', $environment);
-        $this->db->where('quantity', $quantity);
-        $this->db->where('side', $opposite_side);
-        $this->db->where('status', 'open');
-        $this->db->order_by('created_at', 'ASC'); // FIFO - close oldest first
-        $this->db->limit(1);
-
-        $result = $this->db->get('trades')->row();
-        return $result;
-    }
-
     public function add_trade($data)
     {
         $this->db->insert('trades', $data);
         return $this->db->insert_id();
     }
 
+    /**
+     * Update trade
+     * 
+     * @param int $id Trade ID
+     * @param array $data Update data
+     * @return bool Success status
+     */
     public function update_trade($id, $data)
     {
         $this->db->where('id', $id);
         return $this->db->update('trades', $data);
     }
 
+    /**
+     * Close trade with exit price and PNL
+     * 
+     * @param int $id Trade ID
+     * @param float $exit_price Exit price
+     * @param float $pnl Profit/Loss
+     * @return bool Success status
+     */
     public function close_trade($id, $exit_price, $pnl)
     {
         $data = array(
@@ -171,12 +123,24 @@ class Trade_model extends CI_Model
         return $this->db->update('trades', $data);
     }
 
+    /**
+     * Delete trade
+     * 
+     * @param int $id Trade ID
+     * @return bool Success status
+     */
     public function delete_trade($id)
     {
         $this->db->where('id', $id);
         return $this->db->delete('trades');
     }
 
+    /**
+     * Calculate total PNL from trades array
+     * 
+     * @param array $trades Array of trade objects
+     * @return float Total PNL
+     */
     public function get_total_pnl($trades)
     {
         $total_pnl = 0;
@@ -184,41 +148,6 @@ class Trade_model extends CI_Model
             $total_pnl += isset($trade->pnl) ? $trade->pnl : 0;
         }
         return $total_pnl;
-    }
-
-    /**
-     * Get trades with platform filter
-     * 
-     * @param int $user_id User ID filter
-     * @param string $status Status filter (open/closed)
-     * @param string $platform Platform filter (bingx/metatrader)
-     * @param int $strategy_id Strategy filter
-     * @return array Trades
-     */
-    public function get_trades_by_platform($user_id = null, $status = null, $platform = null, $strategy_id = null)
-    {
-        if ($user_id) {
-            $this->db->where('trades.user_id', $user_id);
-        }
-
-        if ($status) {
-            $this->db->where('trades.status', $status);
-        }
-
-        if ($platform) {
-            $this->db->where('trades.platform', $platform);
-        }
-
-        if ($strategy_id) {
-            $this->db->where('trades.strategy_id', $strategy_id);
-        }
-
-        $this->db->select('trades.*, strategies.name as strategy_name, strategies.strategy_id as strategy_external_id, users.username');
-        $this->db->join('strategies', 'strategies.id = trades.strategy_id', 'left');
-        $this->db->join('users', 'users.id = trades.user_id', 'left');
-        $this->db->order_by('trades.created_at', 'DESC');
-
-        return $this->db->get('trades')->result();
     }
 
     /**
@@ -230,15 +159,14 @@ class Trade_model extends CI_Model
      */
     public function get_platform_statistics($user_id, $platform = null)
     {
-        // Base query for closed trades
-        $this->db->where('user_id', $user_id);
-        $this->db->where('status', 'closed');
+        // Use unified method for closed trades
+        $filters = [
+            'user_id' => $user_id,
+            'status' => 'closed',
+            'platform' => $platform
+        ];
 
-        if ($platform) {
-            $this->db->where('platform', $platform);
-        }
-
-        $trades = $this->db->get('trades')->result();
+        $trades = $this->find_trades($filters);
 
         // Calculate statistics
         $stats = [
