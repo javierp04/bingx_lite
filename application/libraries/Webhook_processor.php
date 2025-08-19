@@ -118,14 +118,14 @@ class Webhook_processor
         if (!$trade_to_close) {
             // 🔥 Si viene SELL -> buscar posiciones BUY abiertas para cerrar
             // 🔥 Si viene BUY -> buscar posiciones SELL abiertas para cerrar
-            
+            $opposite_side = ($$data->action == 'BUY') ? 'SELL' : 'BUY';
             $trade_to_close = $this->CI->Trade_model->find_trade_for_fallback(
                 $data->user_id,
                 $strategy->id,
                 $data->ticker,
                 $environment,
                 $quantity,
-                $data->action  // El método internamente busca el side opuesto
+                $opposite_side
             );
             
             if ($trade_to_close) {

@@ -125,10 +125,10 @@ class Trade_model extends CI_Model
      * @param string $incoming_action Action from webhook (BUY/SELL)
      * @return object|null Trade object or null if not found
      */
-    public function find_trade_for_fallback($user_id, $strategy_id, $symbol, $environment, $quantity, $incoming_action)
+    public function find_trade_for_fallback($user_id, $strategy_id, $symbol, $environment, $quantity, $side)
     {
         // 🔥 Determinar el side OPUESTO al action que viene
-        $opposite_side = ($incoming_action == 'BUY') ? 'SELL' : 'BUY';
+        
         
         // Buscar posición abierta con el side opuesto
         $this->db->where('user_id', $user_id);
@@ -142,21 +142,6 @@ class Trade_model extends CI_Model
         $this->db->limit(1);
 
         $result = $this->db->get('trades')->row();
-        
-        // Si no encuentra con quantity exacta, busca sin quantity
-        if (!$result) {
-            $this->db->where('user_id', $user_id);
-            $this->db->where('strategy_id', $strategy_id);
-            $this->db->where('symbol', $symbol);
-            $this->db->where('environment', $environment);
-            $this->db->where('side', $opposite_side);
-            $this->db->where('status', 'open');
-            $this->db->order_by('created_at', 'ASC'); // FIFO
-            $this->db->limit(1);
-            
-            $result = $this->db->get('trades')->row();
-        }
-
         return $result;
     }
 
