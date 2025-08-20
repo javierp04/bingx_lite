@@ -119,14 +119,14 @@ class Webhook_processor
         if (!$trade_to_close) {
             // 🔥 Si viene SELL -> buscar posiciones BUY abiertas para cerrar
             // 🔥 Si viene BUY -> buscar posiciones SELL abiertas para cerrar
-            $opposite_side = ($$data->action == 'BUY') ? 'SELL' : 'BUY';
+            $opposite_side = ($data->action == 'BUY') ? 'SELL' : 'BUY';
             $trade_to_close = $this->CI->Trade_model->find_trade([
                 'user_id' => $data->user_id,
                 'strategy_id' => $strategy->id,
                 'symbol' => $data->ticker,
                 'environment' => $environment,
                 'quantity' => $quantity,
-                'side' => $same_side,
+                'side' => $opposite_side,
                 'status' => 'open'
             ], ['order_by' => 'created_at ASC']); // FIFO
 

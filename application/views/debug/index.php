@@ -97,8 +97,8 @@
                     <div class="col-md-3">
                         <label for="api_environment" class="form-label">Environment</label>
                         <select class="form-select" id="api_environment">
-                            <option value="production">Production</option>
                             <option value="sandbox">Sandbox</option>
+                            <option value="production">Production</option>
                         </select>
                     </div>
 
@@ -179,8 +179,8 @@
                 <div class="mb-3" id="environment_field">
                     <label for="template_environment" class="form-label">Environment</label>
                     <select class="form-select form-select-sm" id="template_environment">
-                        <option value="production">Production</option>
                         <option value="sandbox">Sandbox</option>
+                        <option value="production">Production</option>
                     </select>
                 </div>
 
@@ -188,7 +188,9 @@
                     <label for="template_user" class="form-label">User</label>
                     <select class="form-select form-select-sm" id="template_user">
                         <?php foreach ($users as $user): ?>
-                            <option value="<?= $user->id ?>"><?= $user->username ?></option>
+                            <option value="<?= $user->id ?>" <?= $user->id == $this->session->userdata('user_id') ? 'selected' : '' ?>>
+                                <?= $user->username ?>
+                            </option>
                         <?php endforeach; ?>
                     </select>
                 </div>
@@ -230,6 +232,16 @@
                         <option value="10" selected>10x</option>
                         <option value="20">20x</option>
                     </select>
+                </div>
+
+                <div class="mb-3">
+                    <label for="template_stop_loss" class="form-label">Stop Loss</label>
+                    <input type="number" class="form-control form-control-sm" id="template_stop_loss" step="0.00001" placeholder="Optional">
+                </div>
+
+                <div class="mb-3">
+                    <label for="template_take_profit" class="form-label">Take Profit</label>
+                    <input type="number" class="form-control form-control-sm" id="template_take_profit" step="0.00001" placeholder="Optional">
                 </div>
 
                 <div class="mb-3">
@@ -371,6 +383,18 @@
             environment: document.getElementById('template_environment').value,
             position_id: `${action}|${randomId}`
         };
+
+        // Add stop loss if provided
+        const stopLossValue = document.getElementById('template_stop_loss').value;
+        if (stopLossValue && stopLossValue.trim() !== '') {
+            signal.stop_loss = parseFloat(stopLossValue);
+        }
+
+        // Add take profit if provided
+        const takeProfitValue = document.getElementById('template_take_profit').value;
+        if (takeProfitValue && takeProfitValue.trim() !== '') {
+            signal.take_profit = parseFloat(takeProfitValue);
+        }
 
         // Load into textarea and validate
         document.getElementById('signal_data').value = JSON.stringify(signal, null, 2);
