@@ -167,34 +167,49 @@
                 </h6>
             </div>
             <div class="card-body">
-                <div class="mb-3">
-                    <label for="template_platform" class="form-label">Platform</label>
-                    <select class="form-select form-select-sm" id="template_platform" onchange="updatePlatformFields()">
-                        <option value="bingx">BingX</option>
-                        <option value="metatrader">MetaTrader</option>
-                    </select>
+                <!-- Platform y Environment -->
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label for="template_platform" class="form-label">Platform</label>
+                        <select class="form-select form-select-sm" id="template_platform" onchange="updatePlatformFields()">
+                            <option value="bingx">BingX</option>
+                            <option value="metatrader">MetaTrader</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6" id="environment_field">
+                        <label for="template_environment" class="form-label">Environment</label>
+                        <select class="form-select form-select-sm" id="template_environment">
+                            <option value="sandbox">Sandbox</option>
+                            <option value="production">Production</option>
+                        </select>
+                    </div>
                 </div>
 
-                <!-- Environment field - only for BingX -->
-                <div class="mb-3" id="environment_field">
-                    <label for="template_environment" class="form-label">Environment</label>
-                    <select class="form-select form-select-sm" id="template_environment">
-                        <option value="sandbox">Sandbox</option>
-                        <option value="production">Production</option>
-                    </select>
+                <!-- User y Timeframe -->
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label for="template_user" class="form-label">User</label>
+                        <select class="form-select form-select-sm" id="template_user">
+                            <?php foreach ($users as $user): ?>
+                                <option value="<?= $user->id ?>" <?= $user->id == $this->session->userdata('user_id') ? 'selected' : '' ?>>
+                                    <?= $user->username ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label for="template_timeframe" class="form-label">Timeframe</label>
+                        <select class="form-select form-select-sm" id="template_timeframe">
+                            <option value="1">1 Minute</option>
+                            <option value="5">5 Minutes</option>
+                            <option value="15">15 Minutes</option>
+                            <option value="60" selected>1 Hour</option>
+                            <option value="240">4 Hours</option>
+                        </select>
+                    </div>
                 </div>
 
-                <div class="mb-3">
-                    <label for="template_user" class="form-label">User</label>
-                    <select class="form-select form-select-sm" id="template_user">
-                        <?php foreach ($users as $user): ?>
-                            <option value="<?= $user->id ?>" <?= $user->id == $this->session->userdata('user_id') ? 'selected' : '' ?>>
-                                <?= $user->username ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-
+                <!-- Strategy (solo) -->
                 <div class="mb-3">
                     <label for="template_strategy" class="form-label">Strategy</label>
                     <select class="form-select form-select-sm" id="template_strategy">
@@ -206,53 +221,48 @@
                     </select>
                 </div>
 
-                <div class="mb-3">
-                    <label for="template_operation" class="form-label">Operation Type</label>
-                    <select class="form-select form-select-sm" id="template_operation">
-                        <option value="buy">BUY</option>
-                        <option value="sell">SELL</option>
-                    </select>
+                <!-- Operation Type y Symbol -->
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label for="template_operation" class="form-label">Operation Type</label>
+                        <select class="form-select form-select-sm" id="template_operation">
+                            <option value="buy">BUY</option>
+                            <option value="sell">SELL</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label for="template_symbol" class="form-label">Symbol</label>
+                        <input type="text" class="form-control form-control-sm" id="template_symbol" value="BTCUSDT">
+                    </div>
                 </div>
 
-                <div class="mb-3">
-                    <label for="template_symbol" class="form-label">Symbol</label>
-                    <input type="text" class="form-control form-control-sm" id="template_symbol" value="BTCUSDT">
+                <!-- Quantity y Leverage -->
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label for="template_quantity" class="form-label">Quantity</label>
+                        <input type="number" class="form-control form-control-sm" id="template_quantity" value="0.001" step="0.0001">
+                    </div>
+                    <div class="col-md-6">
+                        <label for="template_leverage" class="form-label">Leverage</label>
+                        <select class="form-select form-select-sm" id="template_leverage">
+                            <option value="1">1x</option>
+                            <option value="5">5x</option>
+                            <option value="10" selected>10x</option>
+                            <option value="20">20x</option>
+                        </select>
+                    </div>
                 </div>
 
-                <div class="mb-3">
-                    <label for="template_quantity" class="form-label">Quantity</label>
-                    <input type="number" class="form-control form-control-sm" id="template_quantity" value="0.001" step="0.0001">
-                </div>
-
-                <div class="mb-3">
-                    <label for="template_leverage" class="form-label">Leverage</label>
-                    <select class="form-select form-select-sm" id="template_leverage">
-                        <option value="1">1x</option>
-                        <option value="5">5x</option>
-                        <option value="10" selected>10x</option>
-                        <option value="20">20x</option>
-                    </select>
-                </div>
-
-                <div class="mb-3">
-                    <label for="template_stop_loss" class="form-label">Stop Loss</label>
-                    <input type="number" class="form-control form-control-sm" id="template_stop_loss" step="0.00001" placeholder="Optional">
-                </div>
-
-                <div class="mb-3">
-                    <label for="template_take_profit" class="form-label">Take Profit</label>
-                    <input type="number" class="form-control form-control-sm" id="template_take_profit" step="0.00001" placeholder="Optional">
-                </div>
-
-                <div class="mb-3">
-                    <label for="template_timeframe" class="form-label">Timeframe</label>
-                    <select class="form-select form-select-sm" id="template_timeframe">
-                        <option value="1">1 Minute</option>
-                        <option value="5">5 Minutes</option>
-                        <option value="15">15 Minutes</option>
-                        <option value="60" selected>1 Hour</option>
-                        <option value="240">4 Hours</option>
-                    </select>
+                <!-- Stop Loss y Take Profit -->
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label for="template_stop_loss" class="form-label">Stop Loss</label>
+                        <input type="number" class="form-control form-control-sm" id="template_stop_loss" step="0.00001" placeholder="Optional">
+                    </div>
+                    <div class="col-md-6">
+                        <label for="template_take_profit" class="form-label">Take Profit</label>
+                        <input type="number" class="form-control form-control-sm" id="template_take_profit" step="0.00001" placeholder="Optional">
+                    </div>
                 </div>
             </div>
         </div>
