@@ -88,18 +88,61 @@ class BingxApi
     }
 
     /**
-     * Generate signature for BingX API - following their official example
+     * Set conditional order (Stop Loss or Take Profit) for futures position
      * 
-     * @param string $parameters Query string of parameters
-     * @param string $api_secret API Secret
-     * @return string HMAC SHA256 signature
+     * @param object $api_key API key object
+     * @param string $symbol Trading pair
+     * @param string $original_side Original position side (BUY or SELL)
+     * @param string $position_side Position side (LONG or SHORT)
+     * @param float $quantity Trade quantity
+     * @param float $stop_price Trigger price
+     * @param string $order_type STOP_MARKET or TAKE_PROFIT_MARKET
+     * @return object|false Order information or false on failure
      */
-    private function _generate_signature($parameters, $api_secret)
+    private function _set_conditional_order($api_key, $symbol, $original_side, $position_side, $quantity, $stop_price, $order_type)
     {
-        // Generate HMAC SHA256 signature and return lowercase hexadecimal
-        $hash = hash_hmac("sha256", $parameters, $api_secret, true);
-        $hashHex = bin2hex($hash);
-        return strtolower($hashHex);
+        $formatted_symbol = $this->format_symbol($symbol);
+
+        // For closing orders, side is opposite to original
+        $order_side = ($original_side == 'BUY') ? 'SELL' : 'BUY';
+
+        $endpoint = '/openApi/swap/v2/trade/order';
+        $params = [
+            'symbol' => $formatted_symbol,
+            'side' => $order_side,
+            'positionSide' => $position_side,
+            'type' => $order_type,
+            'stopPrice' => (string)$stop_price,
+            'quantity' => (string)$quantity,
+            'workingType' => 'MARK_PRICE'
+            //'reduceOnly' => 'true'
+        ];
+
+        // Log del intento de orden condicional
+        $this->CI->Log_model->add_log([
+            'user_id' => $this->CI->session->userdata('user_id'),
+            'action' => 'conditional_order_attempt',
+            'description' => 'Setting ' . $order_type . ' at ' . $stop_price . ' for ' . $symbol
+        ]);
+
+        $response = $this->_make_request($api_key, $endpoint, $params, 'POST', true);
+
+        if ($response && isset($response->data)) {
+            $this->CI->Log_model->add_log([
+                'user_id' => $this->CI->session->userdata('user_id'),
+                'action' => 'conditional_order_success',
+                'description' => $order_type . ' set successfully: ' . json_encode($response->data)
+            ]);
+            return $response->data;
+        }
+
+        $this->CI->Log_model->add_log([
+            'user_id' => $this->CI->session->userdata('user_id'),
+            'action' => 'conditional_order_failed',
+            'description' => $order_type . ' failed: ' . $this->get_last_error()
+        ]);
+
+        return false;
     }
 
     /**
@@ -123,17 +166,16 @@ class BingxApi
         $host = parse_url($base_url, PHP_URL_HOST);
         $protocol = parse_url($base_url, PHP_URL_SCHEME);
 
-        // Start with timestamp parameter
-        $timestamp = round(microtime(true) * 1000);
-        $parameters = "timestamp=" . $timestamp;
-
-        // Add all other parameters
+        ksort($params);
+        $ordered_params['timestamp'] = round(microtime(true) * 1000);
         foreach ($params as $key => $value) {
-            $parameters .= "&$key=$value";
+            $ordered_params[$key] = $value;
         }
 
+        $parameters = http_build_query($ordered_params, '', '&', PHP_QUERY_RFC3986);
+
         // Generate signature
-        $signature = $this->_generate_signature($parameters, $api_key->api_secret);
+        $signature = hash_hmac('sha256', $parameters, $api_key->api_secret);        
 
         // Construct URL with parameters and signature
         $url = "{$protocol}://{$host}{$endpoint}?{$parameters}&signature={$signature}";
@@ -430,43 +472,7 @@ class BingxApi
     }
 
     /**
-     * Create JSON string for take profit order
-     *
-     * @param float $price Take profit price
-     * @return string JSON string for take profit order
-     */
-    private function _create_take_profit_json($price)
-    {
-        $take_profit = [
-            'type' => 'TAKE_PROFIT_MARKET',
-            'stopPrice' => (float)$price,
-            'price' => (float)$price,
-            'workingType' => 'MARK_PRICE'
-        ];
-
-        return json_encode($take_profit);
-    }
-
-    /**
-     * Create JSON string for stop loss order
-     *
-     * @param float $price Stop loss price
-     * @return string JSON string for stop loss order
-     */
-    private function _create_stop_loss_json($price)
-    {
-        $stop_loss = [
-            'type' => 'STOP_MARKET',
-            'stopPrice' => (float)$price,
-            'price' => (float)$price,
-            'workingType' => 'MARK_PRICE'
-        ];
-
-        return json_encode($stop_loss);
-    }
-
-    /**
-     * Open futures position
+     * Open futures position with optional SL/TP
      * 
      * @param object $api_key API key object
      * @param string $symbol Trading pair
@@ -480,10 +486,23 @@ class BingxApi
     {
         $side = strtoupper($side);
         $formatted_symbol = $this->format_symbol($symbol);
-
-        // Use LONG for BUY orders and SHORT for SELL orders
         $positionSide = ($side == 'BUY') ? 'LONG' : 'SHORT';
 
+        // Log inicial con todos los parámetros
+        $this->CI->Log_model->add_log([
+            'user_id' => $this->CI->session->userdata('user_id'),
+            'action' => 'futures_position_request',
+            'description' => json_encode([
+                'symbol' => $symbol,
+                'side' => $side,
+                'quantity' => $quantity,
+                'take_profit' => $take_profit,
+                'stop_loss' => $stop_loss,
+                'environment' => $this->environment
+            ])
+        ]);
+
+        // STEP 1: Abrir la posición principal SIN SL/TP
         $params = [
             'symbol' => $formatted_symbol,
             'side' => $side,
@@ -492,56 +511,169 @@ class BingxApi
             'quantity' => (string)$quantity
         ];
 
-        // Add take profit if provided
-        if ($take_profit !== null && $take_profit > 0) {
-            $params['takeProfit'] = $this->_create_take_profit_json($take_profit);
-        }
-
-        // Add stop loss if provided
-        if ($stop_loss !== null && $stop_loss > 0) {
-            $params['stopLoss'] = $this->_create_stop_loss_json($stop_loss);
-        }
-
         $endpoint = '/openApi/swap/v2/trade/order';
         $response = $this->_make_request($api_key, $endpoint, $params, 'POST', true);
 
-        // Registrar la respuesta completa para depuración
+        // Log de respuesta de orden principal
         $this->CI->Log_model->add_log([
             'user_id' => $this->CI->session->userdata('user_id'),
-            'action' => 'api_response_debug',
-            'description' => 'Response from open_futures_position: ' . json_encode($response)
+            'action' => 'futures_main_order_response',
+            'description' => 'Main order response: ' . json_encode($response)
         ]);
 
-        if ($response && isset($response->data)) {
-            // La estructura de la respuesta es diferente a lo esperado
-            // El orderId está en data.order.orderId según la documentación
-            $orderInfo = new stdClass();
-
-            if (isset($response->data->order) && isset($response->data->order->orderId)) {
-                // Estructura correcta según la documentación
-                $orderInfo->orderId = $response->data->order->orderId;
-            } elseif (isset($response->data->orderId)) {
-                // Estructura alternativa (por si acaso)
-                $orderInfo->orderId = $response->data->orderId;
-            } else {
-                // No podemos encontrar el orderId en ningún lugar
-                $this->last_error = "Cannot find orderId in response";
-                return false;
-            }
-
-            // Obtener el precio actual ya que no viene en la respuesta
-            $price_info = $this->get_futures_price($api_key, $symbol, true);
-            if ($price_info && isset($price_info->price)) {
-                $orderInfo->price = $price_info->price;
-            } else {
-                // Si no podemos obtener el precio, usamos un valor por defecto
-                $orderInfo->price = 0;
-            }
-
-            return $orderInfo;
+        if (!$response || !isset($response->data)) {
+            $this->CI->Log_model->add_log([
+                'user_id' => $this->CI->session->userdata('user_id'),
+                'action' => 'futures_position_failed',
+                'description' => 'Failed to open position: ' . $this->get_last_error()
+            ]);
+            return false;
         }
 
-        return false;
+        // Preparar información de la orden
+        $orderInfo = new stdClass();
+
+        if (isset($response->data->order) && isset($response->data->order->orderId)) {
+            $orderInfo->orderId = $response->data->order->orderId;
+        } elseif (isset($response->data->orderId)) {
+            $orderInfo->orderId = $response->data->orderId;
+        } else {
+            $this->last_error = "Cannot find orderId in response";
+            $this->CI->Log_model->add_log([
+                'user_id' => $this->CI->session->userdata('user_id'),
+                'action' => 'futures_position_error',
+                'description' => 'Cannot find orderId in response: ' . json_encode($response)
+            ]);
+            return false;
+        }
+
+        // Obtener precio actual
+        $price_info = $this->get_futures_price($api_key, $symbol, true);
+        if ($price_info && isset($price_info->price)) {
+            $orderInfo->price = $price_info->price;
+        } else {
+            $orderInfo->price = 0;
+        }
+
+        // Inicializar IDs de órdenes condicionales
+        $orderInfo->stopLossOrderId = null;
+        $orderInfo->takeProfitOrderId = null;
+        $orderInfo->stopLossSet = false;
+        $orderInfo->takeProfitSet = false;
+
+        // Log de posición abierta exitosamente
+        $this->CI->Log_model->add_log([
+            'user_id' => $this->CI->session->userdata('user_id'),
+            'action' => 'futures_position_opened',
+            'description' => 'Position opened successfully. OrderId: ' . $orderInfo->orderId .
+                ', Price: ' . $orderInfo->price
+        ]);
+
+        // STEP 2: Configurar Stop Loss si se proporciona
+        if ($stop_loss !== null && $stop_loss > 0) {
+            $this->CI->Log_model->add_log([
+                'user_id' => $this->CI->session->userdata('user_id'),
+                'action' => 'setting_stop_loss',
+                'description' => 'Attempting to set SL at ' . $stop_loss . ' for order ' . $orderInfo->orderId
+            ]);
+
+            $sl_result = $this->_set_conditional_order(
+                $api_key,
+                $symbol,
+                $side,
+                $positionSide,
+                $quantity,
+                $stop_loss,
+                'STOP_MARKET'
+            );
+
+            if ($sl_result) {
+                $orderInfo->stopLossSet = true;
+
+                // Guardar ID de orden SL si está disponible
+                if (isset($sl_result->order) && isset($sl_result->order->orderId)) {
+                    $orderInfo->stopLossOrderId = $sl_result->order->orderId;
+                } elseif (isset($sl_result->orderId)) {
+                    $orderInfo->stopLossOrderId = $sl_result->orderId;
+                }
+
+                $this->CI->Log_model->add_log([
+                    'user_id' => $this->CI->session->userdata('user_id'),
+                    'action' => 'stop_loss_set_success',
+                    'description' => 'Stop Loss set at ' . $stop_loss .
+                        ' for order ' . $orderInfo->orderId .
+                        ' (SL OrderId: ' . $orderInfo->stopLossOrderId . ')'
+                ]);
+            } else {
+                $this->CI->Log_model->add_log([
+                    'user_id' => $this->CI->session->userdata('user_id'),
+                    'action' => 'stop_loss_set_failed',
+                    'description' => 'Failed to set Stop Loss at ' . $stop_loss .
+                        '. Error: ' . $this->get_last_error()
+                ]);
+            }
+        }
+
+        // STEP 3: Configurar Take Profit si se proporciona
+        if ($take_profit !== null && $take_profit > 0) {
+            $this->CI->Log_model->add_log([
+                'user_id' => $this->CI->session->userdata('user_id'),
+                'action' => 'setting_take_profit',
+                'description' => 'Attempting to set TP at ' . $take_profit . ' for order ' . $orderInfo->orderId
+            ]);
+
+            $tp_result = $this->_set_conditional_order(
+                $api_key,
+                $symbol,
+                $side,
+                $positionSide,
+                $quantity,
+                $take_profit,
+                'TAKE_PROFIT_MARKET'
+            );
+
+            if ($tp_result) {
+                $orderInfo->takeProfitSet = true;
+
+                // Guardar ID de orden TP si está disponible
+                if (isset($tp_result->order) && isset($tp_result->order->orderId)) {
+                    $orderInfo->takeProfitOrderId = $tp_result->order->orderId;
+                } elseif (isset($tp_result->orderId)) {
+                    $orderInfo->takeProfitOrderId = $tp_result->orderId;
+                }
+
+                $this->CI->Log_model->add_log([
+                    'user_id' => $this->CI->session->userdata('user_id'),
+                    'action' => 'take_profit_set_success',
+                    'description' => 'Take Profit set at ' . $take_profit .
+                        ' for order ' . $orderInfo->orderId .
+                        ' (TP OrderId: ' . $orderInfo->takeProfitOrderId . ')'
+                ]);
+            } else {
+                $this->CI->Log_model->add_log([
+                    'user_id' => $this->CI->session->userdata('user_id'),
+                    'action' => 'take_profit_set_failed',
+                    'description' => 'Failed to set Take Profit at ' . $take_profit .
+                        '. Error: ' . $this->get_last_error()
+                ]);
+            }
+        }
+
+        // Log final con resumen
+        $this->CI->Log_model->add_log([
+            'user_id' => $this->CI->session->userdata('user_id'),
+            'action' => 'futures_position_complete',
+            'description' => json_encode([
+                'orderId' => $orderInfo->orderId,
+                'price' => $orderInfo->price,
+                'stopLossSet' => $orderInfo->stopLossSet,
+                'takeProfitSet' => $orderInfo->takeProfitSet,
+                'stopLossOrderId' => $orderInfo->stopLossOrderId,
+                'takeProfitOrderId' => $orderInfo->takeProfitOrderId
+            ])
+        ]);
+
+        return $orderInfo;
     }
 
     /**
@@ -558,12 +690,12 @@ class BingxApi
         $side = strtoupper($side);
         // In hedged mode, to close a position, we need to do the opposite action
         $close_side = $side == 'BUY' ? 'SELL' : 'BUY';
-    
+
         // In hedged mode, the positionSide must match the original position's side
         $position_side = $side == 'BUY' ? 'LONG' : 'SHORT';
-    
+
         $formatted_symbol = $this->format_symbol($symbol);
-    
+
         $endpoint = '/openApi/swap/v2/trade/order';
         $params = [
             'symbol' => $formatted_symbol,
@@ -573,7 +705,7 @@ class BingxApi
             'quantity' => (string)$quantity
             // REMOVED: 'reduceOnly' => 'true' - This param causes error in Hedge mode
         ];
-    
+
         // Log the close request for debugging
         $this->CI->Log_model->add_log([
             'user_id' => $this->CI->session->userdata('user_id'),
@@ -587,20 +719,20 @@ class BingxApi
                 'environment' => $this->environment
             ])
         ]);
-    
+
         $response = $this->_make_request($api_key, $endpoint, $params, 'POST', true);
-    
+
         // Log the complete response for debugging
         $this->CI->Log_model->add_log([
             'user_id' => $this->CI->session->userdata('user_id'),
             'action' => 'api_response_debug',
             'description' => 'Response from close_futures_position: ' . json_encode($response)
         ]);
-    
+
         if ($response && isset($response->data)) {
             // The structure of the response is different than expected
             $orderInfo = new stdClass();
-    
+
             if (isset($response->data->order) && isset($response->data->order->orderId)) {
                 // Correct structure according to documentation
                 $orderInfo->orderId = $response->data->order->orderId;
@@ -612,7 +744,7 @@ class BingxApi
                 $this->last_error = "Cannot find orderId in response";
                 return false;
             }
-    
+
             // Get current price since it's not in the response
             $price_info = $this->get_futures_price($api_key, $symbol, true);
             if ($price_info && isset($price_info->price)) {
@@ -621,10 +753,10 @@ class BingxApi
                 // If we can't get the price, use a default value
                 $orderInfo->price = 0;
             }
-    
+
             return $orderInfo;
         }
-    
+
         return false;
     }
 
