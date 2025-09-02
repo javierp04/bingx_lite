@@ -64,3 +64,6 @@ $route['debug/test_spot_balance'] = 'debug/test_spot_balance';
 $route['debug/test_futures_balance'] = 'debug/test_futures_balance';
 $route['debug/test_spot_price'] = 'debug/test_spot_price';
 $route['debug/test_futures_price'] = 'debug/test_futures_price';
+
+// AI Trade Reader route
+$route['/tradereader/run'] = 'tradereader/run';
