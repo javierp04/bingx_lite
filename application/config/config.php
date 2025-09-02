@@ -3,6 +3,7 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 
 $root=(isset($_SERVER['HTTPS']) ? "https://" : "http://").$_SERVER['HTTP_HOST'];
 $root.= str_replace(basename($_SERVER['SCRIPT_NAME']), '', $_SERVER['SCRIPT_NAME']);
+$config['openai_api_key'] = '';
 $config['base_url'] = $root;
 $config['index_page'] = 'index.php';
 $config['uri_protocol'] = 'REQUEST_URI';
