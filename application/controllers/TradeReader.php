@@ -9,6 +9,12 @@ class TradeReader extends CI_Controller
         parent::__construct();
     }
 
+    public function generateSignalFromTelegram() {
+        $update = file_get_contents("php://input");
+        $foo = $update;
+
+    }
+
     public function run($in_path = null, $out_path = null)
     {
         // Permitir llamada por querystring o CLI
