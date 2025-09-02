@@ -32,4 +32,3 @@ user_guide_src/cilexer/pycilexer.egg-info/*
 /tests/results/
 mt_out_signals/*
 uploads/*
-application/config/config.php
