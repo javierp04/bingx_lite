@@ -3,7 +3,7 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 
 $root=(isset($_SERVER['HTTPS']) ? "https://" : "http://").$_SERVER['HTTP_HOST'];
 $root.= str_replace(basename($_SERVER['SCRIPT_NAME']), '', $_SERVER['SCRIPT_NAME']);
-$config['openai_api_key'] = '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';
+$config['openai_api_key'] = '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';
 $config['base_url'] = $root;
 $config['index_page'] = 'index.php';
 $config['uri_protocol'] = 'REQUEST_URI';
