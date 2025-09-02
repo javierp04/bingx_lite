@@ -8,12 +8,231 @@ class TradeReader extends CI_Controller
     {
         parent::__construct();
     }
-
-    public function generateSignalFromTelegram() {
+    public function generateSignalFromTelegram()
+    {
         $update = file_get_contents("php://input");
-        $foo = $update;
+        $update = '{"update_id":219260603,
+"message":{"message_id":9,"from":{"id":671627305,"is_bot":false,"first_name":"Javier","username":"javi_pel","language_code":"es"},"chat":{"id":-1003019203652,"title":"Test Signal Generator","type":"supergroup"},"date":1756855249,"text":"Sentimiento #NQ https://www.tradingview.com/x/vpaJOzpO/","entities":[{"offset":12,"length":3,"type":"hashtag"},{"offset":16,"length":39,"type":"url"}],"link_preview_options":{"url":"https://www.tradingview.com/x/vpaJOzpO/","prefer_large_media":true}}}
+';
+        file_put_contents("uploads/telegram_webhook_log.txt", $update . "\n\n", FILE_APPEND);
 
+        try {
+            // 1. Validar JSON
+            $webhook_data = json_decode($update, true);
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                $this->Log_model->add_log([
+                    'user_id' => null,
+                    'action' => 'telegram_webhook_error',
+                    'description' => 'Invalid JSON received from Telegram webhook. Data: ' . $update
+                ]);
+                http_response_code(400);
+                echo json_encode(['status' => 'error', 'message' => 'Invalid JSON']);
+                return;
+            }
+
+            // 2. Verificar que hay texto
+            if (!isset($webhook_data['message']['text'])) {
+                http_response_code(200);
+                echo json_encode(['status' => 'ok']);
+                return;
+            }
+
+            $message_text = $webhook_data['message']['text'];
+
+            // 3. Solo procesar si empieza con "Sentimiento" - sino salir sin loguear
+            if (!preg_match('/^Sentimiento\s+/', $message_text)) {
+                http_response_code(200);
+                echo json_encode(['status' => 'ok']);
+                return;
+            }
+
+            // 4. Extraer ticker
+            if (!preg_match('/#([A-Z0-9]+)/', $message_text, $ticker_matches)) {
+                $this->Log_model->add_log([
+                    'user_id' => null,
+                    'action' => 'telegram_webhook_error',
+                    'description' => 'Sentiment message found but no valid ticker hashtag detected: ' . $message_text
+                ]);
+                http_response_code(400);
+                echo json_encode(['status' => 'error', 'message' => 'No ticker found']);
+                return;
+            }
+
+            $ticker = $ticker_matches[1];
+
+            // 5. Extraer URL de TradingView
+            if (!preg_match('/(https:\/\/www\.tradingview\.com\/x\/[a-zA-Z0-9\/]+)/', $message_text, $url_matches)) {
+                $this->Log_model->add_log([
+                    'user_id' => null,
+                    'action' => 'telegram_webhook_error',
+                    'description' => 'Sentiment signal for ' . $ticker . ' found but no TradingView URL detected: ' . $message_text
+                ]);
+                http_response_code(400);
+                echo json_encode(['status' => 'error', 'message' => 'No TradingView URL found']);
+                return;
+            }
+
+            $tradingview_url = $url_matches[1];
+
+            // 6. Preparar archivos
+            $current_date = date('Y-m-d');
+            $image_filename = $current_date . '_' . $ticker . '.png';
+            $image_path = 'uploads/trades/' . $image_filename;
+
+            // Crear directorio si no existe
+            $upload_dir = dirname($image_path);
+            if (!is_dir($upload_dir)) {
+                if (!mkdir($upload_dir, 0755, true)) {
+                    $this->Log_model->add_log([
+                        'user_id' => null,
+                        'action' => 'telegram_image_error',
+                        'description' => 'Failed to create directory: ' . $upload_dir . ' for ticker: ' . $ticker
+                    ]);
+                    http_response_code(500);
+                    echo json_encode(['status' => 'error', 'message' => 'Directory creation failed']);
+                    return;
+                }
+            }
+
+            // 7. Descargar imagen
+            $image_downloaded = $this->downloadTradingViewImage($tradingview_url, $image_path, $ticker);
+
+            if ($image_downloaded) {
+                $this->Log_model->add_log([
+                    'user_id' => null,
+                    'action' => 'telegram_signal_processed',
+                    'description' => 'Sentiment signal successfully processed for ticker: ' . $ticker .
+                        '. Image saved as: ' . $image_filename .
+                        '. TradingView URL: ' . $tradingview_url
+                ]);
+
+                http_response_code(200);
+                echo json_encode([
+                    'status' => 'success',
+                    'ticker' => $ticker,
+                    'image_file' => $image_filename
+                ]);
+            } else {
+                http_response_code(207);
+                echo json_encode([
+                    'status' => 'partial_success',
+                    'ticker' => $ticker,
+                    'message' => 'Signal processed but image download failed'
+                ]);
+            }
+        } catch (Exception $e) {
+            $this->Log_model->add_log([
+                'user_id' => null,
+                'action' => 'telegram_webhook_error',
+                'description' => 'Telegram webhook processing failed with exception: ' . $e->getMessage()
+            ]);
+
+            http_response_code(500);
+            echo json_encode(['status' => 'error', 'message' => 'Internal server error']);
+        }
     }
+
+    /**
+     * Descarga imagen de TradingView haciendo scraping del HTML
+     */
+    private function downloadTradingViewImage($tradingview_url, $save_path, $ticker)
+    {
+        try {
+            // PASO 1: Obtener HTML de la página
+            $ch = curl_init();
+            curl_setopt($ch, CURLOPT_URL, $tradingview_url);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+            curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+            curl_setopt($ch, CURLOPT_HTTPHEADER, [
+                'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Accept-Language: en-US,en;q=0.5',
+            ]);
+
+            $html_content = curl_exec($ch);
+            $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $curl_error = curl_error($ch);
+            curl_close($ch);
+
+            if ($curl_error || $http_code !== 200 || empty($html_content)) {
+                $this->Log_model->add_log([
+                    'user_id' => null,
+                    'action' => 'telegram_image_error',
+                    'description' => 'Failed to fetch TradingView page for ticker: ' . $ticker .
+                        '. HTTP Code: ' . $http_code . '. cURL Error: ' . ($curl_error ?: 'None') . '. URL: ' . $tradingview_url
+                ]);
+                return false;
+            }
+
+            // PASO 2: Extraer URL de imagen del <main>
+            if (!preg_match('/<main[^>]*class=["\']main["\'][^>]*>.*?<img[^>]+src=["\']([^"\']+)["\'][^>]*>.*?<\/main>/si', $html_content, $matches)) {
+                $this->Log_model->add_log([
+                    'user_id' => null,
+                    'action' => 'telegram_image_error',
+                    'description' => 'Could not find image URL in <main> section for ticker: ' . $ticker . '. URL: ' . $tradingview_url
+                ]);
+                return false;
+            }
+
+            $image_url = $matches[1];
+
+            // PASO 3: Descargar imagen directamente
+            $ch = curl_init();
+            curl_setopt($ch, CURLOPT_URL, $image_url);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+            curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+
+            $image_data = curl_exec($ch);
+            $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $curl_error = curl_error($ch);
+            curl_close($ch);
+
+            if ($curl_error || $http_code !== 200 || empty($image_data)) {
+                $this->Log_model->add_log([
+                    'user_id' => null,
+                    'action' => 'telegram_image_error',
+                    'description' => 'Failed to download image for ticker: ' . $ticker .
+                        '. Image URL: ' . $image_url . '. HTTP Code: ' . $http_code .
+                        '. cURL Error: ' . ($curl_error ?: 'None')
+                ]);
+                return false;
+            }
+
+            // PASO 4: Guardar imagen
+            if (file_put_contents($save_path, $image_data) === false) {
+                $this->Log_model->add_log([
+                    'user_id' => null,
+                    'action' => 'telegram_image_error',
+                    'description' => 'Failed to save image file for ticker: ' . $ticker . '. Path: ' . $save_path
+                ]);
+                return false;
+            }
+
+            $this->Log_model->add_log([
+                'user_id' => null,
+                'action' => 'telegram_image_downloaded',
+                'description' => 'Image successfully downloaded for ticker: ' . $ticker .
+                    '. Saved to: ' . $save_path . '. Size: ' . strlen($image_data) . ' bytes. ' .
+                    'Page URL: ' . $tradingview_url . '. Image URL: ' . $image_url
+            ]);
+
+            return true;
+        } catch (Exception $e) {
+            $this->Log_model->add_log([
+                'user_id' => null,
+                'action' => 'telegram_image_error',
+                'description' => 'Exception downloading image for ticker: ' . $ticker .
+                    '. Error: ' . $e->getMessage() . '. URL: ' . $tradingview_url
+            ]);
+            return false;
+        }
+    }
+
 
     public function run($in_path = null, $out_path = null)
     {
@@ -137,11 +356,11 @@ class TradeReader extends CI_Controller
 3. Los numeros se presentan con separador de miles (.) y decimal (,) Debes convertirlos a formato internacional sin separador de miles y con punto decimal. Ejemplo: 1.234,56 -> 1234.56
 La salida tiene que ser un JSON estrictamente solo, sin explicacion adicional: {op_type : "long o short", "label_prices" : array de precios.
 PROMPT;
-}
+    }
 
-//Necesito que analices esta imagen de un plan de trading de TradingView para identificar el tipo de operacion (LONG o SHORT), los niveles de Take Profit y Stop Loss que están en las etiquetas que se encuentran a la derecha de la misma.
-//Asimismo, hay que identificar el precio de entrada, que es la etiqueta más cercana a la de color azul (con fondo rojo o verede únicamente).
-//La salida tiene que ser un JSON estrictamente solo, sin explicacion adicional: {op_type : "long o short", "entry": precio de entrada, stoploss : <array de stops>, tps: array de tps.
+    //Necesito que analices esta imagen de un plan de trading de TradingView para identificar el tipo de operacion (LONG o SHORT), los niveles de Take Profit y Stop Loss que están en las etiquetas que se encuentran a la derecha de la misma.
+    //Asimismo, hay que identificar el precio de entrada, que es la etiqueta más cercana a la de color azul (con fondo rojo o verede únicamente).
+    //La salida tiene que ser un JSON estrictamente solo, sin explicacion adicional: {op_type : "long o short", "entry": precio de entrada, stoploss : <array de stops>, tps: array de tps.
 
     /**
      * POST JSON a OpenAI Responses API con cURL

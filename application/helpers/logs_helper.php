@@ -1,5 +1,5 @@
 <?php
-defined('BASEPATH') OR exit('No direct script access allowed');
+defined('BASEPATH') or exit('No direct script access allowed');
 
 /**
  * Logs Helper
@@ -16,8 +16,7 @@ defined('BASEPATH') OR exit('No direct script access allowed');
  * @param     string    $action    Log action type
  * @return    string
  */
-if (!function_exists('get_badge_class'))
-{
+if (!function_exists('get_badge_class')) {
     function get_badge_class($action)
     {
         switch ($action) {
@@ -27,40 +26,40 @@ if (!function_exists('get_badge_class'))
             case 'add_strategy':
             case 'add_api_key':
                 return 'bg-success';
-                
-            // Delete actions - RED
+
+                // Delete actions - RED
             case 'logout':
             case 'delete_user':
             case 'delete_strategy':
             case 'delete_api_key':
                 return 'bg-danger';
-                
-            // Trading actions - BLUE/PURPLE
+
+                // Trading actions - BLUE/PURPLE
             case 'open_trade':
                 return 'bg-primary';
             case 'close_trade':
             case 'partial_close_trade':
                 return 'bg-warning text-dark';
-                
-            // API & Request actions - LIGHT BLUE
+
+                // API & Request actions - LIGHT BLUE
             case 'api_request':
             case 'api_debug':
             case 'api_response_debug':
             case 'signature_debug':
             case 'close_position_request':
                 return 'bg-info';
-                
-            // Error actions - RED
+
+                // Error actions - RED
             case 'webhook_error':
             case 'api_error':
             case 'refresh_error':
                 return 'bg-danger';
-                
-            // BingX Webhook actions - GRAY
+
+                // BingX Webhook actions - GRAY
             case 'webhook_debug':
                 return 'bg-secondary';
-                
-            // MetaTrader actions
+
+                // MetaTrader actions
             case 'mt_webhook_debug':
             case 'mt_debug_test':
                 return 'bg-info';
@@ -73,14 +72,22 @@ if (!function_exists('get_badge_class'))
             case 'mt_signal_retry':
             case 'mt_signal_delete':
                 return 'bg-success';
-                
-            // Edit actions - PURPLE
+
+                // Edit actions - PURPLE
             case 'edit_user':
             case 'edit_strategy':
             case 'edit_api_key':
                 return 'bg-primary';
-                
-            // Default - GRAY
+
+                // Telegram actions - PURPLE/INDIGO  
+            case 'telegram_webhook_error':
+            case 'telegram_image_error':
+                return 'bg-danger';
+            case 'telegram_signal_processed':
+            case 'telegram_image_downloaded':
+                return 'bg-success';
+
+                // Default - GRAY
             default:
                 return 'bg-secondary';
         }
@@ -95,8 +102,7 @@ if (!function_exists('get_badge_class'))
  * @param     string    $json_string    JSON string to format
  * @return    string
  */
-if (!function_exists('format_json'))
-{
+if (!function_exists('format_json')) {
     function format_json($json_string)
     {
         try {
