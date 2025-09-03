@@ -21,7 +21,7 @@ class My_tickers extends CI_Controller
         $user_id = $this->session->userdata('user_id');
         
         // Get user's selected tickers
-        $data['selected_tickers'] = $this->User_tickers_model->get_user_selected_tickers($user_id, false); // Include inactive
+        $data['selected_tickers'] = $this->User_tickers_model->get_user_selected_tickers($user_id); // Include inactive
         
         // Get available tickers that user hasn't selected yet
         $data['available_tickers'] = $this->User_tickers_model->get_available_tickers_for_user($user_id);
@@ -35,19 +35,42 @@ class My_tickers extends CI_Controller
     {
         $user_id = $this->session->userdata('user_id');
         $ticker_symbol = $this->input->post('ticker_symbol');
+        $mt_ticker = $this->input->post('mt_ticker');
 
         if (empty($ticker_symbol)) {
-            $this->session->set_flashdata('error', 'No ticker selected');
-            redirect('my_tickers');
+            http_response_code(400);
+            echo json_encode(['error' => 'No ticker selected']);
+            return;
         }
 
-        if ($this->User_tickers_model->add_user_ticker($user_id, $ticker_symbol)) {
-            $this->session->set_flashdata('success', "Ticker {$ticker_symbol} added to your selection");
+        if ($this->User_tickers_model->add_user_ticker_with_mt($user_id, $ticker_symbol, $mt_ticker)) {
+            http_response_code(200);
+            echo json_encode(['success' => true]);
         } else {
-            $this->session->set_flashdata('error', "Failed to add ticker {$ticker_symbol}");
+            http_response_code(500);
+            echo json_encode(['error' => 'Failed to add ticker']);
+        }
+    }
+
+    public function update_mt_ticker()
+    {
+        $user_id = $this->session->userdata('user_id');
+        $ticker_symbol = $this->input->post('ticker_symbol');
+        $mt_ticker = $this->input->post('mt_ticker');
+
+        if (empty($ticker_symbol)) {
+            http_response_code(400);
+            echo json_encode(['error' => 'No ticker specified']);
+            return;
         }
 
-        redirect('my_tickers');
+        if ($this->User_tickers_model->update_user_mt_ticker($user_id, $ticker_symbol, $mt_ticker)) {
+            http_response_code(200);
+            echo json_encode(['success' => true]);
+        } else {
+            http_response_code(500);
+            echo json_encode(['error' => 'Failed to update MT ticker']);
+        }
     }
 
     public function remove_ticker($ticker_symbol)
@@ -74,7 +97,7 @@ class My_tickers extends CI_Controller
         }
 
         // Get current status
-        $selected_tickers = $this->User_tickers_model->get_user_selected_tickers($user_id, false);
+        $selected_tickers = $this->User_tickers_model->get_user_selected_tickers($user_id);
         $current_status = true;
         foreach ($selected_tickers as $ticker) {
             if ($ticker->ticker_symbol == $ticker_symbol) {
@@ -90,25 +113,6 @@ class My_tickers extends CI_Controller
             $this->session->set_flashdata('success', "Ticker {$ticker_symbol} {$status_text}");
         } else {
             $this->session->set_flashdata('error', "Failed to toggle ticker {$ticker_symbol}");
-        }
-
-        redirect('my_tickers');
-    }
-
-    public function bulk_update()
-    {
-        $user_id = $this->session->userdata('user_id');
-        $selected_tickers = $this->input->post('selected_tickers');
-
-        if (!is_array($selected_tickers)) {
-            $selected_tickers = array();
-        }
-
-        if ($this->User_tickers_model->update_user_tickers($user_id, $selected_tickers)) {
-            $count = count($selected_tickers);
-            $this->session->set_flashdata('success', "Updated ticker selection: {$count} tickers selected");
-        } else {
-            $this->session->set_flashdata('error', 'Failed to update ticker selection');
         }
 
         redirect('my_tickers');

@@ -14,9 +14,10 @@ class User_tickers_model extends CI_Model {
     /**
      * Obtener ticker por symbol
      */
-    public function get_available_ticker($symbol) {
+    public function get_available_ticker($symbol, $active = null) {
         $this->db->where('symbol', $symbol);
-        $this->db->where('active', 1);
+        if ($active !== null)
+            $this->db->where('active', $active);
         return $this->db->get('available_tickers')->row();
     }
     
@@ -29,15 +30,6 @@ class User_tickers_model extends CI_Model {
         }
         $this->db->order_by('symbol', 'ASC');
         return $this->db->get('available_tickers')->result();
-    }
-    
-    /**
-     * Verificar si un ticker existe y está activo
-     */
-    public function ticker_exists($symbol) {
-        $this->db->where('symbol', $symbol);
-        $this->db->where('active', 1);
-        return $this->db->get('available_tickers')->num_rows() > 0;
     }
     
     /**
@@ -70,13 +62,13 @@ class User_tickers_model extends CI_Model {
     /**
      * Obtener tickers seleccionados por usuario
      */
-    public function get_user_selected_tickers($user_id, $active_only = true) {
+    public function get_user_selected_tickers($user_id, $active = null) {
         $this->db->select('ust.*, at.name as ticker_name');
         $this->db->from('user_selected_tickers ust');
         $this->db->join('available_tickers at', 'ust.ticker_symbol = at.symbol');
         $this->db->where('ust.user_id', $user_id);
         
-        if ($active_only) {
+        if ($active !== null) {
             $this->db->where('ust.active', 1);
             $this->db->where('at.active', 1);
         }
@@ -104,34 +96,34 @@ class User_tickers_model extends CI_Model {
     /**
      * Verificar si usuario tiene un ticker seleccionado
      */
-    public function user_has_ticker($user_id, $ticker_symbol) {
+    public function user_has_ticker($user_id, $ticker_symbol, $active = null) {
         $this->db->where('user_id', $user_id);
         $this->db->where('ticker_symbol', $ticker_symbol);
-        $this->db->where('active', 1);
+        if ($active !== null)
+            $this->db->where('active', $active);
         return $this->db->get('user_selected_tickers')->num_rows() > 0;
     }
     
-    /**
-     * Agregar ticker a usuario
-     */
-    public function add_user_ticker($user_id, $ticker_symbol) {
-        // Verificar que el ticker existe
-        if (!$this->ticker_exists($ticker_symbol)) {
+      public function add_user_ticker_with_mt($user_id, $ticker_symbol, $mt_ticker = null) {
+                
+        if (!$this->get_available_ticker($ticker_symbol, true)) {
             return false;
-        }
-        
-        $data = [
-            'user_id' => $user_id,
-            'ticker_symbol' => $ticker_symbol,
-            'active' => 1
-        ];
-        
+        }                
         // Usar INSERT IGNORE para evitar duplicados
-        $this->db->query('INSERT IGNORE INTO user_selected_tickers (user_id, ticker_symbol, active, created_at) 
-                         VALUES (?, ?, ?, NOW())', 
-                         [$user_id, $ticker_symbol, 1]);
+        $this->db->query('INSERT IGNORE INTO user_selected_tickers (user_id, ticker_symbol, mt_ticker, active, created_at) 
+                         VALUES (?, ?, ?, ?, NOW())', 
+                         [$user_id, $ticker_symbol, $mt_ticker, 1]);
         
         return $this->db->affected_rows() > 0;
+    }
+    
+    /**
+     * Actualizar mt_ticker de un usuario
+     */
+    public function update_user_mt_ticker($user_id, $ticker_symbol, $mt_ticker) {
+        $this->db->where('user_id', $user_id);
+        $this->db->where('ticker_symbol', $ticker_symbol);
+        return $this->db->update('user_selected_tickers', ['mt_ticker' => $mt_ticker]);
     }
     
     /**
@@ -151,45 +143,5 @@ class User_tickers_model extends CI_Model {
         $this->db->where('ticker_symbol', $ticker_symbol);
         return $this->db->update('user_selected_tickers', ['active' => $active ? 1 : 0]);
     }
-    
-    /**
-     * Obtener lista de symbols activos de un usuario (para queries rápidas)
-     */
-    public function get_user_active_ticker_symbols($user_id) {
-        $this->db->select('ust.ticker_symbol');
-        $this->db->from('user_selected_tickers ust');
-        $this->db->join('available_tickers at', 'ust.ticker_symbol = at.symbol');
-        $this->db->where('ust.user_id', $user_id);
-        $this->db->where('ust.active', 1);
-        $this->db->where('at.active', 1);
-        
-        $result = $this->db->get()->result();
-        return array_column($result, 'ticker_symbol');
-    }
-    
-    /**
-     * Actualizar múltiples tickers de usuario de una vez
-     */
-    public function update_user_tickers($user_id, $selected_tickers) {
-        // Primero desactivar todos los tickers del usuario
-        $this->db->where('user_id', $user_id);
-        $this->db->update('user_selected_tickers', ['active' => 0]);
-        
-        // Luego activar/insertar los seleccionados
-        foreach ($selected_tickers as $ticker_symbol) {
-            if ($this->ticker_exists($ticker_symbol)) {
-                // Intentar actualizar primero
-                $this->db->where('user_id', $user_id);
-                $this->db->where('ticker_symbol', $ticker_symbol);
-                $updated = $this->db->update('user_selected_tickers', ['active' => 1]);
-                
-                // Si no existía, insertarlo
-                if ($this->db->affected_rows() == 0) {
-                    $this->add_user_ticker($user_id, $ticker_symbol);
-                }
-            }
-        }
-        
-        return true;
-    }
+
 }

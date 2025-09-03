@@ -30,11 +30,38 @@ $route['strategies'] = 'strategies';
 $route['strategies/add'] = 'strategies/add';
 $route['strategies/edit/(:num)'] = 'strategies/edit/$1';
 $route['strategies/delete/(:num)'] = 'strategies/delete/$1';
+$route['strategies/view_image/(:num)'] = 'strategies/view_image/$1';
 
 // Trades routes
 $route['trades'] = 'trades';
 $route['trades/close/(:num)'] = 'trades/close/$1';
 $route['trades/detail/(:num)'] = 'trades/detail/$1';
+
+// Available Tickers routes (Admin only)
+$route['available_tickers'] = 'Available_tickers';
+$route['available_tickers/add'] = 'Available_tickers/add';
+$route['available_tickers/edit/(:any)'] = 'Available_tickers/edit/$1';
+$route['available_tickers/toggle/(:any)'] = 'Available_tickers/toggle/$1';
+$route['available_tickers/delete/(:any)'] = 'Available_tickers/delete/$1';
+
+// My Tickers routes (User ticker selection)
+$route['my_tickers'] = 'My_tickers';
+$route['my_tickers/add_ticker'] = 'My_tickers/add_ticker';
+$route['my_tickers/remove_ticker/(:any)'] = 'My_tickers/remove_ticker/$1';
+$route['my_tickers/toggle_ticker/(:any)'] = 'My_tickers/toggle_ticker/$1';
+$route['my_tickers/update_mt_ticker'] = 'My_tickers/update_mt_ticker';
+
+// Telegram Signals routes
+$route['telegram_signals'] = 'Telegram_signals';
+$route['telegram_signals/view/(:num)'] = 'Telegram_signals/view/$1';
+$route['telegram_signals/mark_processed/(:num)'] = 'Telegram_signals/mark_processed/$1';
+$route['telegram_signals/delete/(:num)'] = 'Telegram_signals/delete/$1';
+$route['telegram_signals/cleanup'] = 'Telegram_signals/cleanup';
+$route['telegram_signals/view_image/(:num)'] = 'Telegram_signals/view_image/$1';
+
+// Telegram Signals API routes (for MetaTrader EA)
+$route['api/telegram/signals/(:num)'] = 'Telegram_signals/api_get_signals/$1';
+$route['api/telegram/processed/(:num)'] = 'Telegram_signals/api_mark_processed/$1';
 
 // System Logs routes
 $route['systemlogs'] = 'SystemLogs';

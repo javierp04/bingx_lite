@@ -8,7 +8,7 @@ class Trade_model extends CI_Model
         parent::__construct();
     }
 
-    /**
+/**
      * Unified method to find multiple trades
      * 
      * @param array $filters Associative array of filters (null values ignored)
@@ -25,9 +25,12 @@ class Trade_model extends CI_Model
         ];
         $options = array_merge($defaults, $options);
 
+        // Force JOIN if we need platform filter or with_relations is true
+        $need_join = $options['with_relations'] || isset($filters['platform']);
+
         // Base query
-        if ($options['with_relations']) {
-            $this->db->select('trades.*, strategies.name as strategy_name, strategies.strategy_id as strategy_external_id, users.username');
+        if ($need_join) {
+            $this->db->select('trades.*, strategies.name as strategy_name, strategies.strategy_id as strategy_external_id, strategies.platform, users.username');
             $this->db->join('strategies', 'strategies.id = trades.strategy_id', 'left');
             $this->db->join('users', 'users.id = trades.user_id', 'left');
         }
@@ -36,9 +39,11 @@ class Trade_model extends CI_Model
         foreach ($filters as $field => $value) {
             if ($value !== null) {
                 // Handle special field mappings
-                if ($field === 'user_id' && $options['with_relations']) {
+                if ($field === 'platform') {
+                    $this->db->where('strategies.platform', $value);
+                } elseif ($field === 'user_id' && $need_join) {
                     $this->db->where('trades.user_id', $value);
-                } elseif ($field === 'status' && $options['with_relations']) {
+                } elseif ($field === 'status' && $need_join) {
                     $this->db->where('trades.status', $value);
                 } else {
                     $this->db->where($field, $value);
@@ -159,14 +164,20 @@ class Trade_model extends CI_Model
      */
     public function get_platform_statistics($user_id, $platform = null)
     {
-        // Use unified method for closed trades
-        $filters = [
-            'user_id' => $user_id,
-            'status' => 'closed',
-            'platform' => $platform
-        ];
-
-        $trades = $this->find_trades($filters);
+        // Always JOIN with strategies to get platform
+        $this->db->select('trades.*, strategies.platform');
+        $this->db->from('trades');
+        $this->db->join('strategies', 'strategies.id = trades.strategy_id', 'left');
+        
+        // Apply filters
+        $this->db->where('trades.user_id', $user_id);
+        $this->db->where('trades.status', 'closed');
+        
+        if ($platform) {
+            $this->db->where('strategies.platform', $platform);
+        }
+        
+        $trades = $this->db->get()->result();
 
         // Calculate statistics
         $stats = [

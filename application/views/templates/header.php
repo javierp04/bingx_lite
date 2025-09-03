@@ -85,12 +85,7 @@
                 </button>
 
                 <div class="collapse navbar-collapse" id="navbarNav">
-                    <ul class="navbar-nav me-auto">
-                        <li class="nav-item">
-                            <a class="nav-link" href="<?= base_url('dashboard') ?>">
-                                <i class="fas fa-tachometer-alt me-1"></i>Dashboard
-                            </a>
-                        </li>
+                    <ul class="navbar-nav me-auto">                      
                         <li class="nav-item">
                             <a class="nav-link" href="<?= base_url('signals') ?>">
                                 <i class="fas fa-signal me-1"></i>Signals

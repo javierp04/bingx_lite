@@ -14,8 +14,11 @@ class Strategy_model extends CI_Model
         if ($user_id) {
             $this->db->where('user_id', $user_id);
         }
-        $this->db->order_by('active', 'DESC'); // Active strategies first (1 comes before 0)
-        $this->db->order_by('id', 'ASC'); // Then order by ID in ascending order
+        
+        $this->db->order_by('active', 'DESC');
+        $this->db->order_by('type', 'ASC');
+        $this->db->order_by('strategy_id', 'ASC');
+
         return $this->db->get('strategies')->result();
     }
 

@@ -13,8 +13,7 @@
         <div class="table-responsive">
             <table class="table table-striped table-hover mb-0">
                 <thead>
-                    <tr>
-                        <th>ID</th>
+                    <tr>                        
                         <th>Strategy Name</th>
                         <th>Strategy ID</th>
                         <th>Platform</th>
@@ -28,12 +27,11 @@
                 <tbody>
                     <?php if (empty($strategies)): ?>
                         <tr>
-                            <td colspan="9" class="text-center py-3">No strategies found</td>
+                            <td colspan="8" class="text-center py-3">No strategies found</td>
                         </tr>
                     <?php else: ?>
                         <?php foreach ($strategies as $strategy): ?>
-                            <tr>
-                                <td><?= $strategy->id ?></td>
+                            <tr>                                
                                 <td><?= $strategy->name ?></td>
                                 <td><code><?= $strategy->strategy_id ?></code></td>
                                 <td>

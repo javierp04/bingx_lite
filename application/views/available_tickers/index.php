@@ -7,69 +7,7 @@
     </a>
 </div>
 
-<!-- Stats Cards -->
-<div class="row mb-4">
-    <div class="col-md-3">
-        <div class="card">
-            <div class="card-body">
-                <div class="d-flex justify-content-between align-items-center">
-                    <div>
-                        <h6 class="card-title text-muted">Total Tickers</h6>
-                        <h4 class="mb-0"><?= count($tickers) ?></h4>
-                    </div>
-                    <div class="text-primary">
-                        <i class="fas fa-tags fa-2x"></i>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="card">
-            <div class="card-body">
-                <div class="d-flex justify-content-between align-items-center">
-                    <div>
-                        <h6 class="card-title text-muted">Active</h6>
-                        <h4 class="mb-0 text-success"><?= count(array_filter($tickers, function($t) { return $t->active; })) ?></h4>
-                    </div>
-                    <div class="text-success">
-                        <i class="fas fa-check-circle fa-2x"></i>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="card">
-            <div class="card-body">
-                <div class="d-flex justify-content-between align-items-center">
-                    <div>
-                        <h6 class="card-title text-muted">Inactive</h6>
-                        <h4 class="mb-0 text-secondary"><?= count(array_filter($tickers, function($t) { return !$t->active; })) ?></h4>
-                    </div>
-                    <div class="text-secondary">
-                        <i class="fas fa-times-circle fa-2x"></i>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="card">
-            <div class="card-body">
-                <div class="d-flex justify-content-between align-items-center">
-                    <div>
-                        <h6 class="card-title text-muted">Usage</h6>
-                        <small class="text-muted">Telegram Signals</small>
-                    </div>
-                    <div class="text-info">
-                        <i class="fas fa-signal fa-2x"></i>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
+
 
 <!-- Tickers Table -->
 <div class="card">
@@ -87,8 +25,7 @@
                         <th>Name</th>
                         <th>Status</th>
                         <th>User Selections</th>
-                        <th>Signals</th>
-                        <th>Created</th>
+                        <th>Signals</th>                        
                         <th>Actions</th>
                     </tr>
                 </thead>
@@ -124,28 +61,27 @@
                                         $signals_count = $this->db->count_all_results('telegram_signals');
                                     ?>
                                     <span class="badge bg-warning text-dark"><?= $signals_count ?> signals</span>
-                                </td>
-                                <td><?= date('Y-m-d', strtotime($ticker->created_at)) ?></td>
+                                </td>                                
                                 <td>
                                     <div class="btn-group btn-group-sm">
                                         <a href="<?= base_url('available_tickers/edit/' . $ticker->symbol) ?>" 
-                                           class="btn btn-primary" title="Edit">
+                                           class="btn btn-outline-primary" title="Edit">
                                             <i class="fas fa-edit"></i>
                                         </a>
                                         <a href="<?= base_url('available_tickers/toggle/' . $ticker->symbol) ?>" 
-                                           class="btn <?= $ticker->active ? 'btn-secondary' : 'btn-success' ?>" 
+                                           class="btn <?= $ticker->active ? 'btn-outline-secondary' : 'btn-outline-success' ?>" 
                                            title="<?= $ticker->active ? 'Deactivate' : 'Activate' ?>"
                                            onclick="return confirm('Are you sure you want to <?= $ticker->active ? 'deactivate' : 'activate' ?> this ticker?')">
                                             <i class="fas fa-<?= $ticker->active ? 'pause' : 'play' ?>"></i>
                                         </a>
                                         <?php if ($user_count == 0 && $signals_count == 0): ?>
                                             <a href="<?= base_url('available_tickers/delete/' . $ticker->symbol) ?>" 
-                                               class="btn btn-danger" title="Delete"
+                                               class="btn btn-outline-danger" title="Delete"
                                                onclick="return confirm('Are you sure you want to delete this ticker?')">
                                                 <i class="fas fa-trash"></i>
                                             </a>
                                         <?php else: ?>
-                                            <button class="btn btn-danger" disabled title="Cannot delete: has user selections or signals">
+                                            <button class="btn btn-outline-danger" disabled title="Cannot delete: has user selections or signals">
                                                 <i class="fas fa-trash"></i>
                                             </button>
                                         <?php endif; ?>
