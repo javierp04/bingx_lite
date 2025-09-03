@@ -201,7 +201,7 @@ class Available_tickers extends CI_Controller
             'description' => 'Deleted available ticker: ' . $symbol
         ]);
 
-        $this->session->set_flashdata('success', 'Ticker deleted successfully'); 
+        $this->session->set_flashdata('success', 'Ticker deleted successfully');
         redirect('available_tickers');
     }
 }
