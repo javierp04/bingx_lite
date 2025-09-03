@@ -65,24 +65,6 @@ class Telegram_signals extends CI_Controller
         $this->load->view('templates/footer');
     }
 
-    public function mark_processed($id)
-    {
-        $signal = $this->Telegram_signals_model->get_signal_by_id($id);
-
-        if (!$signal) {
-            $this->session->set_flashdata('error', 'Signal not found');
-            redirect('telegram_signals');
-        }
-
-        if ($this->Telegram_signals_model->mark_as_processed($id)) {
-            $this->session->set_flashdata('success', 'Signal marked as processed');
-        } else {
-            $this->session->set_flashdata('error', 'Failed to update signal');
-        }
-
-        redirect('telegram_signals');
-    }
-
     public function delete($id)
     {
         $signal = $this->Telegram_signals_model->get_signal_by_id($id);
@@ -190,28 +172,5 @@ class Telegram_signals extends CI_Controller
             http_response_code(500);
             echo json_encode(['error' => 'Internal server error']);
         }
-    }
-
-    // API endpoint for MetaTrader EA to mark signals as processed
-    public function api_mark_processed($signal_id)
-    {
-        if (!is_numeric($signal_id)) {
-            http_response_code(400);
-            echo json_encode(['error' => 'Invalid signal ID']);
-            return;
-        }
-
-        try {
-            if ($this->Telegram_signals_model->mark_as_processed($signal_id)) {
-                http_response_code(200);
-                echo json_encode(['success' => true, 'message' => 'Signal marked as processed']);
-            } else {
-                http_response_code(404);
-                echo json_encode(['error' => 'Signal not found or already processed']);
-            }
-        } catch (Exception $e) {
-            http_response_code(500);
-            echo json_encode(['error' => 'Internal server error']);
-        }
-    }
+    }   
 }

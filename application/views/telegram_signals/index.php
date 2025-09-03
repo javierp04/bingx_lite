@@ -16,63 +16,43 @@
 
 <!-- Stats Cards -->
 <div class="row mb-4">
-    <div class="col-md-3">
+    <div class="col-md-2">
         <div class="card">
-            <div class="card-body">
-                <div class="d-flex justify-content-between align-items-center">
-                    <div>
-                        <h6 class="card-title text-muted">Total Signals</h6>
-                        <h4 class="mb-0"><?= $stats['total'] ?></h4>
-                    </div>
-                    <div class="text-primary">
-                        <i class="fas fa-paper-plane fa-2x"></i>
-                    </div>
-                </div>
+            <div class="card-body text-center">
+                <h6 class="card-title text-muted">Total</h6>
+                <h4 class="mb-0"><?= $stats['total'] ?></h4>
             </div>
         </div>
     </div>
-    <div class="col-md-3">
+    <div class="col-md-2">
         <div class="card">
-            <div class="card-body">
-                <div class="d-flex justify-content-between align-items-center">
-                    <div>
-                        <h6 class="card-title text-muted">Pending</h6>
-                        <h4 class="mb-0 text-warning"><?= $stats['pending'] ?></h4>
-                    </div>
-                    <div class="text-warning">
-                        <i class="fas fa-clock fa-2x"></i>
-                    </div>
-                </div>
+            <div class="card-body text-center">
+                <h6 class="card-title text-muted">Completed</h6>
+                <h4 class="mb-0 text-success"><?= $stats['completed'] ?></h4>
             </div>
         </div>
     </div>
-    <div class="col-md-3">
+    <div class="col-md-2">
         <div class="card">
-            <div class="card-body">
-                <div class="d-flex justify-content-between align-items-center">
-                    <div>
-                        <h6 class="card-title text-muted">Processed</h6>
-                        <h4 class="mb-0 text-success"><?= $stats['processed'] ?></h4>
-                    </div>
-                    <div class="text-success">
-                        <i class="fas fa-check-circle fa-2x"></i>
-                    </div>
-                </div>
+            <div class="card-body text-center">
+                <h6 class="card-title text-muted">Processing</h6>
+                <h4 class="mb-0 text-info"><?= $stats['processing'] ?></h4>
             </div>
         </div>
     </div>
-    <div class="col-md-3">
+    <div class="col-md-2">
         <div class="card">
-            <div class="card-body">
-                <div class="d-flex justify-content-between align-items-center">
-                    <div>
-                        <h6 class="card-title text-muted">Last 24h</h6>
-                        <h4 class="mb-0 text-info"><?= $stats['last_24h'] ?></h4>
-                    </div>
-                    <div class="text-info">
-                        <i class="fas fa-calendar-day fa-2x"></i>
-                    </div>
-                </div>
+            <div class="card-body text-center">
+                <h6 class="card-title text-muted">Failed</h6>
+                <h4 class="mb-0 text-danger"><?= $stats['failed'] ?></h4>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-2">
+        <div class="card">
+            <div class="card-body text-center">
+                <h6 class="card-title text-muted">Last 24h</h6>
+                <h4 class="mb-0 text-warning"><?= $stats['last_24h'] ?></h4>
             </div>
         </div>
     </div>
@@ -98,12 +78,17 @@
                     <?php endforeach; ?>
                 </select>
             </div>
-            <div class="col-md-2">
-                <label for="processed" class="form-label">Status</label>
-                <select class="form-select" id="processed" name="processed">
+            <div class="col-md-3">
+                <label for="status" class="form-label">Status</label>
+                <select class="form-select" id="status" name="status">
                     <option value="">All Status</option>
-                    <option value="0" <?= $filters['processed'] === '0' ? 'selected' : '' ?>>Pending</option>
-                    <option value="1" <?= $filters['processed'] === '1' ? 'selected' : '' ?>>Processed</option>
+                    <option value="pending" <?= $filters['status'] === 'pending' ? 'selected' : '' ?>>Pending</option>
+                    <option value="cropping" <?= $filters['status'] === 'cropping' ? 'selected' : '' ?>>Cropping</option>
+                    <option value="analyzing" <?= $filters['status'] === 'analyzing' ? 'selected' : '' ?>>Analyzing</option>
+                    <option value="completed" <?= $filters['status'] === 'completed' ? 'selected' : '' ?>>Completed</option>
+                    <option value="failed_crop" <?= $filters['status'] === 'failed_crop' ? 'selected' : '' ?>>Failed Crop</option>
+                    <option value="failed_analysis" <?= $filters['status'] === 'failed_analysis' ? 'selected' : '' ?>>Failed Analysis</option>
+                    <option value="failed_download" <?= $filters['status'] === 'failed_download' ? 'selected' : '' ?>>Failed Download</option>
                 </select>
             </div>
             <div class="col-md-2">
@@ -114,9 +99,8 @@
                 <label for="date_to" class="form-label">Date To</label>
                 <input type="date" class="form-control" id="date_to" name="date_to" value="<?= $filters['date_to'] ?>">
             </div>
-            <div class="col-md-3">
-                <label class="form-label">&nbsp;</label>
-                <div class="d-flex gap-2">
+            <div class="col-md-2">
+                <div class="d-flex gap-2 align-items-end h-100">
                     <button type="submit" class="btn btn-primary">
                         <i class="fas fa-search me-1"></i>Filter
                     </button>
@@ -129,161 +113,111 @@
     </div>
 </div>
 
-<div class="row">
-    <!-- Signals Table -->
-    <div class="col-md-8">
-        <div class="card">
-            <div class="card-header">
-                <h5 class="mb-0">
-                    <i class="fas fa-list me-1"></i>Telegram Signals
-                    <span class="badge bg-secondary ms-2"><?= count($signals) ?></span>
-                </h5>
-            </div>
-            <div class="card-body p-0">
-                <div class="table-responsive">
-                    <table class="table table-striped table-hover mb-0">
-                        <thead>
-                            <tr>
-                                <th>ID</th>
-                                <th>Ticker</th>
-                                <th>Status</th>
-                                <th>Image</th>
-                                <th>Created</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php if (empty($signals)): ?>
-                                <tr>
-                                    <td colspan="6" class="text-center py-3">No signals found</td>
-                                </tr>
-                            <?php else: ?>
-                                <?php foreach ($signals as $signal): ?>
-                                    <tr>
-                                        <td><?= $signal->id ?></td>
-                                        <td>
-                                            <strong><?= $signal->ticker_symbol ?></strong><br>
-                                            <small class="text-muted"><?= $signal->ticker_name ?></small>
-                                        </td>
-                                        <td>
-                                            <span class="badge <?= $signal->processed ? 'bg-success' : 'bg-warning text-dark' ?>">
-                                                <?= $signal->processed ? 'Processed' : 'Pending' ?>
-                                            </span>
-                                        </td>
-                                        <td>
-                                            <?php if (file_exists($signal->image_path)): ?>
-                                                <a href="<?= base_url('telegram_signals/view_image/' . $signal->id) ?>" 
-                                                   class="btn btn-sm btn-info" target="_blank">
-                                                    <i class="fas fa-image"></i> View
-                                                </a>
-                                            <?php else: ?>
-                                                <span class="text-muted">No image</span>
-                                            <?php endif; ?>
-                                        </td>
-                                        <td>
-                                            <?= date('Y-m-d', strtotime($signal->created_at)) ?><br>
-                                            <small class="text-muted"><?= date('H:i:s', strtotime($signal->created_at)) ?></small>
-                                        </td>
-                                        <td>
-                                            <div class="btn-group btn-group-sm">
-                                                <button class="btn btn-outline-info" 
-                                                        onclick="showSignalDetails(<?= $signal->id ?>, '<?= htmlspecialchars($signal->message_text, ENT_QUOTES) ?>', '<?= $signal->tradingview_url ?>')">
-                                                    <i class="fas fa-eye"></i>
-                                                </button>
-                                                <?php if (!$signal->processed): ?>
-                                                    <a href="<?= base_url('telegram_signals/mark_processed/' . $signal->id) ?>" 
-                                                       class="btn btn-success" title="Mark as Processed"
-                                                       onclick="return confirm('Mark this signal as processed?')">
-                                                        <i class="fas fa-check"></i>
-                                                    </a>
-                                                <?php endif; ?>
-                                                <a href="<?= base_url('telegram_signals/delete/' . $signal->id) ?>" 
-                                                   class="btn btn-danger" title="Delete"
-                                                   onclick="return confirm('Are you sure you want to delete this signal?')">
-                                                    <i class="fas fa-trash"></i>
-                                                </a>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                <?php endforeach; ?>
-                            <?php endif; ?>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
+<!-- Signals Table -->
+<div class="card">
+    <div class="card-header">
+        <h5 class="mb-0">
+            <i class="fas fa-list me-1"></i>Telegram Signals
+            <span class="badge bg-secondary ms-2"><?= count($signals) ?></span>
+        </h5>
     </div>
-    
-    <!-- Ticker Stats -->
-    <div class="col-md-4">
-        <div class="card">
-            <div class="card-header">
-                <h6 class="mb-0">
-                    <i class="fas fa-chart-bar me-1"></i>Ticker Activity (7 days)
-                </h6>
-            </div>
-            <div class="card-body">
-                <?php if (empty($ticker_stats)): ?>
-                    <p class="text-muted mb-0">No activity in the last 7 days</p>
-                <?php else: ?>
-                    <?php foreach ($ticker_stats as $stat): ?>
-                        <div class="d-flex justify-content-between align-items-center mb-2">
-                            <div>
-                                <strong><?= $stat->ticker_symbol ?></strong><br>
-                                <small class="text-muted"><?= $stat->ticker_name ?></small>
-                            </div>
-                            <div class="text-end">
-                                <span class="badge bg-primary"><?= $stat->total_signals ?></span><br>
-                                <small class="text-success"><?= $stat->processed_signals ?> processed</small>
-                            </div>
-                        </div>
-                        <hr class="my-2">
-                    <?php endforeach; ?>
-                <?php endif; ?>
-            </div>
-        </div>
-        
-        <div class="card mt-3">
-            <div class="card-header">
-                <h6 class="mb-0">
-                    <i class="fas fa-info-circle me-1"></i>API Endpoints
-                </h6>
-            </div>
-            <div class="card-body">
-                <h6>MetaTrader EA Endpoints:</h6>
-                <div class="mb-2">
-                    <strong>Get Signals:</strong>
-                    <div class="input-group input-group-sm">
-                        <input type="text" class="form-control" value="<?= base_url('telegram_signals/api_get_signals/{user_id}') ?>" readonly>
-                        <button class="btn btn-outline-secondary" onclick="copyToClipboard(this.previousElementSibling)">
-                            <i class="fas fa-copy"></i>
-                        </button>
-                    </div>
-                </div>
-                <div class="mb-2">
-                    <strong>Mark Processed:</strong>
-                    <div class="input-group input-group-sm">
-                        <input type="text" class="form-control" value="<?= base_url('telegram_signals/api_mark_processed/{signal_id}') ?>" readonly>
-                        <button class="btn btn-outline-secondary" onclick="copyToClipboard(this.previousElementSibling)">
-                            <i class="fas fa-copy"></i>
-                        </button>
-                    </div>
-                </div>
-                <small class="text-muted">Replace {user_id} and {signal_id} with actual values</small>
-            </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-striped table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Ticker</th>
+                        <th>Status</th>
+                        <th>Analysis</th>
+                        <th>Image</th>
+                        <th>Created</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php if (empty($signals)): ?>
+                        <tr>
+                            <td colspan="7" class="text-center py-3">No signals found</td>
+                        </tr>
+                    <?php else: ?>
+                        <?php foreach ($signals as $signal): ?>
+                            <tr>
+                                <td><?= $signal->id ?></td>
+                                <td>
+                                    <strong><?= $signal->ticker_symbol ?></strong><br>
+                                    <small class="text-muted"><?= $signal->ticker_name ?></small>
+                                </td>
+                                <td>
+                                    <?php
+                                    $status_classes = [
+                                        'pending' => 'bg-warning text-dark',
+                                        'cropping' => 'bg-info',
+                                        'analyzing' => 'bg-primary',
+                                        'completed' => 'bg-success',
+                                        'failed_crop' => 'bg-danger',
+                                        'failed_analysis' => 'bg-danger',
+                                        'failed_download' => 'bg-danger'
+                                    ];
+                                    $class = isset($status_classes[$signal->status]) ? $status_classes[$signal->status] : 'bg-secondary';
+                                    ?>
+                                    <span class="badge <?= $class ?>">
+                                        <?= ucfirst(str_replace('_', ' ', $signal->status)) ?>
+                                    </span>
+                                </td>
+                                <td>
+                                    <?php if ($signal->status === 'completed' && $signal->analysis_data): ?>
+                                        <button class="btn btn-sm btn-outline-success" 
+                                                onclick="showAnalysis(<?= $signal->id ?>, '<?= htmlspecialchars($signal->analysis_data, ENT_QUOTES) ?>')">
+                                            <i class="fas fa-chart-line"></i> View
+                                        </button>
+                                    <?php else: ?>
+                                        <span class="text-muted">-</span>
+                                    <?php endif; ?>
+                                </td>
+                                <td>
+                                    <?php if (file_exists($signal->image_path)): ?>
+                                        <a href="<?= base_url('telegram_signals/view_image/' . $signal->id) ?>" 
+                                           class="btn btn-sm btn-outline-info" target="_blank">
+                                            <i class="fas fa-image"></i> View
+                                        </a>
+                                    <?php else: ?>
+                                        <span class="text-muted">No image</span>
+                                    <?php endif; ?>
+                                </td>
+                                <td>
+                                    <?= date('Y-m-d', strtotime($signal->created_at)) ?><br>
+                                    <small class="text-muted"><?= date('H:i:s', strtotime($signal->created_at)) ?></small>
+                                </td>
+                                <td>
+                                    <div class="btn-group btn-group-sm">
+                                        <button class="btn btn-outline-info" 
+                                                onclick="showSignalDetails(<?= $signal->id ?>, '<?= htmlspecialchars($signal->message_text, ENT_QUOTES) ?>', '<?= $signal->tradingview_url ?>')">
+                                            <i class="fas fa-eye"></i>
+                                        </button>
+                                        <a href="<?= base_url('telegram_signals/delete/' . $signal->id) ?>" 
+                                           class="btn btn-outline-danger" title="Delete"
+                                           onclick="return confirm('Are you sure you want to delete this signal?')">
+                                            <i class="fas fa-trash"></i>
+                                        </a>
+                                    </div>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </tbody>
+            </table>
         </div>
     </div>
 </div>
 
 <!-- Signal Details Modal -->
-<div class="modal fade" id="signalDetailsModal" tabindex="-1" aria-labelledby="signalDetailsModalLabel" aria-hidden="true">
+<div class="modal fade" id="signalDetailsModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="signalDetailsModalLabel">
-                    <i class="fas fa-paper-plane me-1"></i>Signal Details
-                </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <h5 class="modal-title">Signal Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
                 <div class="row">
@@ -304,16 +238,31 @@
     </div>
 </div>
 
+<!-- Analysis Modal -->
+<div class="modal fade" id="analysisModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">AI Analysis Result</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <pre id="analysisContent" class="bg-light p-3 rounded"></pre>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Cleanup Modal -->
 <?php if ($this->session->userdata('role') === 'admin'): ?>
-<div class="modal fade" id="cleanupModal" tabindex="-1" aria-labelledby="cleanupModalLabel" aria-hidden="true">
+<div class="modal fade" id="cleanupModal" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="cleanupModalLabel">Cleanup Old Signals</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <h5 class="modal-title">Cleanup Old Signals</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <?= form_open('telegram_signals/cleanup') ?>
+            <form action="<?= base_url('telegram_signals/cleanup') ?>" method="post">
                 <div class="modal-body">
                     <div class="mb-3">
                         <label for="days" class="form-label">Delete signals older than (days):</label>
@@ -327,7 +276,7 @@
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                     <button type="submit" class="btn btn-danger">Delete Old Signals</button>
                 </div>
-            <?= form_close() ?>
+            </form>
         </div>
     </div>
 </div>
@@ -343,19 +292,15 @@ function showSignalDetails(signalId, messageText, tradingViewUrl) {
     modal.show();
 }
 
-function copyToClipboard(element) {
-    element.select();
-    document.execCommand('copy');
-
-    // Visual feedback
-    const button = element.nextElementSibling;
-    const originalHTML = button.innerHTML;
-    button.innerHTML = '<i class="fas fa-check"></i>';
-    button.classList.add('btn-success');
-
-    setTimeout(() => {
-        button.innerHTML = originalHTML;
-        button.classList.remove('btn-success');
-    }, 1500);
+function showAnalysis(signalId, analysisData) {
+    try {
+        const parsed = JSON.parse(analysisData);
+        document.getElementById('analysisContent').textContent = JSON.stringify(parsed, null, 2);
+    } catch (e) {
+        document.getElementById('analysisContent').textContent = analysisData;
+    }
+    
+    const modal = new bootstrap.Modal(document.getElementById('analysisModal'));
+    modal.show();
 }
 </script>
