@@ -7,4 +7,4 @@ $autoload['drivers'] = array();
 $autoload['helper'] = array('url', 'form', 'security', 'date', 'logs');
 $autoload['config'] = array();
 $autoload['language'] = array();
-$autoload['model'] = array('User_model', 'Trade_model', 'Strategy_model', 'Api_key_model', 'Log_model', 'Mt_signal_model');
+$autoload['model'] = array('User_model', 'Trade_model', 'Strategy_model', 'Api_key_model', 'Log_model', 'Mt_signal_model'); 
