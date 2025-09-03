@@ -14,6 +14,7 @@ class Telegram_signals extends CI_Controller
 
         $this->load->model('Telegram_signals_model');
         $this->load->model('User_tickers_model');
+        $this->load->model('Log_model');
     }
 
     public function index()
@@ -23,7 +24,7 @@ class Telegram_signals extends CI_Controller
         // Get filter params
         $filters = array();
         $filters['ticker_symbol'] = $this->input->get('ticker_symbol') ?: '';
-        $filters['processed'] = $this->input->get('processed');
+        $filters['status'] = $this->input->get('status');
         $filters['date_from'] = $this->input->get('date_from') ?: '';
         $filters['date_to'] = $this->input->get('date_to') ?: '';
 
@@ -36,9 +37,9 @@ class Telegram_signals extends CI_Controller
 
         // Get stats
         $data['stats'] = array(
-            'total' => $this->Telegram_signals_model->count_signals_by_status(),
-            'pending' => $this->Telegram_signals_model->count_signals_by_status(0),
-            'processed' => $this->Telegram_signals_model->count_signals_by_status(1),
+            'total' => $this->Telegram_signals_model->count_signals_total(),
+            'completed' => $this->Telegram_signals_model->count_signals_completed(),
+            'failed' => $this->Telegram_signals_model->count_signals_failed(),
             'last_24h' => $this->Telegram_signals_model->count_signals_last_24h()
         );
 
@@ -60,6 +61,19 @@ class Telegram_signals extends CI_Controller
             redirect('telegram_signals');
         }
 
+        // Get users trading this ticker
+        $data['trading_users'] = $this->Telegram_signals_model->get_users_trading_ticker($data['signal']->ticker_symbol);
+        
+        // Get recent signals for this ticker
+        $data['recent_signals'] = $this->Telegram_signals_model->get_recent_signals_by_ticker(
+            $data['signal']->ticker_symbol, 
+            $data['signal']->id,
+            5
+        );
+
+        // Check if cropped image exists
+        $data['cropped_image_exists'] = $this->get_cropped_image_path($data['signal']->image_path) ? true : false;
+
         $this->load->view('templates/header', $data);
         $this->load->view('telegram_signals/view', $data);
         $this->load->view('templates/footer');
@@ -74,9 +88,15 @@ class Telegram_signals extends CI_Controller
             redirect('telegram_signals');
         }
 
-        // Delete image file if exists
+        // Delete image files if they exist
         if (file_exists($signal->image_path)) {
             unlink($signal->image_path);
+        }
+
+        // Delete cropped image if exists
+        $cropped_path = $this->get_cropped_image_path($signal->image_path);
+        if ($cropped_path && file_exists($cropped_path)) {
+            unlink($cropped_path);
         }
 
         if ($this->Telegram_signals_model->delete_signal($id)) {
@@ -118,17 +138,51 @@ class Telegram_signals extends CI_Controller
             redirect('telegram_signals');
         }
 
+        $this->serve_image($signal->image_path);
+    }
+
+    public function view_cropped_image($id)
+    {
+        $signal = $this->Telegram_signals_model->get_signal_by_id($id);
+
+        if (!$signal) {
+            $this->session->set_flashdata('error', 'Signal not found');
+            redirect('telegram_signals');
+        }
+
+        $cropped_path = $this->get_cropped_image_path($signal->image_path);
+
+        if (!$cropped_path || !file_exists($cropped_path)) {
+            $this->session->set_flashdata('error', 'Cropped image not found');
+            redirect('telegram_signals');
+        }
+
+        $this->serve_image($cropped_path);
+    }
+
+    private function serve_image($image_path)
+    {
         // Get image info
-        $image_info = pathinfo($signal->image_path);
+        $image_info = pathinfo($image_path);
         $mime_type = 'image/png'; // Default to PNG
 
         // Set proper headers
         header('Content-Type: ' . $mime_type);
-        header('Content-Length: ' . filesize($signal->image_path));
-        header('Content-Disposition: inline; filename="' . basename($signal->image_path) . '"');
+        header('Content-Length: ' . filesize($image_path));
+        header('Content-Disposition: inline; filename="' . basename($image_path) . '"');
 
         // Output image
-        readfile($signal->image_path);
+        readfile($image_path);
+    }
+
+    private function get_cropped_image_path($original_path)
+    {
+        // Convert uploads/trades/2025-01-01_SYMBOL.png to uploads/trades/cropped-2025-01-01_SYMBOL.png
+        $path_info = pathinfo($original_path);
+        $cropped_filename = 'cropped-' . $path_info['filename'] . '.' . $path_info['extension'];
+        $cropped_path = $path_info['dirname'] . '/' . $cropped_filename;
+        
+        return file_exists($cropped_path) ? $cropped_path : null;
     }
 
     // API endpoint for MetaTrader EA to get signals
@@ -145,15 +199,15 @@ class Telegram_signals extends CI_Controller
         $hours = (int)$this->input->get('hours') ?: 2;
         
         try {
-            // Get pending signals for user
-            $signals = $this->Telegram_signals_model->get_pending_signals_for_user($user_id, $hours);
+            // Get completed signals for user
+            $signals = $this->Telegram_signals_model->get_completed_signals_for_user($user_id, '', $hours);
             
             $response_signals = array();
             foreach ($signals as $signal) {
                 $response_signals[] = array(
                     'id' => $signal->id,
                     'ticker_symbol' => $signal->ticker_symbol,
-                    'ticker_name' => $signal->ticker_name,
+                    'ticker_name' => isset($signal->ticker_name) ? $signal->ticker_name : '',
                     'image_path' => base_url($signal->image_path),
                     'tradingview_url' => $signal->tradingview_url,
                     'created_at' => $signal->created_at

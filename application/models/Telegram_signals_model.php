@@ -16,7 +16,7 @@ class Telegram_signals_model extends CI_Model {
             'image_path' => $image_path,
             'tradingview_url' => $tradingview_url,
             'message_text' => $message_text,
-            'processed' => 0
+            'status' => 'pending'
         ];
         
         $this->db->insert('telegram_signals', $signal_data);
@@ -36,8 +36,8 @@ class Telegram_signals_model extends CI_Model {
             $this->db->where('ts.ticker_symbol', $filters['ticker_symbol']);
         }
         
-        if (isset($filters['processed']) && $filters['processed'] !== '') {
-            $this->db->where('ts.processed', (int)$filters['processed']);
+        if (isset($filters['status']) && $filters['status'] !== '') {
+            $this->db->where('ts.status', $filters['status']);
         }
         
         if (isset($filters['date_from']) && $filters['date_from']) {
@@ -156,14 +156,29 @@ class Telegram_signals_model extends CI_Model {
     }
    
     /**
-     * Contar señales por estado
+     * Contar todas las señales
      */
-    public function count_signals_by_status($processed = null) {
-        if ($processed !== null) {
-            $this->db->where('processed', (int)$processed);
-        }
+    public function count_signals_total() {
         return $this->db->count_all_results('telegram_signals');
     }
+    
+    /**
+     * Contar señales completadas
+     */
+    public function count_signals_completed() {
+        $this->db->where('status', 'completed');
+        return $this->db->count_all_results('telegram_signals');
+    }
+    
+    /**
+     * Contar señales fallidas
+     */
+    public function count_signals_failed() {
+        $this->db->where_in('status', ['failed_crop', 'failed_analysis', 'failed_download']);
+        return $this->db->count_all_results('telegram_signals');
+    }
+    
+
     
     /**
      * Contar señales de las últimas 24 horas
@@ -178,7 +193,7 @@ class Telegram_signals_model extends CI_Model {
      */
     public function get_ticker_stats($days = 7) {
         $this->db->select('ts.ticker_symbol, at.name as ticker_name, COUNT(*) as total_signals, 
-                          SUM(CASE WHEN ts.processed = 1 THEN 1 ELSE 0 END) as processed_signals');
+                          SUM(CASE WHEN ts.status = "completed" THEN 1 ELSE 0 END) as completed_signals');
         $this->db->from('telegram_signals ts');
         $this->db->join('available_tickers at', 'ts.ticker_symbol = at.symbol');
         $this->db->where('ts.created_at >=', date('Y-m-d H:i:s', strtotime("-{$days} days")));
@@ -186,6 +201,37 @@ class Telegram_signals_model extends CI_Model {
         $this->db->order_by('total_signals', 'DESC');
         
         return $this->db->get()->result();
+    }
+
+    /**
+     * Obtener usuarios que están tradeando un ticker específico
+     */
+    public function get_users_trading_ticker($ticker_symbol) {
+        $this->db->select('u.username, ust.active');
+        $this->db->from('user_selected_tickers ust');
+        $this->db->join('users u', 'ust.user_id = u.id');
+        $this->db->where('ust.ticker_symbol', $ticker_symbol);
+        $this->db->where('ust.active', 1);
+        $this->db->order_by('u.username', 'ASC');
+        
+        return $this->db->get()->result();
+    }
+
+    /**
+     * Obtener señales recientes del mismo ticker (excluyendo una específica)
+     */
+    public function get_recent_signals_by_ticker($ticker_symbol, $exclude_id = null, $limit = 5) {
+        $this->db->select('id, created_at, status');
+        $this->db->where('ticker_symbol', $ticker_symbol);
+        
+        if ($exclude_id) {
+            $this->db->where('id !=', $exclude_id);
+        }
+        
+        $this->db->order_by('created_at', 'DESC');
+        $this->db->limit($limit);
+        
+        return $this->db->get('telegram_signals')->result();
     }
     
     /**

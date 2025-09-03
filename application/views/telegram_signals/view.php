@@ -33,8 +33,20 @@
                     <tr>
                         <th>Status</th>
                         <td>
-                            <span class="badge <?= $signal->processed ? 'bg-success' : 'bg-warning text-dark' ?>">
-                                <?= $signal->processed ? 'Processed' : 'Pending' ?>
+                            <?php
+                            $status_classes = [
+                                'pending' => 'bg-warning text-dark',
+                                'cropping' => 'bg-info',
+                                'analyzing' => 'bg-primary',
+                                'completed' => 'bg-success',
+                                'failed_crop' => 'bg-danger',
+                                'failed_analysis' => 'bg-danger',
+                                'failed_download' => 'bg-danger'
+                            ];
+                            $class = isset($status_classes[$signal->status]) ? $status_classes[$signal->status] : 'bg-secondary';
+                            ?>
+                            <span class="badge <?= $class ?>">
+                                <?= ucfirst(str_replace('_', ' ', $signal->status)) ?>
                             </span>
                         </td>
                     </tr>
@@ -60,6 +72,18 @@
             </div>
         </div>
 
+        <!-- AI Analysis -->
+        <?php if ($signal->status === 'completed' && $signal->analysis_data): ?>
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">AI Analysis Result</h5>
+            </div>
+            <div class="card-body">
+                <pre class="bg-light p-3 rounded mb-0"><?= json_encode(json_decode($signal->analysis_data), JSON_PRETTY_PRINT) ?></pre>
+            </div>
+        </div>
+        <?php endif; ?>
+
         <!-- Original Message -->
         <div class="card mb-4">
             <div class="card-header">
@@ -77,14 +101,6 @@
             </div>
             <div class="card-body">
                 <div class="btn-group">
-                    <?php if (!$signal->processed): ?>
-                        <a href="<?= base_url('telegram_signals/mark_processed/' . $signal->id) ?>" 
-                           class="btn btn-success"
-                           onclick="return confirm('Mark this signal as processed?')">
-                            <i class="fas fa-check me-1"></i>Mark as Processed
-                        </a>
-                    <?php endif; ?>
-                    
                     <a href="<?= $signal->tradingview_url ?>" target="_blank" class="btn btn-outline-primary">
                         <i class="fas fa-chart-line me-1"></i>View Chart
                     </a>
@@ -92,7 +108,14 @@
                     <?php if (file_exists($signal->image_path)): ?>
                         <a href="<?= base_url('telegram_signals/view_image/' . $signal->id) ?>" 
                            target="_blank" class="btn btn-outline-info">
-                            <i class="fas fa-image me-1"></i>View Image
+                            <i class="fas fa-image me-1"></i>Original Image
+                        </a>
+                    <?php endif; ?>
+
+                    <?php if ($cropped_image_exists): ?>
+                        <a href="<?= base_url('telegram_signals/view_cropped_image/' . $signal->id) ?>" 
+                           target="_blank" class="btn btn-outline-success">
+                            <i class="fas fa-crop me-1"></i>Cropped Image
                         </a>
                     <?php endif; ?>
                     
@@ -107,18 +130,18 @@
     </div>
 
     <div class="col-md-4">
-        <!-- Image Preview -->
+        <!-- Original Image Preview -->
         <?php if (file_exists($signal->image_path)): ?>
             <div class="card mb-4">
                 <div class="card-header">
                     <h6 class="mb-0">
-                        <i class="fas fa-image me-1"></i>Chart Image
+                        <i class="fas fa-image me-1"></i>Original Chart Image
                     </h6>
                 </div>
                 <div class="card-body text-center">
                     <img src="<?= base_url('telegram_signals/view_image/' . $signal->id) ?>" 
                          class="img-fluid rounded" 
-                         style="max-height: 300px; cursor: pointer;"
+                         style="max-height: 250px; cursor: pointer;"
                          onclick="window.open('<?= base_url('telegram_signals/view_image/' . $signal->id) ?>', '_blank')">
                     <div class="mt-2">
                         <small class="text-muted">Click to view full size</small>
@@ -129,14 +152,49 @@
             <div class="card mb-4">
                 <div class="card-header">
                     <h6 class="mb-0">
-                        <i class="fas fa-image me-1"></i>Chart Image
+                        <i class="fas fa-image me-1"></i>Original Chart Image
                     </h6>
                 </div>
                 <div class="card-body text-center">
                     <div class="text-muted py-4">
                         <i class="fas fa-image fa-3x mb-2"></i>
-                        <p>Image file not found</p>
+                        <p>Original image not found</p>
                         <small>Path: <?= $signal->image_path ?></small>
+                    </div>
+                </div>
+            </div>
+        <?php endif; ?>
+
+        <!-- Cropped Image Preview -->
+        <?php if ($cropped_image_exists): ?>
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h6 class="mb-0">
+                        <i class="fas fa-crop me-1"></i>Cropped Chart Image
+                    </h6>
+                </div>
+                <div class="card-body text-center">
+                    <img src="<?= base_url('telegram_signals/view_cropped_image/' . $signal->id) ?>" 
+                         class="img-fluid rounded" 
+                         style="max-height: 250px; cursor: pointer;"
+                         onclick="window.open('<?= base_url('telegram_signals/view_cropped_image/' . $signal->id) ?>', '_blank')">
+                    <div class="mt-2">
+                        <small class="text-muted">Click to view full size</small>
+                    </div>
+                </div>
+            </div>
+        <?php else: ?>
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h6 class="mb-0">
+                        <i class="fas fa-crop me-1"></i>Cropped Chart Image
+                    </h6>
+                </div>
+                <div class="card-body text-center">
+                    <div class="text-muted py-4">
+                        <i class="fas fa-crop fa-3x mb-2"></i>
+                        <p>Cropped image not available</p>
+                        <small>Not processed yet or crop failed</small>
                     </div>
                 </div>
             </div>
@@ -150,16 +208,6 @@
                 </h6>
             </div>
             <div class="card-body">
-                <?php 
-                    $this->db->select('u.username, ust.active');
-                    $this->db->from('user_selected_tickers ust');
-                    $this->db->join('users u', 'ust.user_id = u.id');
-                    $this->db->where('ust.ticker_symbol', $signal->ticker_symbol);
-                    $this->db->where('ust.active', 1);
-                    $this->db->order_by('u.username', 'ASC');
-                    $trading_users = $this->db->get()->result();
-                ?>
-                
                 <?php if (empty($trading_users)): ?>
                     <div class="text-muted text-center py-2">
                         <i class="fas fa-user-slash mb-2"></i>
@@ -188,15 +236,6 @@
                 </h6>
             </div>
             <div class="card-body">
-                <?php 
-                    $this->db->select('id, created_at, processed');
-                    $this->db->where('ticker_symbol', $signal->ticker_symbol);
-                    $this->db->where('id !=', $signal->id);
-                    $this->db->order_by('created_at', 'DESC');
-                    $this->db->limit(5);
-                    $recent_signals = $this->db->get('telegram_signals')->result();
-                ?>
-                
                 <?php if (empty($recent_signals)): ?>
                     <div class="text-muted text-center py-2">
                         <p class="mb-0">No other signals for this ticker</p>
@@ -210,8 +249,20 @@
                                 </a><br>
                                 <small class="text-muted"><?= date('M j, H:i', strtotime($recent->created_at)) ?></small>
                             </div>
-                            <span class="badge <?= $recent->processed ? 'bg-success' : 'bg-warning text-dark' ?> badge-sm">
-                                <?= $recent->processed ? 'Processed' : 'Pending' ?>
+                            <?php
+                            $status_classes = [
+                                'pending' => 'bg-warning text-dark',
+                                'cropping' => 'bg-info',
+                                'analyzing' => 'bg-primary',
+                                'completed' => 'bg-success',
+                                'failed_crop' => 'bg-danger',
+                                'failed_analysis' => 'bg-danger',
+                                'failed_download' => 'bg-danger'
+                            ];
+                            $class = isset($status_classes[$recent->status]) ? $status_classes[$recent->status] : 'bg-secondary';
+                            ?>
+                            <span class="badge <?= $class ?> badge-sm">
+                                <?= ucfirst(str_replace('_', ' ', $recent->status)) ?>
                             </span>
                         </div>
                     <?php endforeach; ?>

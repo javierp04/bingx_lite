@@ -16,7 +16,7 @@
 
 <!-- Stats Cards -->
 <div class="row mb-4">
-    <div class="col-md-2">
+    <div class="col-md-3">
         <div class="card">
             <div class="card-body text-center">
                 <h6 class="card-title text-muted">Total</h6>
@@ -24,7 +24,7 @@
             </div>
         </div>
     </div>
-    <div class="col-md-2">
+    <div class="col-md-3">
         <div class="card">
             <div class="card-body text-center">
                 <h6 class="card-title text-muted">Completed</h6>
@@ -32,15 +32,7 @@
             </div>
         </div>
     </div>
-    <div class="col-md-2">
-        <div class="card">
-            <div class="card-body text-center">
-                <h6 class="card-title text-muted">Processing</h6>
-                <h4 class="mb-0 text-info"><?= $stats['processing'] ?></h4>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-2">
+    <div class="col-md-3">
         <div class="card">
             <div class="card-body text-center">
                 <h6 class="card-title text-muted">Failed</h6>
@@ -48,7 +40,7 @@
             </div>
         </div>
     </div>
-    <div class="col-md-2">
+    <div class="col-md-3">
         <div class="card">
             <div class="card-body text-center">
                 <h6 class="card-title text-muted">Last 24h</h6>
@@ -130,7 +122,7 @@
                         <th>Ticker</th>
                         <th>Status</th>
                         <th>Analysis</th>
-                        <th>Image</th>
+                        <th>Images</th>
                         <th>Created</th>
                         <th>Actions</th>
                     </tr>
@@ -142,6 +134,13 @@
                         </tr>
                     <?php else: ?>
                         <?php foreach ($signals as $signal): ?>
+                            <?php
+                            // Check if cropped image exists
+                            $path_info = pathinfo($signal->image_path);
+                            $cropped_filename = 'cropped-' . $path_info['filename'] . '.' . $path_info['extension'];
+                            $cropped_path = $path_info['dirname'] . '/' . $cropped_filename;
+                            $cropped_exists = file_exists($cropped_path);
+                            ?>
                             <tr>
                                 <td><?= $signal->id ?></td>
                                 <td>
@@ -176,13 +175,30 @@
                                     <?php endif; ?>
                                 </td>
                                 <td>
-                                    <?php if (file_exists($signal->image_path)): ?>
-                                        <a href="<?= base_url('telegram_signals/view_image/' . $signal->id) ?>" 
-                                           class="btn btn-sm btn-outline-info" target="_blank">
-                                            <i class="fas fa-image"></i> View
-                                        </a>
+                                    <?php if (file_exists($signal->image_path) || $cropped_exists): ?>
+                                        <div class="dropdown">
+                                            <button class="btn btn-sm btn-outline-info dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                                                <i class="fas fa-image"></i> View
+                                            </button>
+                                            <ul class="dropdown-menu">
+                                                <?php if (file_exists($signal->image_path)): ?>
+                                                    <li>
+                                                        <a class="dropdown-item" href="<?= base_url('telegram_signals/view_image/' . $signal->id) ?>" target="_blank">
+                                                            <i class="fas fa-image me-1"></i>Original
+                                                        </a>
+                                                    </li>
+                                                <?php endif; ?>
+                                                <?php if ($cropped_exists): ?>
+                                                    <li>
+                                                        <a class="dropdown-item" href="<?= base_url('telegram_signals/view_cropped_image/' . $signal->id) ?>" target="_blank">
+                                                            <i class="fas fa-crop me-1"></i>Cropped
+                                                        </a>
+                                                    </li>
+                                                <?php endif; ?>
+                                            </ul>
+                                        </div>
                                     <?php else: ?>
-                                        <span class="text-muted">No image</span>
+                                        <span class="text-muted">No images</span>
                                     <?php endif; ?>
                                 </td>
                                 <td>
@@ -191,10 +207,10 @@
                                 </td>
                                 <td>
                                     <div class="btn-group btn-group-sm">
-                                        <button class="btn btn-outline-info" 
-                                                onclick="showSignalDetails(<?= $signal->id ?>, '<?= htmlspecialchars($signal->message_text, ENT_QUOTES) ?>', '<?= $signal->tradingview_url ?>')">
+                                        <a href="<?= base_url('telegram_signals/view/' . $signal->id) ?>" 
+                                           class="btn btn-outline-info" title="View Details">
                                             <i class="fas fa-eye"></i>
-                                        </button>
+                                        </a>
                                         <a href="<?= base_url('telegram_signals/delete/' . $signal->id) ?>" 
                                            class="btn btn-outline-danger" title="Delete"
                                            onclick="return confirm('Are you sure you want to delete this signal?')">
@@ -207,33 +223,6 @@
                     <?php endif; ?>
                 </tbody>
             </table>
-        </div>
-    </div>
-</div>
-
-<!-- Signal Details Modal -->
-<div class="modal fade" id="signalDetailsModal" tabindex="-1">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Signal Details</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <div class="row">
-                    <div class="col-md-6">
-                        <strong>Signal ID:</strong>
-                        <p id="modalSignalId"></p>
-                        
-                        <strong>TradingView URL:</strong>
-                        <p><a id="modalTradingViewUrl" href="#" target="_blank">View Chart</a></p>
-                    </div>
-                    <div class="col-md-6">
-                        <strong>Original Message:</strong>
-                        <pre id="modalMessageText" class="bg-light p-3 rounded"></pre>
-                    </div>
-                </div>
-            </div>
         </div>
     </div>
 </div>
@@ -283,15 +272,6 @@
 <?php endif; ?>
 
 <script>
-function showSignalDetails(signalId, messageText, tradingViewUrl) {
-    document.getElementById('modalSignalId').textContent = signalId;
-    document.getElementById('modalMessageText').textContent = messageText;
-    document.getElementById('modalTradingViewUrl').href = tradingViewUrl;
-    
-    const modal = new bootstrap.Modal(document.getElementById('signalDetailsModal'));
-    modal.show();
-}
-
 function showAnalysis(signalId, analysisData) {
     try {
         const parsed = JSON.parse(analysisData);
