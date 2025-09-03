@@ -7,14 +7,15 @@ class TradeReader extends CI_Controller
     public function __construct()
     {
         parent::__construct();
+        $this->load->model('User_tickers_model');
     }
     public function generateSignalFromTelegram()
     {
         $update = file_get_contents("php://input");
-        $update = '{"update_id":219260603,
-"message":{"message_id":9,"from":{"id":671627305,"is_bot":false,"first_name":"Javier","username":"javi_pel","language_code":"es"},"chat":{"id":-1003019203652,"title":"Test Signal Generator","type":"supergroup"},"date":1756855249,"text":"Sentimiento #NQ https://www.tradingview.com/x/vpaJOzpO/","entities":[{"offset":12,"length":3,"type":"hashtag"},{"offset":16,"length":39,"type":"url"}],"link_preview_options":{"url":"https://www.tradingview.com/x/vpaJOzpO/","prefer_large_media":true}}}
-';
         file_put_contents("uploads/telegram_webhook_log.txt", $update . "\n\n", FILE_APPEND);
+
+        // Cargar modelo necesario
+
 
         try {
             // 1. Validar JSON
@@ -23,7 +24,7 @@ class TradeReader extends CI_Controller
                 $this->Log_model->add_log([
                     'user_id' => null,
                     'action' => 'telegram_webhook_error',
-                    'description' => 'Invalid JSON received from Telegram webhook. Data: ' . $update
+                    'description' => 'Invalid JSON received from Telegram webhook'
                 ]);
                 http_response_code(400);
                 echo json_encode(['status' => 'error', 'message' => 'Invalid JSON']);
@@ -58,14 +59,30 @@ class TradeReader extends CI_Controller
                 return;
             }
 
-            $ticker = $ticker_matches[1];
+            $ticker_symbol = $ticker_matches[1];
 
-            // 5. Extraer URL de TradingView
+            // 5. Validar que el ticker existe en available_tickers
+            $this->db->where('symbol', $ticker_symbol);
+            $this->db->where('active', 1);
+            $ticker = $this->db->get('available_tickers')->row();
+
+            if (!$ticker) {
+                $this->Log_model->add_log([
+                    'user_id' => null,
+                    'action' => 'telegram_webhook_error',
+                    'description' => 'Ticker not found in available tickers: ' . $ticker_symbol
+                ]);
+                http_response_code(400);
+                echo json_encode(['status' => 'error', 'message' => 'Ticker not available']);
+                return;
+            }
+
+            // 6. Extraer URL de TradingView
             if (!preg_match('/(https:\/\/www\.tradingview\.com\/x\/[a-zA-Z0-9\/]+)/', $message_text, $url_matches)) {
                 $this->Log_model->add_log([
                     'user_id' => null,
                     'action' => 'telegram_webhook_error',
-                    'description' => 'Sentiment signal for ' . $ticker . ' found but no TradingView URL detected: ' . $message_text
+                    'description' => 'Sentiment signal for ' . $ticker_symbol . ' found but no TradingView URL detected'
                 ]);
                 http_response_code(400);
                 echo json_encode(['status' => 'error', 'message' => 'No TradingView URL found']);
@@ -74,9 +91,9 @@ class TradeReader extends CI_Controller
 
             $tradingview_url = $url_matches[1];
 
-            // 6. Preparar archivos
+            // 7. Preparar archivos
             $current_date = date('Y-m-d');
-            $image_filename = $current_date . '_' . $ticker . '.png';
+            $image_filename = $current_date . '_' . $ticker_symbol . '.png';
             $image_path = 'uploads/trades/' . $image_filename;
 
             // Crear directorio si no existe
@@ -85,8 +102,8 @@ class TradeReader extends CI_Controller
                 if (!mkdir($upload_dir, 0755, true)) {
                     $this->Log_model->add_log([
                         'user_id' => null,
-                        'action' => 'telegram_image_error',
-                        'description' => 'Failed to create directory: ' . $upload_dir . ' for ticker: ' . $ticker
+                        'action' => 'telegram_webhook_error',
+                        'description' => 'Failed to create directory: ' . $upload_dir . ' for ticker: ' . $ticker_symbol
                     ]);
                     http_response_code(500);
                     echo json_encode(['status' => 'error', 'message' => 'Directory creation failed']);
@@ -94,30 +111,34 @@ class TradeReader extends CI_Controller
                 }
             }
 
-            // 7. Descargar imagen
-            $image_downloaded = $this->downloadTradingViewImage($tradingview_url, $image_path, $ticker);
+            // 8. Descargar imagen
+            $image_downloaded = $this->downloadTradingViewImage($tradingview_url, $image_path, $ticker_symbol);
 
             if ($image_downloaded) {
-                $this->Log_model->add_log([
-                    'user_id' => null,
-                    'action' => 'telegram_signal_processed',
-                    'description' => 'Sentiment signal successfully processed for ticker: ' . $ticker .
-                        '. Image saved as: ' . $image_filename .
-                        '. TradingView URL: ' . $tradingview_url
-                ]);
+                // 9. Guardar en telegram_signals - SOLO SI TODO SALIÓ BIEN
+                $signal_data = [
+                    'ticker_symbol' => $ticker_symbol,
+                    'image_path' => $image_path,
+                    'tradingview_url' => $tradingview_url,
+                    'message_text' => $message_text,
+                    'processed' => 0
+                ];
+
+                $this->db->insert('telegram_signals', $signal_data);
 
                 http_response_code(200);
                 echo json_encode([
                     'status' => 'success',
-                    'ticker' => $ticker,
+                    'ticker' => $ticker_symbol,
                     'image_file' => $image_filename
                 ]);
             } else {
-                http_response_code(207);
+                // Error de descarga se loguea dentro de downloadTradingViewImage()
+                http_response_code(500);
                 echo json_encode([
-                    'status' => 'partial_success',
-                    'ticker' => $ticker,
-                    'message' => 'Signal processed but image download failed'
+                    'status' => 'error',
+                    'ticker' => $ticker_symbol,
+                    'message' => 'Image download failed'
                 ]);
             }
         } catch (Exception $e) {
@@ -161,7 +182,7 @@ class TradeReader extends CI_Controller
                     'user_id' => null,
                     'action' => 'telegram_image_error',
                     'description' => 'Failed to fetch TradingView page for ticker: ' . $ticker .
-                        '. HTTP Code: ' . $http_code . '. cURL Error: ' . ($curl_error ?: 'None') . '. URL: ' . $tradingview_url
+                        '. HTTP Code: ' . $http_code . '. cURL Error: ' . ($curl_error ?: 'None')
                 ]);
                 return false;
             }
@@ -171,7 +192,7 @@ class TradeReader extends CI_Controller
                 $this->Log_model->add_log([
                     'user_id' => null,
                     'action' => 'telegram_image_error',
-                    'description' => 'Could not find image URL in <main> section for ticker: ' . $ticker . '. URL: ' . $tradingview_url
+                    'description' => 'Could not find image URL in <main> section for ticker: ' . $ticker
                 ]);
                 return false;
             }
@@ -197,8 +218,7 @@ class TradeReader extends CI_Controller
                     'user_id' => null,
                     'action' => 'telegram_image_error',
                     'description' => 'Failed to download image for ticker: ' . $ticker .
-                        '. Image URL: ' . $image_url . '. HTTP Code: ' . $http_code .
-                        '. cURL Error: ' . ($curl_error ?: 'None')
+                        '. Image URL: ' . $image_url . '. HTTP Code: ' . $http_code
                 ]);
                 return false;
             }
@@ -213,26 +233,17 @@ class TradeReader extends CI_Controller
                 return false;
             }
 
-            $this->Log_model->add_log([
-                'user_id' => null,
-                'action' => 'telegram_image_downloaded',
-                'description' => 'Image successfully downloaded for ticker: ' . $ticker .
-                    '. Saved to: ' . $save_path . '. Size: ' . strlen($image_data) . ' bytes. ' .
-                    'Page URL: ' . $tradingview_url . '. Image URL: ' . $image_url
-            ]);
-
             return true;
         } catch (Exception $e) {
             $this->Log_model->add_log([
                 'user_id' => null,
                 'action' => 'telegram_image_error',
                 'description' => 'Exception downloading image for ticker: ' . $ticker .
-                    '. Error: ' . $e->getMessage() . '. URL: ' . $tradingview_url
+                    '. Error: ' . $e->getMessage()
             ]);
             return false;
         }
     }
-
 
     public function run($in_path = null, $out_path = null)
     {

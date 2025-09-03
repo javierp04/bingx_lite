@@ -79,13 +79,22 @@ if (!function_exists('get_badge_class')) {
             case 'edit_api_key':
                 return 'bg-primary';
 
-                // Telegram actions - PURPLE/INDIGO  
+                // Telegram actions - SOLO ERRORES
             case 'telegram_webhook_error':
             case 'telegram_image_error':
                 return 'bg-danger';
-            case 'telegram_signal_processed':
-            case 'telegram_image_downloaded':
-                return 'bg-success';
+
+                // Ticker management actions - ADMIN
+            case 'add_ticker':
+            case 'edit_ticker':
+            case 'toggle_ticker':
+                return 'bg-primary';
+            case 'delete_ticker':
+                return 'bg-danger';
+
+                // Telegram cleanup
+            case 'telegram_cleanup':
+                return 'bg-warning text-dark';
 
                 // Default - GRAY
             default:
