@@ -105,6 +105,7 @@
     </div>
 </div>
 
+
 <!-- Signals Table -->
 <div class="card">
     <div class="card-header">
@@ -121,6 +122,7 @@
                         <th>ID</th>
                         <th>Ticker</th>
                         <th>Status</th>
+                        <th>Op Type</th>
                         <th>Analysis</th>
                         <th>Images</th>
                         <th>Created</th>
@@ -130,7 +132,7 @@
                 <tbody>
                     <?php if (empty($signals)): ?>
                         <tr>
-                            <td colspan="7" class="text-center py-3">No signals found</td>
+                            <td colspan="8" class="text-center py-3">No signals found</td>
                         </tr>
                     <?php else: ?>
                         <?php foreach ($signals as $signal): ?>
@@ -163,22 +165,28 @@
                                     <span class="badge <?= $class ?>">
                                         <?= ucfirst(str_replace('_', ' ', $signal->status)) ?>
                                     </span>
-
+                                </td>
+                                <td>
                                     <?php if ($signal->status === 'completed' && !empty($signal->op_type)): ?>
-                                        <br>
                                         <?php
                                         $op_type_class = '';
+                                        $op_type_icon = '';
                                         if (strtoupper($signal->op_type) === 'LONG') {
-                                            $op_type_class = 'text-success';
+                                            $op_type_class = 'bg-success';
+                                            $op_type_icon = 'fas fa-arrow-up';
                                         } elseif (strtoupper($signal->op_type) === 'SHORT') {
-                                            $op_type_class = 'text-danger';
+                                            $op_type_class = 'bg-danger';
+                                            $op_type_icon = 'fas fa-arrow-down';
                                         } else {
-                                            $op_type_class = 'text-muted';
+                                            $op_type_class = 'bg-secondary';
+                                            $op_type_icon = 'fas fa-question';
                                         }
                                         ?>
-                                        <small class="<?= $op_type_class ?> fw-bold">
-                                            <?= strtoupper($signal->op_type) ?>
-                                        </small>
+                                        <span class="badge <?= $op_type_class ?>">
+                                            <i class="<?= $op_type_icon ?> me-1"></i><?= strtoupper($signal->op_type) ?>
+                                        </span>
+                                    <?php else: ?>
+                                        <span class="text-muted">-</span>
                                     <?php endif; ?>
                                 </td>
                                 <td>
