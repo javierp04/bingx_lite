@@ -99,8 +99,7 @@
                         <th>Symbol</th>
                         <th>Strategy</th>
                         <th>Side</th>
-                        <th>Type</th>
-                        <th>Position ID</th>
+                        <th>Type</th>                        
                         <th>Entry Price</th>
                         <th>Current Price</th>
                         <th>Quantity</th>
@@ -147,8 +146,7 @@
                                     <span class="badge <?= $type_class ?>">
                                         <?= ucfirst($trade->trade_type) ?>
                                     </span>
-                                </td>
-                                <td><?= isset($trade->position_id) ? $trade->position_id : 'N/A' ?></td>
+                                </td>                                
                                 <td><?= number_format($trade->entry_price, 2) ?></td>
                                 <td class="current-price">
                                     <?php if ($trade->platform === 'bingx'): ?>
