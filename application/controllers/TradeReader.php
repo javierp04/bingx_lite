@@ -24,8 +24,8 @@ class TradeReader extends CI_Controller
                     'action' => 'telegram_webhook_error',
                     'description' => 'Invalid JSON received from Telegram webhook'
                 ]);
-                http_response_code(400);
-                echo json_encode(['status' => 'error', 'message' => 'Invalid JSON']);
+                http_response_code(200);
+                echo json_encode(['status' => 'ok', 'message' => 'Invalid JSON']);
                 return;
             }
 
@@ -45,19 +45,19 @@ class TradeReader extends CI_Controller
                 return;
             }
 
-            // 4. Extraer ticker
-            if (!preg_match('/#([A-Z0-9]+)/', $message_text, $ticker_matches)) {
+            // 4. Extraer ticker - REGEX CORREGIDO
+            if (!preg_match('/#([A-Za-z0-9]+)/', $message_text, $ticker_matches)) {
                 $this->Log_model->add_log([
                     'user_id' => null,
                     'action' => 'telegram_webhook_error',
                     'description' => 'Sentiment message found but no valid ticker hashtag detected: ' . $message_text
                 ]);
-                http_response_code(400);
-                echo json_encode(['status' => 'error', 'message' => 'No ticker found']);
+                http_response_code(200);
+                echo json_encode(['status' => 'ok', 'message' => 'No ticker found']);
                 return;
             }
 
-            $ticker_symbol = $ticker_matches[1];
+            $ticker_symbol = strtoupper($ticker_matches[1]); // NORMALIZAR A MAYÚSCULAS
             $ticker = $this->User_tickers_model->get_available_ticker($ticker_symbol);
 
             if (!$ticker) {
@@ -66,8 +66,8 @@ class TradeReader extends CI_Controller
                     'action' => 'telegram_webhook_error',
                     'description' => 'Ticker not found in available tickers: ' . $ticker_symbol
                 ]);
-                http_response_code(400);
-                echo json_encode(['status' => 'error', 'message' => 'Ticker not available']);
+                http_response_code(200);
+                echo json_encode(['status' => 'ok', 'message' => 'Ticker not available']);
                 return;
             }
 
@@ -78,8 +78,8 @@ class TradeReader extends CI_Controller
                     'action' => 'telegram_webhook_error',
                     'description' => 'Sentiment signal for ' . $ticker_symbol . ' found but no TradingView URL detected'
                 ]);
-                http_response_code(400);
-                echo json_encode(['status' => 'error', 'message' => 'No TradingView URL found']);
+                http_response_code(200);
+                echo json_encode(['status' => 'ok', 'message' => 'No TradingView URL found']);
                 return;
             }
 
@@ -99,8 +99,8 @@ class TradeReader extends CI_Controller
                         'action' => 'telegram_webhook_error',
                         'description' => 'Failed to create directory: ' . $upload_dir . ' for ticker: ' . $ticker_symbol
                     ]);
-                    http_response_code(500);
-                    echo json_encode(['status' => 'error', 'message' => 'Directory creation failed']);
+                    http_response_code(200); // CAMBIADO: era 500
+                    echo json_encode(['status' => 'ok', 'message' => 'Directory creation failed']);
                     return;
                 }
             }
@@ -110,8 +110,8 @@ class TradeReader extends CI_Controller
 
             if (!$image_downloaded) {
                 // Error ya logueado en downloadTradingViewImage()
-                http_response_code(500);
-                echo json_encode(['status' => 'error', 'message' => 'Image download failed']);
+                http_response_code(200); // CAMBIADO: era 500
+                echo json_encode(['status' => 'ok', 'message' => 'Image download failed']);
                 return;
             }
 
@@ -128,7 +128,6 @@ class TradeReader extends CI_Controller
                 'ticker' => $ticker_symbol,
                 'image_file' => $image_filename
             ]);
-
         } catch (Exception $e) {
             $this->Log_model->add_log([
                 'user_id' => null,
@@ -136,8 +135,8 @@ class TradeReader extends CI_Controller
                 'description' => 'Telegram webhook processing failed with exception: ' . $e->getMessage()
             ]);
 
-            http_response_code(500);
-            echo json_encode(['status' => 'error', 'message' => 'Internal server error']);
+            http_response_code(200); // CAMBIADO: era 500
+            echo json_encode(['status' => 'ok', 'message' => 'Internal server error']);
         }
     }
 
@@ -189,7 +188,6 @@ class TradeReader extends CI_Controller
                 'action' => 'telegram_pipeline_completed',
                 'description' => 'Signal pipeline completed for ID: ' . $signal_id . '. Analysis: ' . json_encode($analysis_result)
             ]);
-
         } catch (Exception $e) {
             // Error general del pipeline
             $this->Telegram_signals_model->update_signal_status($signal_id, 'failed_analysis');
@@ -201,8 +199,46 @@ class TradeReader extends CI_Controller
         }
     }
 
+    private function transformAnalysisData($raw_json)
+    {
+        // Verificar estructura básica
+        if (!isset($raw_json['op_type']) || !isset($raw_json['label_prices'])) {
+            return null;
+        }
+
+        $prices = $raw_json['label_prices'];
+        $op_type = strtoupper(trim($raw_json['op_type']));
+
+        // Validar mínimo 6 precios
+        if (!is_array($prices) || count($prices) < 6) {
+            return null;
+        }
+
+        // Convertir todos los precios a float para asegurar ordenamiento correcto
+        $prices = array_map('floatval', $prices);
+
+        // Ordenar según operación
+        if ($op_type === 'LONG') {
+            sort($prices, SORT_NUMERIC);  // Ascendente (menor a mayor)
+        } elseif ($op_type === 'SHORT') {
+            rsort($prices, SORT_NUMERIC); // Descendente (mayor a menor)
+        } else {
+            return null; // op_type inválido
+        }
+
+        // Crear estructura final
+        return [
+            'op_type' => $op_type,
+            'stoploss' => [$prices[0], $prices[1]],
+            'entry' => $prices[2],
+            'tps' => array_slice($prices, 3)
+        ];
+    }
+
+    // MÉTODO MODIFICADO - Reemplazar el método existente createTradeAnalysis()
+
     /**
-     * Análisis IA que devuelve JSON o null si falló
+     * Análisis IA que devuelve JSON transformado o null si falló
      */
     private function createTradeAnalysis($cropped_filename)
     {
@@ -255,26 +291,33 @@ class TradeReader extends CI_Controller
             return null;
         }
 
-        // Validar JSON
-        $json = json_decode($text, true);
-        if ($json === null) {
+        // Validar JSON inicial de OpenAI
+        $raw_json = json_decode($text, true);
+        if ($raw_json === null) {
             $json_candidate = $this->extract_json($text);
             if ($json_candidate !== null) {
-                $json = $json_candidate;
+                $raw_json = $json_candidate;
             } else {
                 return null;
             }
         }
 
         // Verificar que no sea JSON vacío (por el prompt que devuelve {} si no encuentra datos)
-        if (empty($json) || (count($json) == 0)) {
+        if (empty($raw_json) || (count($raw_json) == 0)) {
             return null;
         }
 
-        // Guardar archivo opcional
-        @file_put_contents($out_path, json_encode($json, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+        // NUEVA LÓGICA: Transformar JSON al formato final
+        $transformed_json = $this->transformAnalysisData($raw_json);
 
-        return $json;
+        // Si la transformación falla (menos de 6 precios), retornar null
+        if ($transformed_json === null) {
+            return null;
+        }
+
+
+
+        return $transformed_json;
     }
 
     /**
@@ -389,7 +432,7 @@ class TradeReader extends CI_Controller
 
                 if ($user_signal_id) {
                     $analysis_data = json_decode($signal->analysis_data, true);
-                    
+
                     $response_signals[] = array(
                         'user_signal_id' => $user_signal_id,
                         'telegram_signal_id' => $signal->id,
@@ -408,7 +451,6 @@ class TradeReader extends CI_Controller
                 'signals' => $response_signals,
                 'count' => count($response_signals)
             ]);
-
         } catch (Exception $e) {
             http_response_code(500);
             echo json_encode(['error' => 'Internal server error']);
@@ -428,7 +470,7 @@ class TradeReader extends CI_Controller
 
         try {
             $status = isset($execution_data['success']) && $execution_data['success'] ? 'executed' : 'failed_execution';
-            
+
             if ($this->Telegram_signals_model->update_user_signal($user_signal_id, $status, $execution_data)) {
                 http_response_code(200);
                 echo json_encode(['success' => true, 'status' => $status]);
@@ -466,8 +508,6 @@ class TradeReader extends CI_Controller
             echo json_encode(['error' => 'Internal server error']);
         }
     }
-
-    // ===== MÉTODOS EXISTENTES (sin cambios) =====
 
     public function detectAndCrop($inputPath)
     {

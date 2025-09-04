@@ -8,7 +8,8 @@ class Trade_model extends CI_Model
         parent::__construct();
     }
 
-/**
+    /**
+     /**
      * Unified method to find multiple trades
      * 
      * @param array $filters Associative array of filters (null values ignored)
@@ -17,10 +18,10 @@ class Trade_model extends CI_Model
      */
     public function find_trades($filters = [], $options = [])
     {
-        // Default options
+        // Default options - CAMBIAR ORDEN POR DEFECTO
         $defaults = [
             'with_relations' => false,
-            'order_by' => 'trades.created_at DESC',
+            'order_by' => 'trades.status ASC, trades.created_at DESC', // OPEN primero, luego por fecha
             'limit' => null
         ];
         $options = array_merge($defaults, $options);
@@ -41,22 +42,27 @@ class Trade_model extends CI_Model
                 // Handle special field mappings
                 if ($field === 'platform') {
                     $this->db->where('strategies.platform', $value);
-                } elseif ($field === 'user_id' && $need_join) {
-                    $this->db->where('trades.user_id', $value);
-                } elseif ($field === 'status' && $need_join) {
-                    $this->db->where('trades.status', $value);
+                } elseif ($field === 'strategy_id') {
+                    // NUEVO: manejar strategy_id correctamente
+                    $this->db->where('trades.strategy_id', $value);
+                } elseif ($need_join && in_array($field, ['user_id', 'status'])) {
+                    // Calificar campos que existen en trades cuando hay JOIN
+                    $this->db->where('trades.' . $field, $value);
                 } else {
                     $this->db->where($field, $value);
                 }
             }
         }
 
-        // Apply ordering
+        // Apply ordering - MEJORAR LÓGICA DE ORDENAMIENTO
         if ($options['order_by']) {
-            $order_parts = explode(' ', $options['order_by']);
-            $field = $order_parts[0];
-            $direction = isset($order_parts[1]) ? $order_parts[1] : 'ASC';
-            $this->db->order_by($field, $direction);
+            $order_parts = explode(', ', $options['order_by']);
+            foreach ($order_parts as $order_part) {
+                $parts = explode(' ', trim($order_part));
+                $field = $parts[0];
+                $direction = isset($parts[1]) ? $parts[1] : 'ASC';
+                $this->db->order_by($field, $direction);
+            }
         }
 
         // Apply limit
@@ -168,15 +174,15 @@ class Trade_model extends CI_Model
         $this->db->select('trades.*, strategies.platform');
         $this->db->from('trades');
         $this->db->join('strategies', 'strategies.id = trades.strategy_id', 'left');
-        
+
         // Apply filters
         $this->db->where('trades.user_id', $user_id);
         $this->db->where('trades.status', 'closed');
-        
+
         if ($platform) {
             $this->db->where('strategies.platform', $platform);
         }
-        
+
         $trades = $this->db->get()->result();
 
         // Calculate statistics

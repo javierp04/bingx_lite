@@ -19,20 +19,25 @@ class Trades extends CI_Controller
         $data['title'] = 'Trade History';
         $user_id = $this->session->userdata('user_id');
 
-        // Get filter params
+        // Get filter params - LIMPIAR VALORES VACÍOS
         $status = $this->input->get('status');
         $strategy = $this->input->get('strategy');
         $platform = $this->input->get('platform');
 
+        // Convertir strings vacíos a null
+        $status = empty($status) ? null : $status;
+        $strategy = empty($strategy) ? null : $strategy;
+        $platform = empty($platform) ? null : $platform;
+
         // Get all strategies for filter dropdown
         $data['strategies'] = $this->Strategy_model->get_all_strategies($user_id);
 
-        // Get all trades with filters (using new method)
+        // Get all trades with filters (usando strategy_id en lugar de strategy)
         $data['trades'] = $this->Trade_model->find_trades([
             'user_id' => $user_id,
             'status' => $status,
             'platform' => $platform,
-            'strategy_id' => $strategy
+            'strategy_id' => $strategy  // CAMBIO: era 'strategy'
         ], ['with_relations' => true]);
 
         // Calculate trading statistics (unified for selected platform)
