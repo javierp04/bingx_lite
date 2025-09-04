@@ -67,16 +67,17 @@ class Telegram_signals_model extends CI_Model
         ]);
     }
 
+    // ✅ CORRECTO - Con WHERE
     public function complete_signal($signal_id, $analysis_data)
     {
-        // Extraer op_type del JSON
         $analysis_json = json_decode($analysis_data, true);
         $op_type = isset($analysis_json['op_type']) ? $analysis_json['op_type'] : null;
 
+        $this->db->where('id', $signal_id); // ← ESTO ES CRÍTICO
         return $this->db->update('telegram_signals', [
             'status' => 'completed',
             'analysis_data' => $analysis_data,
-            'op_type' => $op_type,  // ← NUEVO CAMPO
+            'op_type' => $op_type,
             'updated_at' => date('Y-m-d H:i:s')
         ]);
     }
