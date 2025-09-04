@@ -59,48 +59,48 @@
     </div>
     <div class="card-body">
         <?= form_open('telegram_signals', ['method' => 'get', 'class' => 'row g-3']) ?>
-            <div class="col-md-3">
-                <label for="ticker_symbol" class="form-label">Ticker</label>
-                <select class="form-select" id="ticker_symbol" name="ticker_symbol">
-                    <option value="">All Tickers</option>
-                    <?php foreach ($available_tickers as $ticker): ?>
-                        <option value="<?= $ticker->symbol ?>" <?= $filters['ticker_symbol'] === $ticker->symbol ? 'selected' : '' ?>>
-                            <?= $ticker->symbol ?> - <?= $ticker->name ?>
-                        </option>
-                    <?php endforeach; ?>
-                </select>
+        <div class="col-md-3">
+            <label for="ticker_symbol" class="form-label">Ticker</label>
+            <select class="form-select" id="ticker_symbol" name="ticker_symbol">
+                <option value="">All Tickers</option>
+                <?php foreach ($available_tickers as $ticker): ?>
+                    <option value="<?= $ticker->symbol ?>" <?= $filters['ticker_symbol'] === $ticker->symbol ? 'selected' : '' ?>>
+                        <?= $ticker->symbol ?> - <?= $ticker->name ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+        <div class="col-md-3">
+            <label for="status" class="form-label">Status</label>
+            <select class="form-select" id="status" name="status">
+                <option value="">All Status</option>
+                <option value="pending" <?= $filters['status'] === 'pending' ? 'selected' : '' ?>>Pending</option>
+                <option value="cropping" <?= $filters['status'] === 'cropping' ? 'selected' : '' ?>>Cropping</option>
+                <option value="analyzing" <?= $filters['status'] === 'analyzing' ? 'selected' : '' ?>>Analyzing</option>
+                <option value="completed" <?= $filters['status'] === 'completed' ? 'selected' : '' ?>>Completed</option>
+                <option value="failed_crop" <?= $filters['status'] === 'failed_crop' ? 'selected' : '' ?>>Failed Crop</option>
+                <option value="failed_analysis" <?= $filters['status'] === 'failed_analysis' ? 'selected' : '' ?>>Failed Analysis</option>
+                <option value="failed_download" <?= $filters['status'] === 'failed_download' ? 'selected' : '' ?>>Failed Download</option>
+            </select>
+        </div>
+        <div class="col-md-2">
+            <label for="date_from" class="form-label">Date From</label>
+            <input type="date" class="form-control" id="date_from" name="date_from" value="<?= $filters['date_from'] ?>">
+        </div>
+        <div class="col-md-2">
+            <label for="date_to" class="form-label">Date To</label>
+            <input type="date" class="form-control" id="date_to" name="date_to" value="<?= $filters['date_to'] ?>">
+        </div>
+        <div class="col-md-2">
+            <div class="d-flex gap-2 align-items-end h-100">
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-search me-1"></i>Filter
+                </button>
+                <a href="<?= base_url('telegram_signals') ?>" class="btn btn-secondary">
+                    <i class="fas fa-undo me-1"></i>Reset
+                </a>
             </div>
-            <div class="col-md-3">
-                <label for="status" class="form-label">Status</label>
-                <select class="form-select" id="status" name="status">
-                    <option value="">All Status</option>
-                    <option value="pending" <?= $filters['status'] === 'pending' ? 'selected' : '' ?>>Pending</option>
-                    <option value="cropping" <?= $filters['status'] === 'cropping' ? 'selected' : '' ?>>Cropping</option>
-                    <option value="analyzing" <?= $filters['status'] === 'analyzing' ? 'selected' : '' ?>>Analyzing</option>
-                    <option value="completed" <?= $filters['status'] === 'completed' ? 'selected' : '' ?>>Completed</option>
-                    <option value="failed_crop" <?= $filters['status'] === 'failed_crop' ? 'selected' : '' ?>>Failed Crop</option>
-                    <option value="failed_analysis" <?= $filters['status'] === 'failed_analysis' ? 'selected' : '' ?>>Failed Analysis</option>
-                    <option value="failed_download" <?= $filters['status'] === 'failed_download' ? 'selected' : '' ?>>Failed Download</option>
-                </select>
-            </div>
-            <div class="col-md-2">
-                <label for="date_from" class="form-label">Date From</label>
-                <input type="date" class="form-control" id="date_from" name="date_from" value="<?= $filters['date_from'] ?>">
-            </div>
-            <div class="col-md-2">
-                <label for="date_to" class="form-label">Date To</label>
-                <input type="date" class="form-control" id="date_to" name="date_to" value="<?= $filters['date_to'] ?>">
-            </div>
-            <div class="col-md-2">
-                <div class="d-flex gap-2 align-items-end h-100">
-                    <button type="submit" class="btn btn-primary">
-                        <i class="fas fa-search me-1"></i>Filter
-                    </button>
-                    <a href="<?= base_url('telegram_signals') ?>" class="btn btn-secondary">
-                        <i class="fas fa-undo me-1"></i>Reset
-                    </a>
-                </div>
-            </div>
+        </div>
         <?= form_close() ?>
     </div>
 </div>
@@ -163,11 +163,28 @@
                                     <span class="badge <?= $class ?>">
                                         <?= ucfirst(str_replace('_', ' ', $signal->status)) ?>
                                     </span>
+
+                                    <?php if ($signal->status === 'completed' && !empty($signal->op_type)): ?>
+                                        <br>
+                                        <?php
+                                        $op_type_class = '';
+                                        if (strtoupper($signal->op_type) === 'LONG') {
+                                            $op_type_class = 'text-success';
+                                        } elseif (strtoupper($signal->op_type) === 'SHORT') {
+                                            $op_type_class = 'text-danger';
+                                        } else {
+                                            $op_type_class = 'text-muted';
+                                        }
+                                        ?>
+                                        <small class="<?= $op_type_class ?> fw-bold">
+                                            <?= strtoupper($signal->op_type) ?>
+                                        </small>
+                                    <?php endif; ?>
                                 </td>
                                 <td>
                                     <?php if ($signal->status === 'completed' && $signal->analysis_data): ?>
-                                        <button class="btn btn-sm btn-outline-success" 
-                                                onclick="showAnalysis(<?= $signal->id ?>, '<?= htmlspecialchars($signal->analysis_data, ENT_QUOTES) ?>')">
+                                        <button class="btn btn-sm btn-outline-success"
+                                            onclick="showAnalysis(<?= $signal->id ?>, '<?= htmlspecialchars($signal->analysis_data, ENT_QUOTES) ?>')">
                                             <i class="fas fa-chart-line"></i> View
                                         </button>
                                     <?php else: ?>
@@ -207,13 +224,13 @@
                                 </td>
                                 <td>
                                     <div class="btn-group btn-group-sm">
-                                        <a href="<?= base_url('telegram_signals/view/' . $signal->id) ?>" 
-                                           class="btn btn-outline-info" title="View Details">
+                                        <a href="<?= base_url('telegram_signals/view/' . $signal->id) ?>"
+                                            class="btn btn-outline-info" title="View Details">
                                             <i class="fas fa-eye"></i>
                                         </a>
-                                        <a href="<?= base_url('telegram_signals/delete/' . $signal->id) ?>" 
-                                           class="btn btn-outline-danger" title="Delete"
-                                           onclick="return confirm('Are you sure you want to delete this signal?')">
+                                        <a href="<?= base_url('telegram_signals/delete/' . $signal->id) ?>"
+                                            class="btn btn-outline-danger" title="Delete"
+                                            onclick="return confirm('Are you sure you want to delete this signal?')">
                                             <i class="fas fa-trash"></i>
                                         </a>
                                     </div>
@@ -244,43 +261,43 @@
 
 <!-- Cleanup Modal -->
 <?php if ($this->session->userdata('role') === 'admin'): ?>
-<div class="modal fade" id="cleanupModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Cleanup Old Signals</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+    <div class="modal fade" id="cleanupModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Cleanup Old Signals</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <form action="<?= base_url('telegram_signals/cleanup') ?>" method="post">
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label for="days" class="form-label">Delete signals older than (days):</label>
+                            <input type="number" class="form-control" id="days" name="days" min="1" value="30" required>
+                        </div>
+                        <div class="alert alert-warning">
+                            <i class="fas fa-exclamation-triangle me-2"></i>This action cannot be undone!
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-danger">Delete Old Signals</button>
+                    </div>
+                </form>
             </div>
-            <form action="<?= base_url('telegram_signals/cleanup') ?>" method="post">
-                <div class="modal-body">
-                    <div class="mb-3">
-                        <label for="days" class="form-label">Delete signals older than (days):</label>
-                        <input type="number" class="form-control" id="days" name="days" min="1" value="30" required>
-                    </div>
-                    <div class="alert alert-warning">
-                        <i class="fas fa-exclamation-triangle me-2"></i>This action cannot be undone!
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-danger">Delete Old Signals</button>
-                </div>
-            </form>
         </div>
     </div>
-</div>
 <?php endif; ?>
 
 <script>
-function showAnalysis(signalId, analysisData) {
-    try {
-        const parsed = JSON.parse(analysisData);
-        document.getElementById('analysisContent').textContent = JSON.stringify(parsed, null, 2);
-    } catch (e) {
-        document.getElementById('analysisContent').textContent = analysisData;
+    function showAnalysis(signalId, analysisData) {
+        try {
+            const parsed = JSON.parse(analysisData);
+            document.getElementById('analysisContent').textContent = JSON.stringify(parsed, null, 2);
+        } catch (e) {
+            document.getElementById('analysisContent').textContent = analysisData;
+        }
+
+        const modal = new bootstrap.Modal(document.getElementById('analysisModal'));
+        modal.show();
     }
-    
-    const modal = new bootstrap.Modal(document.getElementById('analysisModal'));
-    modal.show();
-}
 </script>
