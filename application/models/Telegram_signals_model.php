@@ -12,13 +12,14 @@ class Telegram_signals_model extends CI_Model
     /**
      * Crear nueva señal de Telegram
      */
-    public function create_signal($ticker_symbol, $image_path, $tradingview_url, $message_text)
+    public function create_signal($ticker_symbol, $image_path, $tradingview_url, $message_text, $webhook_raw_data = null)
     {
         $signal_data = [
             'ticker_symbol' => $ticker_symbol,
             'image_path' => $image_path,
             'tradingview_url' => $tradingview_url,
             'message_text' => $message_text,
+            'webhook_raw_data' => $webhook_raw_data,
             'status' => 'pending'
         ];
 
@@ -85,6 +86,9 @@ class Telegram_signals_model extends CI_Model
     /**
      * Obtener señales completadas para un usuario específico
      */
+    /**
+     * Obtener la señal completada más reciente para un usuario específico
+     */
     public function get_completed_signals_for_user($user_id, $ticker_symbol, $hours_limit = 24)
     {
         $this->db->select('ts.*, ust.mt_ticker');
@@ -97,7 +101,7 @@ class Telegram_signals_model extends CI_Model
         $this->db->where('ust.active', 1);
 
         // Solo señales recientes
-        $this->db->where('ts.created_at >=', date('Y-m-d H:i:s', strtotime("-{$hours_limit} hours")));
+        //$this->db->where('ts.created_at >=', date('Y-m-d H:i:s', strtotime("-{$hours_limit} hours")));
 
         // Verificar que no exista ya un user_signal para este usuario y señal
         $this->db->where('ts.id NOT IN (
@@ -106,9 +110,12 @@ class Telegram_signals_model extends CI_Model
             WHERE user_id = ' . (int)$user_id . '
         )');
 
-        $this->db->order_by('ts.created_at', 'ASC');
+        // ✅ CAMBIOS: Más reciente primero + solo 1 resultado
+        $this->db->order_by('ts.created_at', 'DESC');
+        $this->db->limit(1);
 
-        return $this->db->get()->result();
+        $result = $this->db->get()->row(); // ✅ row() en lugar de result()
+        return $result ? $result : null;
     }
 
     /**
@@ -116,14 +123,6 @@ class Telegram_signals_model extends CI_Model
      */
     public function create_user_signal($telegram_signal_id, $user_id, $ticker_symbol, $mt_ticker)
     {
-        $data = [
-            'telegram_signal_id' => $telegram_signal_id,
-            'user_id' => $user_id,
-            'ticker_symbol' => $ticker_symbol,
-            'mt_ticker' => $mt_ticker,
-            'status' => 'pending'
-        ];
-
         // Usar INSERT IGNORE para evitar duplicados
         $this->db->query(
             'INSERT IGNORE INTO user_telegram_signals 

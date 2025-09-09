@@ -116,7 +116,7 @@ class TradeReader extends CI_Controller
             }
 
             // 8. Crear señal con status 'pending'
-            $signal_id = $this->Telegram_signals_model->create_signal($ticker_symbol, $image_path, $tradingview_url, $message_text);
+            $signal_id = $this->Telegram_signals_model->create_signal($ticker_symbol, $image_path, $tradingview_url, $message_text, $update);
 
             // 9. INICIAR PIPELINE AUTOMÁTICO
             $this->processSignalPipeline($signal_id, $image_filename);
@@ -412,7 +412,7 @@ class TradeReader extends CI_Controller
         }
     }
 
-    // API ENDPOINT para EA: obtener señales por user_id y ticker
+    // API ENDPOINT para EA: obtener señal más reciente por user_id y ticker
     public function api_get_signals($user_id, $ticker_symbol)
     {
         if (!is_numeric($user_id) || empty($ticker_symbol)) {
@@ -422,41 +422,54 @@ class TradeReader extends CI_Controller
         }
 
         try {
-            // Obtener señales completadas para este ticker que el usuario puede tradear
-            $signals = $this->Telegram_signals_model->get_completed_signals_for_user($user_id, $ticker_symbol);
+            // Obtener la señal completada más reciente para este ticker que el usuario puede tradear
+            $signal = $this->Telegram_signals_model->get_completed_signals_for_user($user_id, $ticker_symbol);
 
-            $response_signals = array();
-            foreach ($signals as $signal) {
-                // Crear registro en user_telegram_signals si no existe
-                $user_signal_id = $this->Telegram_signals_model->create_user_signal($signal->id, $user_id, $ticker_symbol, $signal->mt_ticker);
-
-                if ($user_signal_id) {
-                    $analysis_data = json_decode($signal->analysis_data, true);
-
-                    $response_signals[] = array(
-                        'user_signal_id' => $user_signal_id,
-                        'telegram_signal_id' => $signal->id,
-                        'ticker_symbol' => $signal->ticker_symbol,
-                        'mt_ticker' => $signal->mt_ticker,
-                        'analysis' => $analysis_data,
-                        'tradingview_url' => $signal->tradingview_url,
-                        'created_at' => $signal->created_at
-                    );
-                }
+            // Si no hay señal disponible
+            if (!$signal) {
+                http_response_code(200);
+                echo json_encode([
+                    'success' => true,
+                    'signal' => null,
+                    'message' => 'No new signals available'
+                ]);
+                return;
             }
 
-            http_response_code(200);
-            echo json_encode([
-                'success' => true,
-                'signals' => $response_signals,
-                'count' => count($response_signals)
-            ]);
+            // Crear registro en user_telegram_signals
+            $user_signal_id = $this->Telegram_signals_model->create_user_signal($signal->id, $user_id, $ticker_symbol, $signal->mt_ticker);
+
+            if ($user_signal_id) {
+                $analysis_data = json_decode($signal->analysis_data, true);
+
+                $response_signal = array(
+                    'user_signal_id' => $user_signal_id,
+                    'telegram_signal_id' => $signal->id,
+                    'ticker_symbol' => $signal->ticker_symbol,
+                    'mt_ticker' => $signal->mt_ticker,
+                    'analysis' => $analysis_data,
+                    'tradingview_url' => $signal->tradingview_url,
+                    'created_at' => $signal->created_at
+                );
+
+                http_response_code(200);
+                echo json_encode([
+                    'success' => true,
+                    'signal' => $response_signal
+                ]);
+            } else {
+                http_response_code(200);
+                echo json_encode([
+                    'success' => true,
+                    'signal' => null,
+                    'message' => 'Signal already processed'
+                ]);
+            }
         } catch (Exception $e) {
             http_response_code(500);
             echo json_encode(['error' => 'Internal server error']);
         }
     }
-
     // API ENDPOINT para EA: reportar ejecución de trade
     public function api_update_execution($user_signal_id)
     {
