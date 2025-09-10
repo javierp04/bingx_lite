@@ -184,47 +184,4 @@ class Telegram_signals extends CI_Controller
         
         return file_exists($cropped_path) ? $cropped_path : null;
     }
-
-    // API endpoint for MetaTrader EA to get signals
-    public function api_get_signals($user_id)
-    {
-        // Validate user_id
-        if (!is_numeric($user_id)) {
-            http_response_code(400);
-            echo json_encode(['error' => 'Invalid user ID']);
-            return;
-        }
-
-        // Get hours limit from query parameter (default 2 hours)
-        $hours = (int)$this->input->get('hours') ?: 2;
-        
-        try {
-            // Get completed signals for user
-            $signals = $this->Telegram_signals_model->get_completed_signals_for_user($user_id, '', $hours);
-            
-            $response_signals = array();
-            foreach ($signals as $signal) {
-                $response_signals[] = array(
-                    'id' => $signal->id,
-                    'ticker_symbol' => $signal->ticker_symbol,
-                    'ticker_name' => isset($signal->ticker_name) ? $signal->ticker_name : '',
-                    'image_path' => base_url($signal->image_path),
-                    'tradingview_url' => $signal->tradingview_url,
-                    'created_at' => $signal->created_at
-                );
-            }
-            
-            http_response_code(200);
-            echo json_encode([
-                'success' => true,
-                'signals' => $response_signals,
-                'count' => count($response_signals),
-                'hours_limit' => $hours
-            ]);
-            
-        } catch (Exception $e) {
-            http_response_code(500);
-            echo json_encode(['error' => 'Internal server error']);
-        }
-    }   
 }

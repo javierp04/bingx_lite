@@ -470,6 +470,7 @@ class TradeReader extends CI_Controller
             echo json_encode(['error' => 'Internal server error']);
         }
     }
+    
     // API ENDPOINT para EA: reportar ejecución de trade
     public function api_update_execution($user_signal_id)
     {
@@ -581,9 +582,12 @@ class TradeReader extends CI_Controller
     private function build_prompt()
     {
         return <<<'PROMPT'
-1. Necesito que analices esta imagen de un plan de trading de TradingView para identificar el tipo de operacion (LONG o SHORT). AYUDA. SI LA PARTE VERDE ESTA ARRIBA DE LA ROJA, ES LONG. SI LA ROJA ESTA ARRIBA DE LA VERDE, ES SHORT.
-2. Extrae los precios UNICAMENTE de las etiquetas que se encuentran inmediatamente a la derecha de la caja de operación IGNORANDO cualquier otra etiqueta que esté en la parte superior o inferior de la imagen.
-3. Los numeros se presentan con separador de miles (.) y decimal (,) Debes convertirlos a formato internacional sin separador de miles y con punto decimal. Ejemplo: 1.234,56 -> 1234.56
+Necesito que analices esta imagen de un plan de trading de TradingView:
+1. Extrae los precios UNICAMENTE de las etiquetas que se encuentran inmediatamente a la derecha de la caja de operación que IGNORANDO cualquier otra etiqueta que esté en la parte superior o inferior de la imagen.
+2. Los numeros se presentan con separador de miles (.) y decimal (,) Debes convertirlos a formato internacional sin separador de miles y con punto decimal. Ejemplo: 1.234,56 -> 1234.56
+3. Identifica si la operación es LONG o SHORT. La forma de identificarlo es:
+    - ES LONG SI Y SOLO SI los números de las etiquetas con fondo verde o rojo son menores a los números de las etiquetas con fondo azul estan en el mismo eje vertical.
+    - ES SHORT SI Y SOLO SI los números de las etiquetas con fondo verde o rojo son mayores a los números de las etiquetas con fondo azul que estan en el mismo eje vertical.    
 La salida tiene que ser un JSON estrictamente solo, sin explicacion adicional: {op_type : "long o short", "label_prices" : array de precios}. En caso de no tener por lo menos 7 números, devolver un JSON vacio {}.
 PROMPT;
     }

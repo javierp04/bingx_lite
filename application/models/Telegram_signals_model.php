@@ -101,9 +101,10 @@ class Telegram_signals_model extends CI_Model
         $this->db->where('ust.active', 1);
 
         // Solo señales recientes
-        //$this->db->where('ts.created_at >=', date('Y-m-d H:i:s', strtotime("-{$hours_limit} hours")));
+        $this->db->where('ts.created_at >=', date('Y-m-d H:i:s', strtotime("-{$hours_limit} hours")));
 
         // Verificar que no exista ya un user_signal para este usuario y señal
+        
         $this->db->where('ts.id NOT IN (
             SELECT telegram_signal_id 
             FROM user_telegram_signals 
