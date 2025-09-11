@@ -34,10 +34,10 @@
         <div class="card">
             <div class="card-body text-center">
                 <div class="d-flex justify-content-between align-items-center mb-2">
-                    <h6 class="card-title text-muted mb-0">Pending</h6>
+                    <h6 class="card-title text-muted mb-0">Available</h6>
                     <i class="fas fa-clock text-warning"></i>
                 </div>
-                <h4 class="mb-0 text-warning"><?= $stats['pending_signals'] ?></h4>
+                <h4 class="mb-0 text-warning"><?= $stats['available_signals'] ?></h4>
                 <small class="text-muted">Awaiting execution</small>
             </div>
         </div>
@@ -62,8 +62,8 @@
         <a class="nav-link <?= $active_tab === 'signals' ? 'active' : '' ?>" 
            href="<?= base_url('my_trading/signals') ?>">
             <i class="fas fa-signal me-1"></i>Signal History
-            <?php if ($stats['pending_signals'] > 0): ?>
-                <span class="badge bg-warning text-dark ms-1"><?= $stats['pending_signals'] ?></span>
+            <?php if ($stats['available_signals'] > 0): ?>
+                <span class="badge bg-warning text-dark ms-1"><?= $stats['available_signals'] ?></span>
             <?php endif; ?>
         </a>
     </li>

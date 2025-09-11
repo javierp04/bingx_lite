@@ -15,7 +15,7 @@ class Api extends CI_Controller
     }
 
     /**
-     * API ENDPOINT para EA: obtener señal más reciente por user_id y ticker
+     * API ENDPOINT para EA: obtener señal disponible por user_id y ticker
      * GET /api/signals/{user_id}/{ticker_symbol}
      */
     public function get_signals($user_id, $ticker_symbol = null)
@@ -38,8 +38,8 @@ class Api extends CI_Controller
         }
 
         try {
-            // Obtener la señal completada más reciente para este ticker que el usuario puede tradear
-            $signal = $this->Telegram_signals_model->get_completed_signals_for_user($user_id, $ticker_symbol);
+            // ✨ NUEVO: Obtener señal disponible (available) más reciente para este ticker del usuario
+            $signal = $this->Telegram_signals_model->get_available_signals_for_user($user_id, $ticker_symbol);
 
             // Si no hay señal disponible
             if (!$signal) {
@@ -52,15 +52,13 @@ class Api extends CI_Controller
                 return;
             }
 
-            // Crear registro en user_telegram_signals
-            $user_signal_id = $this->Telegram_signals_model->create_user_signal($signal->id, $user_id, $ticker_symbol, $signal->mt_ticker);
-
-            if ($user_signal_id) {
+            // ✨ NUEVO: Marcar señal como claimed
+            if ($this->Telegram_signals_model->claim_user_signal($signal->id, $user_id)) {
                 $analysis_data = json_decode($signal->analysis_data, true);
 
                 $response_signal = array(
-                    'user_signal_id' => $user_signal_id,
-                    'telegram_signal_id' => $signal->id,
+                    'user_signal_id' => (int)$signal->id,
+                    'telegram_signal_id' => (int)$signal->telegram_signal_id,
                     'ticker_symbol' => $signal->ticker_symbol,
                     'mt_ticker' => $signal->mt_ticker,
                     'analysis' => $analysis_data,
@@ -78,7 +76,7 @@ class Api extends CI_Controller
                 echo json_encode([
                     'success' => true,
                     'signal' => null,
-                    'message' => 'Signal already processed'
+                    'message' => 'Signal was claimed by another process'
                 ]);
             }
         } catch (Exception $e) {
@@ -146,7 +144,7 @@ class Api extends CI_Controller
     }
 
     /**
-     * API ENDPOINT para EA: obtener múltiples señales pendientes
+     * API ENDPOINT para EA: obtener múltiples señales disponibles
      * GET /api/signals/{user_id}/pending
      */
     public function get_pending_signals($user_id)
@@ -158,16 +156,16 @@ class Api extends CI_Controller
         }
 
         try {
-            // Obtener todas las señales pendientes del usuario
-            $filters = ['status' => 'pending'];
+            // ✨ NUEVO: Obtener todas las señales disponibles del usuario
+            $filters = ['status' => 'available'];
             $signals = $this->Telegram_signals_model->get_user_signals_with_filters($user_id, $filters);
 
             $response_signals = array();
             foreach ($signals as $signal) {
                 if (!empty($signal->analysis_data)) {
                     $response_signals[] = array(
-                        'user_signal_id' => $signal->id,
-                        'telegram_signal_id' => $signal->telegram_signal_id,
+                        'user_signal_id' => (int)$signal->id,
+                        'telegram_signal_id' => (int)$signal->telegram_signal_id,
                         'ticker_symbol' => $signal->ticker_symbol,
                         'mt_ticker' => $signal->mt_ticker,
                         'analysis' => json_decode($signal->analysis_data, true),

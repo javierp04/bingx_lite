@@ -176,7 +176,7 @@ class My_trading extends CI_Controller
         $stats['signals_today'] = $this->Telegram_signals_model->count_user_signals_today($user_id);
         
         // Pending signals
-        $stats['pending_signals'] = $this->Telegram_signals_model->count_user_signals_by_status($user_id, 'pending');
+        $stats['available_signals'] = $this->Telegram_signals_model->count_user_signals_by_status($user_id, 'available');
         
         // Execution rate (executed vs total non-pending)
         $total_processed = $this->Telegram_signals_model->count_user_signals_processed($user_id);

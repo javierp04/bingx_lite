@@ -128,7 +128,7 @@ class TradeReader extends CI_Controller
             $signal_id = $this->Telegram_signals_model->create_signal($ticker_symbol, $image_path, $tradingview_url, $message_text, $update);
 
             // 9. INICIAR PIPELINE AUTOMÁTICO
-            $this->processSignalPipeline($signal_id, $image_filename);
+            $this->processSignalPipeline($signal_id, $image_filename, $ticker_symbol);
 
             http_response_code(200);
             echo json_encode([
@@ -152,7 +152,7 @@ class TradeReader extends CI_Controller
     /**
      * Pipeline automático: crop → análisis → completion
      */
-    private function processSignalPipeline($signal_id, $image_filename)
+    private function processSignalPipeline($signal_id, $image_filename, $ticker_symbol)
     {
         try {
             // PASO 1: Cambiar status a 'cropping'
@@ -192,10 +192,14 @@ class TradeReader extends CI_Controller
 
             // PASO 5: Guardar análisis y marcar como completado
             $this->Telegram_signals_model->complete_signal($signal_id, json_encode($analysis_result));
+
+            // ✨ PASO 6: AGREGAR ESTA LÍNEA - Crear user_signals automáticamente
+            $users_count = $this->Telegram_signals_model->create_user_signals_for_ticker($signal_id, $ticker_symbol);
+
             $this->Log_model->add_log([
                 'user_id' => null,
                 'action' => 'telegram_pipeline_completed',
-                'description' => 'Signal pipeline completed for ID: ' . $signal_id . '. Analysis: ' . json_encode($analysis_result)
+                'description' => 'Signal pipeline completed for ID: ' . $signal_id . '. Analysis: ' . json_encode($analysis_result) . '. Distributed to ' . $users_count . ' users.'
             ]);
         } catch (Exception $e) {
             // Error general del pipeline

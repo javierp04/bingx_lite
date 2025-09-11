@@ -28,6 +28,86 @@ class Telegram_signals_model extends CI_Model
     }
 
     /**
+     * ✨ NUEVO: Crear user_telegram_signals automáticamente para todos los usuarios con un ticker
+     */
+    public function create_user_signals_for_ticker($telegram_signal_id, $ticker_symbol)
+    {
+        // Obtener todos los usuarios que tienen este ticker activo
+        $this->db->select('ust.user_id, ust.ticker_symbol, ust.mt_ticker');
+        $this->db->from('user_selected_tickers ust');
+        $this->db->join('available_tickers at', 'ust.ticker_symbol = at.symbol');
+        $this->db->where('ust.ticker_symbol', $ticker_symbol);
+        $this->db->where('ust.active', 1);
+        $this->db->where('at.active', 1);
+        
+        $users_with_ticker = $this->db->get()->result();
+        
+        if (empty($users_with_ticker)) {
+            return 0; // No users found
+        }
+        
+        // Crear registros en batch usando INSERT IGNORE
+        $values = array();
+        foreach ($users_with_ticker as $user) {
+            $values[] = sprintf(
+                "(%d, %d, '%s', '%s', 'available', NOW())",
+                $telegram_signal_id,
+                $user->user_id,
+                $this->db->escape_str($user->ticker_symbol),
+                $this->db->escape_str($user->mt_ticker ?: '')
+            );
+        }
+        
+        if (!empty($values)) {
+            $sql = "INSERT IGNORE INTO user_telegram_signals 
+                    (telegram_signal_id, user_id, ticker_symbol, mt_ticker, status, created_at) 
+                    VALUES " . implode(', ', $values);
+            
+            $this->db->query($sql);
+            return $this->db->affected_rows();
+        }
+        
+        return 0;
+    }
+
+    /**
+     * ✨ NUEVO: Obtener señales disponibles (no claimed) para un usuario
+     */
+    public function get_available_signals_for_user($user_id, $ticker_symbol, $hours_limit = 24)
+    {
+        $this->db->select('uts.*, ts.analysis_data, ts.tradingview_url, ts.created_at as telegram_created_at');
+        $this->db->from('user_telegram_signals uts');
+        $this->db->join('telegram_signals ts', 'uts.telegram_signal_id = ts.id');
+        
+        $this->db->where('uts.user_id', $user_id);
+        $this->db->where('uts.ticker_symbol', $ticker_symbol);
+        $this->db->where('uts.status', 'available');
+        
+        // Solo señales recientes
+        $this->db->where('uts.created_at >=', date('Y-m-d H:i:s', strtotime("-{$hours_limit} hours")));
+        
+        $this->db->order_by('uts.created_at', 'DESC');
+        $this->db->limit(1);
+        
+        return $this->db->get()->row();
+    }
+
+    /**
+     * ✨ NUEVO: Marcar señal como claimed por el EA
+     */
+    public function claim_user_signal($user_signal_id, $user_id)
+    {
+        $this->db->where('id', $user_signal_id);
+        $this->db->where('user_id', $user_id);
+        $this->db->where('status', 'available');
+        
+        return $this->db->update('user_telegram_signals', [
+            'status' => 'claimed',
+            'updated_at' => date('Y-m-d H:i:s')
+        ]);
+    }
+
+    /**
      * Obtener señales con filtros (para admin)
      */
     public function get_signals_with_filters($filters = array())
@@ -60,7 +140,7 @@ class Telegram_signals_model extends CI_Model
     }
 
     // ==========================================
-    // NUEVOS MÉTODOS PARA USUARIOS ESPECÍFICOS
+    // MÉTODOS PARA USUARIOS ESPECÍFICOS
     // ==========================================
 
     /**
@@ -148,19 +228,38 @@ class Telegram_signals_model extends CI_Model
     }
 
     /**
-     * Contar señales procesadas (no pending) de usuario
+     * Contar señales procesadas (no available) de usuario - CORREGIDO
      */
     public function count_user_signals_processed($user_id)
     {
         $this->db->where('user_id', $user_id);
-        $this->db->where('status !=', 'pending');
+        $this->db->where('status !=', 'available');
         return $this->db->count_all_results('user_telegram_signals');
     }
 
+    /**
+     * Actualizar status de user_signal
+     */
+    public function update_user_signal($user_signal_id, $status, $execution_data = null)
+    {
+        $update_data = [
+            'status' => $status,
+            'updated_at' => date('Y-m-d H:i:s')
+        ];
 
+        if ($execution_data) {
+            $update_data['execution_data'] = json_encode($execution_data);
+            if (isset($execution_data['trade_id'])) {
+                $update_data['trade_id'] = $execution_data['trade_id'];
+            }
+        }
+
+        $this->db->where('id', $user_signal_id);
+        return $this->db->update('user_telegram_signals', $update_data);
+    }
 
     // ==========================================
-    // MÉTODOS EXISTENTES (mantenidos iguales)
+    // MÉTODOS PARA TELEGRAM_SIGNALS (ADMIN)
     // ==========================================
 
     public function update_signal_status($signal_id, $status)
@@ -184,78 +283,6 @@ class Telegram_signals_model extends CI_Model
             'op_type' => $op_type,
             'updated_at' => date('Y-m-d H:i:s')
         ]);
-    }
-
-    /**
-     * Obtener la señal completada más reciente para un usuario específico
-     */
-    public function get_completed_signals_for_user($user_id, $ticker_symbol, $hours_limit = 24)
-    {
-        $this->db->select('ts.*, ust.mt_ticker');
-        $this->db->from('telegram_signals ts');
-        $this->db->join('user_selected_tickers ust', 'ts.ticker_symbol = ust.ticker_symbol');
-
-        $this->db->where('ust.user_id', $user_id);
-        $this->db->where('ts.ticker_symbol', $ticker_symbol);
-        $this->db->where('ts.status', 'completed');
-        $this->db->where('ust.active', 1);
-
-        // Solo señales recientes
-        $this->db->where('ts.created_at >=', date('Y-m-d H:i:s', strtotime("-{$hours_limit} hours")));
-
-        // Verificar que no exista ya un user_signal para este usuario y señal
-        $this->db->where('ts.id NOT IN (
-            SELECT telegram_signal_id 
-            FROM user_telegram_signals 
-            WHERE user_id = ' . (int)$user_id . '
-        )');
-
-        $this->db->order_by('ts.created_at', 'DESC');
-        $this->db->limit(1);
-
-        $result = $this->db->get()->row();
-        return $result ? $result : null;
-    }
-
-    /**
-     * Crear registro de user_signal cuando EA consulta
-     */
-    public function create_user_signal($telegram_signal_id, $user_id, $ticker_symbol, $mt_ticker)
-    {
-        // Usar INSERT IGNORE para evitar duplicados
-        $this->db->query(
-            'INSERT IGNORE INTO user_telegram_signals 
-                         (telegram_signal_id, user_id, ticker_symbol, mt_ticker, status, created_at) 
-                         VALUES (?, ?, ?, ?, ?, NOW())',
-            [$telegram_signal_id, $user_id, $ticker_symbol, $mt_ticker, 'pending']
-        );
-
-        if ($this->db->affected_rows() > 0) {
-            return $this->db->insert_id();
-        }
-
-        return false;
-    }
-
-    /**
-     * Actualizar status de user_signal
-     */
-    public function update_user_signal($user_signal_id, $status, $execution_data = null)
-    {
-        $update_data = [
-            'status' => $status,
-            'updated_at' => date('Y-m-d H:i:s')
-        ];
-
-        if ($execution_data) {
-            $update_data['execution_data'] = json_encode($execution_data);
-            if (isset($execution_data['trade_id'])) {
-                $update_data['trade_id'] = $execution_data['trade_id'];
-            }
-        }
-
-        $this->db->where('id', $user_signal_id);
-        return $this->db->update('user_telegram_signals', $update_data);
     }
 
     /**
