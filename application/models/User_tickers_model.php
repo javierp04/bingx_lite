@@ -104,11 +104,15 @@ class User_tickers_model extends CI_Model {
         return $this->db->get('user_selected_tickers')->num_rows() > 0;
     }
     
-      public function add_user_ticker_with_mt($user_id, $ticker_symbol, $mt_ticker = null) {
-                
+    /**
+     * Agregar ticker a usuario con MT symbol
+     */
+    public function add_user_ticker_with_mt($user_id, $ticker_symbol, $mt_ticker = null) {
+        // Verificar que el ticker esté disponible y activo
         if (!$this->get_available_ticker($ticker_symbol, true)) {
             return false;
-        }                
+        }
+        
         // Usar INSERT IGNORE para evitar duplicados
         $this->db->query('INSERT IGNORE INTO user_selected_tickers (user_id, ticker_symbol, mt_ticker, active, created_at) 
                          VALUES (?, ?, ?, ?, NOW())', 
@@ -143,5 +147,4 @@ class User_tickers_model extends CI_Model {
         $this->db->where('ticker_symbol', $ticker_symbol);
         return $this->db->update('user_selected_tickers', ['active' => $active ? 1 : 0]);
     }
-
 }

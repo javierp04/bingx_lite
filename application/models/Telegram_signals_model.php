@@ -28,7 +28,7 @@ class Telegram_signals_model extends CI_Model
     }
 
     /**
-     * Obtener señales con filtros
+     * Obtener señales con filtros (para admin)
      */
     public function get_signals_with_filters($filters = array())
     {
@@ -59,6 +59,110 @@ class Telegram_signals_model extends CI_Model
         return $this->db->get()->result();
     }
 
+    // ==========================================
+    // NUEVOS MÉTODOS PARA USUARIOS ESPECÍFICOS
+    // ==========================================
+
+    /**
+     * Obtener señales de un usuario específico con filtros
+     */
+    public function get_user_signals_with_filters($user_id, $filters = array())
+    {
+        $this->db->select('uts.*, ts.ticker_symbol, ts.image_path, ts.tradingview_url, ts.message_text, 
+                          ts.analysis_data, ts.op_type, ts.created_at as telegram_created_at');
+        $this->db->from('user_telegram_signals uts');
+        $this->db->join('telegram_signals ts', 'uts.telegram_signal_id = ts.id');
+        $this->db->where('uts.user_id', $user_id);
+
+        // Aplicar filtros
+        if (isset($filters['ticker_symbol']) && $filters['ticker_symbol']) {
+            $this->db->where('uts.ticker_symbol', $filters['ticker_symbol']);
+        }
+
+        if (isset($filters['status']) && $filters['status'] !== '') {
+            $this->db->where('uts.status', $filters['status']);
+        }
+
+        if (isset($filters['date_from']) && $filters['date_from']) {
+            $this->db->where('uts.created_at >=', $filters['date_from'] . ' 00:00:00');
+        }
+
+        if (isset($filters['date_to']) && $filters['date_to']) {
+            $this->db->where('uts.created_at <=', $filters['date_to'] . ' 23:59:59');
+        }
+
+        $this->db->order_by('uts.created_at', 'DESC');
+        $this->db->limit(100); // Limitar para performance
+
+        return $this->db->get()->result();
+    }
+
+    /**
+     * Obtener señales recientes de un usuario
+     */
+    public function get_recent_user_signals($user_id, $limit = 10)
+    {
+        $this->db->select('uts.*, ts.ticker_symbol, ts.op_type, ts.analysis_data');
+        $this->db->from('user_telegram_signals uts');
+        $this->db->join('telegram_signals ts', 'uts.telegram_signal_id = ts.id');
+        $this->db->where('uts.user_id', $user_id);
+        $this->db->order_by('uts.created_at', 'DESC');
+        $this->db->limit($limit);
+
+        return $this->db->get()->result();
+    }
+
+    /**
+     * Obtener detalle completo de una señal de usuario
+     */
+    public function get_user_signal_detail($user_id, $user_signal_id)
+    {
+        $this->db->select('uts.*, ts.ticker_symbol, ts.image_path, ts.tradingview_url, 
+                          ts.message_text, ts.analysis_data, ts.op_type');
+        $this->db->from('user_telegram_signals uts');
+        $this->db->join('telegram_signals ts', 'uts.telegram_signal_id = ts.id');
+        $this->db->where('uts.user_id', $user_id);
+        $this->db->where('uts.id', $user_signal_id);
+
+        return $this->db->get()->row();
+    }
+
+    /**
+     * Contar señales de usuario hoy
+     */
+    public function count_user_signals_today($user_id)
+    {
+        $this->db->where('user_id', $user_id);
+        $this->db->where('created_at >=', date('Y-m-d 00:00:00'));
+        return $this->db->count_all_results('user_telegram_signals');
+    }
+
+    /**
+     * Contar señales de usuario por status
+     */
+    public function count_user_signals_by_status($user_id, $status)
+    {
+        $this->db->where('user_id', $user_id);
+        $this->db->where('status', $status);
+        return $this->db->count_all_results('user_telegram_signals');
+    }
+
+    /**
+     * Contar señales procesadas (no pending) de usuario
+     */
+    public function count_user_signals_processed($user_id)
+    {
+        $this->db->where('user_id', $user_id);
+        $this->db->where('status !=', 'pending');
+        return $this->db->count_all_results('user_telegram_signals');
+    }
+
+
+
+    // ==========================================
+    // MÉTODOS EXISTENTES (mantenidos iguales)
+    // ==========================================
+
     public function update_signal_status($signal_id, $status)
     {
         $this->db->where('id', $signal_id);
@@ -68,13 +172,12 @@ class Telegram_signals_model extends CI_Model
         ]);
     }
 
-    // ✅ CORRECTO - Con WHERE
     public function complete_signal($signal_id, $analysis_data)
     {
         $analysis_json = json_decode($analysis_data, true);
         $op_type = isset($analysis_json['op_type']) ? $analysis_json['op_type'] : null;
 
-        $this->db->where('id', $signal_id); // ← ESTO ES CRÍTICO
+        $this->db->where('id', $signal_id);
         return $this->db->update('telegram_signals', [
             'status' => 'completed',
             'analysis_data' => $analysis_data,
@@ -83,9 +186,6 @@ class Telegram_signals_model extends CI_Model
         ]);
     }
 
-    /**
-     * Obtener señales completadas para un usuario específico
-     */
     /**
      * Obtener la señal completada más reciente para un usuario específico
      */
@@ -104,18 +204,16 @@ class Telegram_signals_model extends CI_Model
         $this->db->where('ts.created_at >=', date('Y-m-d H:i:s', strtotime("-{$hours_limit} hours")));
 
         // Verificar que no exista ya un user_signal para este usuario y señal
-        
         $this->db->where('ts.id NOT IN (
             SELECT telegram_signal_id 
             FROM user_telegram_signals 
             WHERE user_id = ' . (int)$user_id . '
         )');
 
-        // ✅ CAMBIOS: Más reciente primero + solo 1 resultado
         $this->db->order_by('ts.created_at', 'DESC');
         $this->db->limit(1);
 
-        $result = $this->db->get()->row(); // ✅ row() en lugar de result()
+        $result = $this->db->get()->row();
         return $result ? $result : null;
     }
 
@@ -197,8 +295,6 @@ class Telegram_signals_model extends CI_Model
         $this->db->where_in('status', ['failed_crop', 'failed_analysis', 'failed_download']);
         return $this->db->count_all_results('telegram_signals');
     }
-
-
 
     /**
      * Contar señales de las últimas 24 horas

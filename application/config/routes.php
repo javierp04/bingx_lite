@@ -44,24 +44,22 @@ $route['available_tickers/edit/(:any)'] = 'Available_tickers/edit/$1';
 $route['available_tickers/toggle/(:any)'] = 'Available_tickers/toggle/$1';
 $route['available_tickers/delete/(:any)'] = 'Available_tickers/delete/$1';
 
-// My Tickers routes (User ticker selection)
-$route['my_tickers'] = 'My_tickers';
-$route['my_tickers/add_ticker'] = 'My_tickers/add_ticker';
-$route['my_tickers/remove_ticker/(:any)'] = 'My_tickers/remove_ticker/$1';
-$route['my_tickers/toggle_ticker/(:any)'] = 'My_tickers/toggle_ticker/$1';
-$route['my_tickers/update_mt_ticker'] = 'My_tickers/update_mt_ticker';
+// My Trading routes (User trading dashboard - NUEVO)
+$route['my_trading'] = 'My_trading/index/signals';
+$route['my_trading/(:any)'] = 'My_trading/index/$1';
+$route['my_trading/add_ticker'] = 'My_trading/add_ticker';
+$route['my_trading/remove_ticker/(:any)'] = 'My_trading/remove_ticker/$1';
+$route['my_trading/toggle_ticker/(:any)'] = 'My_trading/toggle_ticker/$1';
+$route['my_trading/update_mt_ticker'] = 'My_trading/update_mt_ticker';
+$route['my_trading/signal_detail/(:num)'] = 'My_trading/signal_detail/$1';
 
-// Telegram Signals routes
+// Telegram Signals routes (Admin only - MODIFICADO)
 $route['telegram_signals'] = 'Telegram_signals';
 $route['telegram_signals/view/(:num)'] = 'Telegram_signals/view/$1';
-$route['telegram_signals/mark_processed/(:num)'] = 'Telegram_signals/mark_processed/$1';
 $route['telegram_signals/delete/(:num)'] = 'Telegram_signals/delete/$1';
 $route['telegram_signals/cleanup'] = 'Telegram_signals/cleanup';
 $route['telegram_signals/view_image/(:num)'] = 'Telegram_signals/view_image/$1';
-
-// Telegram Signals API routes (for MetaTrader EA)
-$route['api/telegram/signals/(:num)'] = 'Telegram_signals/api_get_signals/$1';
-$route['api/telegram/processed/(:num)'] = 'Telegram_signals/api_mark_processed/$1';
+$route['telegram_signals/view_cropped_image/(:num)'] = 'Telegram_signals/view_cropped_image/$1';
 
 // System Logs routes
 $route['systemlogs'] = 'SystemLogs';
@@ -92,5 +90,18 @@ $route['debug/test_futures_balance'] = 'debug/test_futures_balance';
 $route['debug/test_spot_price'] = 'debug/test_spot_price';
 $route['debug/test_futures_price'] = 'debug/test_futures_price';
 
-// AI Trade Reader route
-$route['/tradereader/run'] = 'tradereader/run';
+// AI Trade Reader route (Telegram webhook)
+$route['tradereader/run'] = 'tradereader/generateSignalFromTelegram';
+
+// ==========================================
+// API ROUTES FOR METATRADER EA - NUEVO
+// ==========================================
+
+// Health check
+$route['api/health'] = 'Api/health';
+
+// Signal management for EA
+$route['api/signals/(:num)/(:any)'] = 'Api/get_signals/$1/$2'; // GET /api/signals/{user_id}/{ticker}
+$route['api/signals/(:num)/pending'] = 'Api/get_pending_signals/$1'; // GET /api/signals/{user_id}/pending
+$route['api/signals/(:num)/execution'] = 'Api/update_execution/$1'; // POST /api/signals/{user_signal_id}/execution  
+$route['api/signals/(:num)/close'] = 'Api/close_trade/$1'; // POST /api/signals/{user_signal_id}/close

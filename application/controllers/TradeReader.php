@@ -1,6 +1,10 @@
 <?php
 defined('BASEPATH') or exit('No direct script access allowed');
 
+/**
+ * TradeReader Controller
+ * Procesa webhooks de Telegram y genera señales
+ */
 class TradeReader extends CI_Controller
 {
 
@@ -9,8 +13,13 @@ class TradeReader extends CI_Controller
         parent::__construct();
         $this->load->model('User_tickers_model');
         $this->load->model('Telegram_signals_model');
+        $this->load->model('Log_model');
     }
 
+    /**
+     * Webhook principal de Telegram
+     * Procesa mensajes y genera señales automáticamente
+     */
     public function generateSignalFromTelegram()
     {
         $update = file_get_contents("php://input");
@@ -99,7 +108,7 @@ class TradeReader extends CI_Controller
                         'action' => 'telegram_webhook_error',
                         'description' => 'Failed to create directory: ' . $upload_dir . ' for ticker: ' . $ticker_symbol
                     ]);
-                    http_response_code(200); // CAMBIADO: era 500
+                    http_response_code(200);
                     echo json_encode(['status' => 'ok', 'message' => 'Directory creation failed']);
                     return;
                 }
@@ -110,7 +119,7 @@ class TradeReader extends CI_Controller
 
             if (!$image_downloaded) {
                 // Error ya logueado en downloadTradingViewImage()
-                http_response_code(200); // CAMBIADO: era 500
+                http_response_code(200);
                 echo json_encode(['status' => 'ok', 'message' => 'Image download failed']);
                 return;
             }
@@ -135,7 +144,7 @@ class TradeReader extends CI_Controller
                 'description' => 'Telegram webhook processing failed with exception: ' . $e->getMessage()
             ]);
 
-            http_response_code(200); // CAMBIADO: era 500
+            http_response_code(200);
             echo json_encode(['status' => 'ok', 'message' => 'Internal server error']);
         }
     }
@@ -235,15 +244,12 @@ class TradeReader extends CI_Controller
         ];
     }
 
-    // MÉTODO MODIFICADO - Reemplazar el método existente createTradeAnalysis()
-
     /**
      * Análisis IA que devuelve JSON transformado o null si falló
      */
     private function createTradeAnalysis($cropped_filename)
     {
         $in_path = "uploads/trades/" . $cropped_filename . ".png";
-        $out_path = "mt_out_signals/" . $cropped_filename . ".json";
 
         if (!file_exists($in_path)) {
             return null;
@@ -302,20 +308,18 @@ class TradeReader extends CI_Controller
             }
         }
 
-        // Verificar que no sea JSON vacío (por el prompt que devuelve {} si no encuentra datos)
+        // Verificar que no sea JSON vacío
         if (empty($raw_json) || (count($raw_json) == 0)) {
             return null;
         }
 
-        // NUEVA LÓGICA: Transformar JSON al formato final
+        // Transformar JSON al formato final
         $transformed_json = $this->transformAnalysisData($raw_json);
 
         // Si la transformación falla (menos de 6 precios), retornar null
         if ($transformed_json === null) {
             return null;
         }
-
-
 
         return $transformed_json;
     }
@@ -409,117 +413,6 @@ class TradeReader extends CI_Controller
                     '. Error: ' . $e->getMessage()
             ]);
             return false;
-        }
-    }
-
-    // API ENDPOINT para EA: obtener señal más reciente por user_id y ticker
-    public function api_get_signals($user_id, $ticker_symbol)
-    {
-        if (!is_numeric($user_id) || empty($ticker_symbol)) {
-            http_response_code(400);
-            echo json_encode(['error' => 'Invalid parameters']);
-            return;
-        }
-
-        try {
-            // Obtener la señal completada más reciente para este ticker que el usuario puede tradear
-            $signal = $this->Telegram_signals_model->get_completed_signals_for_user($user_id, $ticker_symbol);
-
-            // Si no hay señal disponible
-            if (!$signal) {
-                http_response_code(200);
-                echo json_encode([
-                    'success' => true,
-                    'signal' => null,
-                    'message' => 'No new signals available'
-                ]);
-                return;
-            }
-
-            // Crear registro en user_telegram_signals
-            $user_signal_id = $this->Telegram_signals_model->create_user_signal($signal->id, $user_id, $ticker_symbol, $signal->mt_ticker);
-
-            if ($user_signal_id) {
-                $analysis_data = json_decode($signal->analysis_data, true);
-
-                $response_signal = array(
-                    'user_signal_id' => $user_signal_id,
-                    'telegram_signal_id' => $signal->id,
-                    'ticker_symbol' => $signal->ticker_symbol,
-                    'mt_ticker' => $signal->mt_ticker,
-                    'analysis' => $analysis_data,
-                    'tradingview_url' => $signal->tradingview_url,
-                    'created_at' => $signal->created_at
-                );
-
-                http_response_code(200);
-                echo json_encode([
-                    'success' => true,
-                    'signal' => $response_signal
-                ]);
-            } else {
-                http_response_code(200);
-                echo json_encode([
-                    'success' => true,
-                    'signal' => null,
-                    'message' => 'Signal already processed'
-                ]);
-            }
-        } catch (Exception $e) {
-            http_response_code(500);
-            echo json_encode(['error' => 'Internal server error']);
-        }
-    }
-    
-    // API ENDPOINT para EA: reportar ejecución de trade
-    public function api_update_execution($user_signal_id)
-    {
-        $execution_data = json_decode(file_get_contents("php://input"), true);
-
-        if (!is_numeric($user_signal_id) || !$execution_data) {
-            http_response_code(400);
-            echo json_encode(['error' => 'Invalid parameters']);
-            return;
-        }
-
-        try {
-            $status = isset($execution_data['success']) && $execution_data['success'] ? 'executed' : 'failed_execution';
-
-            if ($this->Telegram_signals_model->update_user_signal($user_signal_id, $status, $execution_data)) {
-                http_response_code(200);
-                echo json_encode(['success' => true, 'status' => $status]);
-            } else {
-                http_response_code(404);
-                echo json_encode(['error' => 'Signal not found']);
-            }
-        } catch (Exception $e) {
-            http_response_code(500);
-            echo json_encode(['error' => 'Internal server error']);
-        }
-    }
-
-    // API ENDPOINT para EA: reportar cierre de trade  
-    public function api_close_trade($user_signal_id)
-    {
-        $close_data = json_decode(file_get_contents("php://input"), true);
-
-        if (!is_numeric($user_signal_id)) {
-            http_response_code(400);
-            echo json_encode(['error' => 'Invalid parameters']);
-            return;
-        }
-
-        try {
-            if ($this->Telegram_signals_model->update_user_signal($user_signal_id, 'closed', $close_data)) {
-                http_response_code(200);
-                echo json_encode(['success' => true, 'status' => 'closed']);
-            } else {
-                http_response_code(404);
-                echo json_encode(['error' => 'Signal not found']);
-            }
-        } catch (Exception $e) {
-            http_response_code(500);
-            echo json_encode(['error' => 'Internal server error']);
         }
     }
 

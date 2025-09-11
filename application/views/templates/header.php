@@ -101,25 +101,11 @@
                                 <i class="fas fa-history me-1"></i>Trades
                             </a>
                         </li>
-                        <!-- Telegram Signals Menu -->
-                        <li class="nav-item dropdown">
-                            <a class="nav-link dropdown-toggle" href="#" id="telegramDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                                <i class="fas fa-paper-plane me-1"></i>Telegram
+                        <!-- My Trading - NUEVO (reemplaza My Tickers y Telegram Signals para usuarios) -->
+                        <li class="nav-item">
+                            <a class="nav-link" href="<?= base_url('my_trading') ?>">
+                                <i class="fas fa-chart-line me-1"></i>My Trading
                             </a>
-                            <ul class="dropdown-menu">
-                                <li><a class="dropdown-item" href="<?= base_url('telegram_signals') ?>">
-                                    <i class="fas fa-signal me-2"></i>View Signals
-                                </a></li>
-                                <li><a class="dropdown-item" href="<?= base_url('my_tickers') ?>">
-                                    <i class="fas fa-user-check me-2"></i>My Tickers
-                                </a></li>
-                                <?php if ($this->session->userdata('role') == 'admin'): ?>
-                                    <li><hr class="dropdown-divider"></li>
-                                    <li><a class="dropdown-item" href="<?= base_url('available_tickers') ?>">
-                                        <i class="fas fa-tags me-2"></i>Manage Tickers
-                                    </a></li>
-                                <?php endif; ?>
-                            </ul>
                         </li>
                         <li class="nav-item">
                             <a class="nav-link" href="<?= base_url('debug') ?>">
@@ -136,6 +122,22 @@
                                 <a class="nav-link" href="<?= base_url('users') ?>">
                                     <i class="fas fa-users me-1"></i>Users
                                 </a>
+                            </li>
+                        <?php endif; ?>
+                        <!-- Telegram Admin Menu - MODIFICADO (solo para admin) -->
+                        <?php if ($this->session->userdata('role') == 'admin') : ?>
+                            <li class="nav-item dropdown">
+                                <a class="nav-link dropdown-toggle" href="#" id="telegramDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                    <i class="fas fa-paper-plane me-1"></i>Telegram Admin
+                                </a>
+                                <ul class="dropdown-menu">
+                                    <li><a class="dropdown-item" href="<?= base_url('telegram_signals') ?>">
+                                        <i class="fas fa-signal me-2"></i>All Signals
+                                    </a></li>
+                                    <li><a class="dropdown-item" href="<?= base_url('available_tickers') ?>">
+                                        <i class="fas fa-tags me-2"></i>Manage Tickers
+                                    </a></li>
+                                </ul>
                             </li>
                         <?php endif; ?>
                         <?php if ($this->session->userdata('role') == 'admin') : ?>

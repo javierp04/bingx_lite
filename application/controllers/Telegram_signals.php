@@ -12,6 +12,12 @@ class Telegram_signals extends CI_Controller
             redirect('auth');
         }
 
+        // NUEVO: Check if user is admin - SECURIZACIÓN
+        if ($this->session->userdata('role') !== 'admin') {
+            $this->session->set_flashdata('error', 'Access denied. This section is for administrators only. Use "My Trading" to view your signals.');
+            redirect('my_trading/signals'); // Redirigir a su vista personal
+        }
+
         $this->load->model('Telegram_signals_model');
         $this->load->model('User_tickers_model');
         $this->load->model('Log_model');
@@ -19,7 +25,7 @@ class Telegram_signals extends CI_Controller
 
     public function index()
     {
-        $data['title'] = 'Telegram Signals';
+        $data['title'] = 'Telegram Signals (Admin)';
 
         // Get filter params
         $filters = array();
@@ -53,7 +59,7 @@ class Telegram_signals extends CI_Controller
 
     public function view($id)
     {
-        $data['title'] = 'View Telegram Signal';
+        $data['title'] = 'View Telegram Signal (Admin)';
         $data['signal'] = $this->Telegram_signals_model->get_signal_by_id($id);
 
         if (!$data['signal']) {
@@ -110,12 +116,7 @@ class Telegram_signals extends CI_Controller
 
     public function cleanup()
     {
-        // Only admin can cleanup
-        if ($this->session->userdata('role') !== 'admin') {
-            $this->session->set_flashdata('error', 'Access denied');
-            redirect('telegram_signals');
-        }
-
+        // Already admin-only due to constructor check
         $days = (int)$this->input->post('days') ?: 30;
         $deleted = $this->Telegram_signals_model->cleanup_old_signals($days);
 

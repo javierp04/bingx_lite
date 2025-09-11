@@ -1,9 +1,3 @@
-<div class="mb-4">
-    <h1 class="h3 mb-0">
-        <i class="fas fa-user-check me-2"></i>My Trading Tickers
-    </h1>
-</div>
-
 <!-- My Selected Tickers -->
 <div class="card mb-4">
     <div class="card-header">
@@ -58,12 +52,12 @@
                                         <button class="btn btn-outline-primary btn-edit-mt" title="Edit MT Symbol">
                                             <i class="fas fa-edit"></i>
                                         </button>
-                                        <a href="<?= base_url('my_tickers/toggle_ticker/' . $ticker->ticker_symbol) ?>" 
+                                        <a href="<?= base_url('my_trading/toggle_ticker/' . $ticker->ticker_symbol) ?>" 
                                            class="btn <?= $ticker->active ? 'btn-outline-secondary' : 'btn-outline-success' ?>" 
                                            title="<?= $ticker->active ? 'Deactivate' : 'Activate' ?>">
                                             <i class="fas <?= $ticker->active ? 'fa-pause' : 'fa-play' ?>"></i>
                                         </a>
-                                        <a href="<?= base_url('my_tickers/remove_ticker/' . $ticker->ticker_symbol) ?>" 
+                                        <a href="<?= base_url('my_trading/remove_ticker/' . $ticker->ticker_symbol) ?>" 
                                            class="btn btn-outline-danger" title="Remove"
                                            onclick="return confirm('Remove <?= $ticker->ticker_symbol ?> from your selection?')">
                                             <i class="fas fa-trash"></i>
@@ -207,7 +201,7 @@ document.addEventListener('DOMContentLoaded', function() {
         formData.append('ticker_symbol', currentSymbol);
         formData.append('mt_ticker', mtSymbol);
         
-        fetch('<?= base_url('my_tickers/add_ticker') ?>', {
+        fetch('<?= base_url('my_trading/add_ticker') ?>', {
             method: 'POST',
             body: formData
         })
@@ -257,7 +251,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 formData.append('ticker_symbol', ticker);
                 formData.append('mt_ticker', newValue);
                 
-                fetch('<?= base_url('my_tickers/update_mt_ticker') ?>', {
+                fetch('<?= base_url('my_trading/update_mt_ticker') ?>', {
                     method: 'POST',
                     body: formData
                 })
