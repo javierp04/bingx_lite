@@ -108,6 +108,155 @@ class Telegram_signals_model extends CI_Model
     }
 
     /**
+     * NUEVO: Reportar apertura de posición (market o pendiente)
+     */
+    public function report_open($user_signal_id, $open_data)
+    {
+        $update_data = [
+            'updated_at' => date('Y-m-d H:i:s')
+        ];
+
+        // Determinar status según tipo de orden
+        if (isset($open_data['order_type'])) {
+            $is_market = in_array($open_data['order_type'], ['ORDER_TYPE_BUY', 'ORDER_TYPE_SELL']);
+            $update_data['status'] = $is_market ? 'open' : 'pending';
+            $update_data['order_type'] = $open_data['order_type'];
+        }
+
+        // Datos de ejecución real (solo si es market)
+        if (isset($open_data['real_entry_price'])) {
+            $update_data['real_entry_price'] = $open_data['real_entry_price'];
+        }
+        if (isset($open_data['real_stop_loss'])) {
+            $update_data['real_stop_loss'] = $open_data['real_stop_loss'];
+        }
+        if (isset($open_data['real_volume'])) {
+            $update_data['real_volume'] = $open_data['real_volume'];
+            $update_data['remaining_volume'] = $open_data['real_volume'];
+        }
+        if (isset($open_data['trade_id'])) {
+            $update_data['trade_id'] = $open_data['trade_id'];
+        }
+
+        // Resetear campos de progreso
+        $update_data['current_level'] = -2;
+        $update_data['volume_closed_percent'] = 0.00;
+        $update_data['gross_pnl'] = 0.00;
+
+        // Actualizar execution_data con info completa
+        if ($open_data) {
+            $update_data['execution_data'] = json_encode($open_data);
+        }
+
+        $this->db->where('id', $user_signal_id);
+        return $this->db->update('user_telegram_signals', $update_data);
+    }
+
+    /**
+     * NUEVO: Reportar progreso de TPs/Breakeven
+     */
+    public function report_progress($user_signal_id, $progress_data)
+    {
+        $update_data = [
+            'updated_at' => date('Y-m-d H:i:s')
+        ];
+
+        // Cambiar status si era pending y ahora está ejecutándose
+        if (isset($progress_data['now_open']) && $progress_data['now_open']) {
+            $update_data['status'] = 'open';
+            if (isset($progress_data['real_entry_price'])) {
+                $update_data['real_entry_price'] = $progress_data['real_entry_price'];
+            }
+        }
+
+        // Actualizar nivel actual alcanzado
+        if (isset($progress_data['current_level'])) {
+            $update_data['current_level'] = $progress_data['current_level'];
+        }
+
+        // Actualizar volumen cerrado y restante
+        if (isset($progress_data['volume_closed_percent'])) {
+            $update_data['volume_closed_percent'] = $progress_data['volume_closed_percent'];
+        }
+        if (isset($progress_data['remaining_volume'])) {
+            $update_data['remaining_volume'] = $progress_data['remaining_volume'];
+        }
+
+        // Actualizar PNL y precio actual
+        if (isset($progress_data['gross_pnl'])) {
+            $update_data['gross_pnl'] = $progress_data['gross_pnl'];
+        }
+        if (isset($progress_data['last_price'])) {
+            $update_data['last_price'] = $progress_data['last_price'];
+        }
+
+        // Mantener execution_data actualizada
+        $update_data['execution_data'] = json_encode($progress_data);
+
+        $this->db->where('id', $user_signal_id);
+        return $this->db->update('user_telegram_signals', $update_data);
+    }
+
+    /**
+     * NUEVO: Reportar cierre final de posición
+     */
+    public function report_close($user_signal_id, $close_data)
+    {
+        $update_data = [
+            'status' => 'closed',
+            'updated_at' => date('Y-m-d H:i:s')
+        ];
+
+        // Datos finales
+        if (isset($close_data['close_reason'])) {
+            $update_data['close_reason'] = $close_data['close_reason'];
+        }
+        if (isset($close_data['gross_pnl'])) {
+            $update_data['gross_pnl'] = $close_data['gross_pnl'];
+        }
+        if (isset($close_data['last_price'])) {
+            $update_data['last_price'] = $close_data['last_price'];
+        }
+
+        // Volumen cerrado al 100%
+        $update_data['volume_closed_percent'] = 100.00;
+        $update_data['remaining_volume'] = 0.00;
+
+        // Exit level final
+        if (isset($close_data['exit_level'])) {
+            $update_data['exit_level'] = $close_data['exit_level'];
+        }
+
+        // Mantener execution_data actualizada
+        $update_data['execution_data'] = json_encode($close_data);
+
+        $this->db->where('id', $user_signal_id);
+        return $this->db->update('user_telegram_signals', $update_data);
+    }
+
+    /**
+     * NUEVO: Convertir orden pendiente a posición activa
+     */
+    public function activate_pending_position($user_signal_id, $activation_data)
+    {
+        $update_data = [
+            'status' => 'open',
+            'updated_at' => date('Y-m-d H:i:s')
+        ];
+
+        // Datos reales de la ejecución
+        if (isset($activation_data['real_entry_price'])) {
+            $update_data['real_entry_price'] = $activation_data['real_entry_price'];
+        }
+        if (isset($activation_data['position_ticket'])) {
+            $update_data['trade_id'] = $activation_data['position_ticket'];
+        }
+
+        $this->db->where('id', $user_signal_id);
+        return $this->db->update('user_telegram_signals', $update_data);
+    }
+
+    /**
      * Obtener señales con filtros (para admin)
      */
     public function get_signals_with_filters($filters = array())
@@ -235,33 +384,6 @@ class Telegram_signals_model extends CI_Model
         $this->db->where('user_id', $user_id);
         $this->db->where('status !=', 'available');
         return $this->db->count_all_results('user_telegram_signals');
-    }
-
-    /**
-     * Actualizar status de user_signal
-     */
-    public function update_user_signal($user_signal_id, $status, $execution_data = null)
-    {
-        $update_data = [
-            'status' => $status,
-            'updated_at' => date('Y-m-d H:i:s')
-        ];
-
-        if ($execution_data) {
-            $update_data['execution_data'] = json_encode($execution_data);
-
-            if (isset($execution_data['trade_id'])) {
-                $update_data['trade_id'] = $execution_data['trade_id'];
-            }
-
-            // AGREGAR: Extraer exit_level si existe
-            if (isset($execution_data['exit_level'])) {
-                $update_data['exit_level'] = $execution_data['exit_level'];
-            }
-        }
-
-        $this->db->where('id', $user_signal_id);
-        return $this->db->update('user_telegram_signals', $update_data);
     }
 
     // ==========================================

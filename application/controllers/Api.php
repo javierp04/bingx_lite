@@ -89,30 +89,82 @@ class Api extends CI_Controller
     }
 
     /**
-     * API ENDPOINT para EA: reportar ejecución de trade
-     * POST /api/signals/{user_signal_id}/execution
+     * NUEVO: API ENDPOINT para reportar apertura de posición
+     * POST /api/signals/{user_signal_id}/open
      */
-    public function update_execution($user_signal_id)
+    public function report_open($user_signal_id)
     {
-        $execution_data = json_decode(file_get_contents("php://input"), true);
+        $open_data = json_decode(file_get_contents("php://input"), true);
 
-        if (!is_numeric($user_signal_id) || !$execution_data) {
+        if (!is_numeric($user_signal_id) || !$open_data) {
             http_response_code(400);
             echo json_encode(['error' => 'Invalid parameters']);
             return;
         }
 
         try {
-            $status = isset($execution_data['success']) && $execution_data['success'] ? 'executed' : 'failed_execution';
-            if ($status == 'executed') {
+            if ($this->Telegram_signals_model->report_open($user_signal_id, $open_data)) {
+                http_response_code(200);
+                echo json_encode(['success' => true, 'status' => 'opened']);
+            } else {
+                http_response_code(404);
+                echo json_encode(['error' => 'Signal not found']);
+            }
+        } catch (Exception $e) {
+            http_response_code(500);
+            echo json_encode(['error' => 'Internal server error']);
+        }
+    }
 
-                if ($this->Telegram_signals_model->update_user_signal($user_signal_id, $status, $execution_data)) {
-                    http_response_code(200);
-                    echo json_encode(['success' => true, 'status' => $status]);
-                } else {
-                    http_response_code(404);
-                    echo json_encode(['error' => 'Signal not found']);
-                }
+    /**
+     * NUEVO: API ENDPOINT para reportar progreso de TPs
+     * POST /api/signals/{user_signal_id}/progress
+     */
+    public function report_progress($user_signal_id)
+    {
+        $progress_data = json_decode(file_get_contents("php://input"), true);
+
+        if (!is_numeric($user_signal_id) || !$progress_data) {
+            http_response_code(400);
+            echo json_encode(['error' => 'Invalid parameters']);
+            return;
+        }
+
+        try {
+            if ($this->Telegram_signals_model->report_progress($user_signal_id, $progress_data)) {
+                http_response_code(200);
+                echo json_encode(['success' => true, 'status' => 'progress_updated']);
+            } else {
+                http_response_code(404);
+                echo json_encode(['error' => 'Signal not found']);
+            }
+        } catch (Exception $e) {
+            http_response_code(500);
+            echo json_encode(['error' => 'Internal server error']);
+        }
+    }
+
+    /**
+     * NUEVO: API ENDPOINT para reportar cierre final
+     * POST /api/signals/{user_signal_id}/close
+     */
+    public function report_close($user_signal_id)
+    {
+        $close_data = json_decode(file_get_contents("php://input"), true);
+
+        if (!is_numeric($user_signal_id) || !$close_data) {
+            http_response_code(400);
+            echo json_encode(['error' => 'Invalid parameters']);
+            return;
+        }
+
+        try {
+            if ($this->Telegram_signals_model->report_close($user_signal_id, $close_data)) {
+                http_response_code(200);
+                echo json_encode(['success' => true, 'status' => 'closed']);
+            } else {
+                http_response_code(404);
+                echo json_encode(['error' => 'Signal not found']);
             }
         } catch (Exception $e) {
             http_response_code(500);

@@ -407,8 +407,7 @@
                     <span class="badge ${typeBadge}">
                         ${trade.trade_type.charAt(0).toUpperCase() + trade.trade_type.slice(1)}
                     </span>
-                </td>
-                <td>${positionId}</td>
+                </td>                
                 <td>${entryPrice}</td>
                 <td class="current-price">
                     ${trade.platform === 'bingx' ? currentPrice : '<span class="text-muted">N/A</span><small class="d-block text-muted">No real-time</small>'}

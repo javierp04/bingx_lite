@@ -94,14 +94,16 @@ $route['debug/test_futures_price'] = 'debug/test_futures_price';
 $route['tradereader/run'] = 'tradereader/generateSignalFromTelegram';
 
 // ==========================================
-// API ROUTES FOR METATRADER EA - NUEVO
+// API ROUTES FOR METATRADER EA - ORDEN CORRECTO
 // ==========================================
 
-// Health check
-$route['api/health'] = 'Api/health';
+// POST reportes específicos (DEBEN IR PRIMERO)
+$route['api/signals/(:num)/open'] = 'Api/report_open/$1';             
+$route['api/signals/(:num)/progress'] = 'Api/report_progress/$1';     
+$route['api/signals/(:num)/close'] = 'Api/report_close/$1';           
 
-// Signal management for EA
-$route['api/signals/(:num)/(:any)'] = 'Api/get_signals/$1/$2'; // GET /api/signals/{user_id}/{ticker}
-$route['api/signals/(:num)/pending'] = 'Api/get_pending_signals/$1'; // GET /api/signals/{user_id}/pending
-$route['api/signals/(:num)/execution'] = 'Api/update_execution/$1'; // POST /api/signals/{user_signal_id}/execution  
-$route['api/signals/(:num)/close'] = 'Api/close_trade/$1'; // POST /api/signals/{user_signal_id}/close
+// GET precio de futuros
+$route['api/fut_price/(:any)'] = 'Api/fut_price/$1';                 
+
+// GET señales disponibles (GENÉRICA - VA AL FINAL)
+$route['api/signals/(:num)/(:any)'] = 'Api/get_signals/$1/$2';

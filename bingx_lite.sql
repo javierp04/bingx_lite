@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Servidor: localhost:3306
--- Tiempo de generación: 16-09-2025 a las 12:43:46
+-- Tiempo de generación: 16-09-2025 a las 15:41:57
 -- Versión del servidor: 10.5.29-MariaDB-0+deb11u1
 -- Versión de PHP: 7.4.33
 
@@ -199,9 +199,19 @@ CREATE TABLE `user_telegram_signals` (
   `user_id` int(11) NOT NULL,
   `ticker_symbol` varchar(20) NOT NULL,
   `mt_ticker` varchar(50) NOT NULL,
-  `status` enum('available','claimed','executed','failed_execution','closed','rejected') DEFAULT 'available',
+  `status` enum('available','claimed','pending','open','closed','failed_execution','expired','cancelled') DEFAULT 'available',
   `execution_data` text DEFAULT NULL,
   `trade_id` varchar(100) DEFAULT NULL,
+  `real_entry_price` decimal(10,5) DEFAULT NULL,
+  `real_stop_loss` decimal(10,5) DEFAULT NULL,
+  `real_volume` decimal(8,2) DEFAULT NULL,
+  `order_type` varchar(20) DEFAULT NULL,
+  `current_level` int(11) DEFAULT -2,
+  `volume_closed_percent` decimal(5,2) DEFAULT 0.00,
+  `remaining_volume` decimal(8,2) DEFAULT NULL,
+  `gross_pnl` decimal(10,2) DEFAULT 0.00,
+  `last_price` decimal(10,5) DEFAULT NULL,
+  `close_reason` varchar(50) DEFAULT NULL,
   `exit_level` int(2) DEFAULT NULL,
   `created_at` datetime DEFAULT current_timestamp(),
   `updated_at` datetime DEFAULT NULL ON UPDATE current_timestamp()
