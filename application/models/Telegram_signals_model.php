@@ -39,13 +39,13 @@ class Telegram_signals_model extends CI_Model
         $this->db->where('ust.ticker_symbol', $ticker_symbol);
         $this->db->where('ust.active', 1);
         $this->db->where('at.active', 1);
-        
+
         $users_with_ticker = $this->db->get()->result();
-        
+
         if (empty($users_with_ticker)) {
             return 0; // No users found
         }
-        
+
         // Crear registros en batch usando INSERT IGNORE
         $values = array();
         foreach ($users_with_ticker as $user) {
@@ -57,16 +57,16 @@ class Telegram_signals_model extends CI_Model
                 $this->db->escape_str($user->mt_ticker ?: '')
             );
         }
-        
+
         if (!empty($values)) {
             $sql = "INSERT IGNORE INTO user_telegram_signals 
                     (telegram_signal_id, user_id, ticker_symbol, mt_ticker, status, created_at) 
                     VALUES " . implode(', ', $values);
-            
+
             $this->db->query($sql);
             return $this->db->affected_rows();
         }
-        
+
         return 0;
     }
 
@@ -78,17 +78,17 @@ class Telegram_signals_model extends CI_Model
         $this->db->select('uts.*, ts.analysis_data, ts.tradingview_url, ts.created_at as telegram_created_at');
         $this->db->from('user_telegram_signals uts');
         $this->db->join('telegram_signals ts', 'uts.telegram_signal_id = ts.id');
-        
+
         $this->db->where('uts.user_id', $user_id);
         $this->db->where('uts.ticker_symbol', $ticker_symbol);
         $this->db->where('uts.status', 'available');
-        
+
         // Solo señales recientes
         $this->db->where('uts.created_at >=', date('Y-m-d H:i:s', strtotime("-{$hours_limit} hours")));
-        
+
         $this->db->order_by('uts.created_at', 'DESC');
         $this->db->limit(1);
-        
+
         return $this->db->get()->row();
     }
 
@@ -100,7 +100,7 @@ class Telegram_signals_model extends CI_Model
         $this->db->where('id', $user_signal_id);
         $this->db->where('user_id', $user_id);
         $this->db->where('status', 'available');
-        
+
         return $this->db->update('user_telegram_signals', [
             'status' => 'claimed',
             'updated_at' => date('Y-m-d H:i:s')
@@ -249,8 +249,14 @@ class Telegram_signals_model extends CI_Model
 
         if ($execution_data) {
             $update_data['execution_data'] = json_encode($execution_data);
+
             if (isset($execution_data['trade_id'])) {
                 $update_data['trade_id'] = $execution_data['trade_id'];
+            }
+
+            // AGREGAR: Extraer exit_level si existe
+            if (isset($execution_data['exit_level'])) {
+                $update_data['exit_level'] = $execution_data['exit_level'];
             }
         }
 
