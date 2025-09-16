@@ -446,7 +446,7 @@ class TradeReader extends CI_Controller
 
         $cropX1 = $cajaCoords['x1'] - 50;
         $cropX2 = $cajaCoords['x2'] + 150;
-        $cropY1 = 100;
+        $cropY1 = 40;
         $cropY2 = $height - 150;
 
         $cropWidth = $cropX2 - $cropX1;
