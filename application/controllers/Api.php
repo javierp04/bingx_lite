@@ -104,13 +104,15 @@ class Api extends CI_Controller
 
         try {
             $status = isset($execution_data['success']) && $execution_data['success'] ? 'executed' : 'failed_execution';
+            if ($status == 'executed') {
 
-            if ($this->Telegram_signals_model->update_user_signal($user_signal_id, $status, $execution_data)) {
-                http_response_code(200);
-                echo json_encode(['success' => true, 'status' => $status]);
-            } else {
-                http_response_code(404);
-                echo json_encode(['error' => 'Signal not found']);
+                if ($this->Telegram_signals_model->update_user_signal($user_signal_id, $status, $execution_data)) {
+                    http_response_code(200);
+                    echo json_encode(['success' => true, 'status' => $status]);
+                } else {
+                    http_response_code(404);
+                    echo json_encode(['error' => 'Signal not found']);
+                }
             }
         } catch (Exception $e) {
             http_response_code(500);
@@ -119,7 +121,7 @@ class Api extends CI_Controller
     }
 
     public function fut_price($symbol = null)
-    {        
+    {
         if ($symbol == null) {
             http_response_code(400);
             echo json_encode(['error' => 'Symbol parameter is required']);
