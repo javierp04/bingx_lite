@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Servidor: localhost:3306
--- Tiempo de generación: 03-09-2025 a las 18:16:48
+-- Tiempo de generación: 16-09-2025 a las 12:43:46
 -- Versión del servidor: 10.5.29-MariaDB-0+deb11u1
 -- Versión de PHP: 7.4.33
 
@@ -114,10 +114,12 @@ CREATE TABLE `telegram_signals` (
   `image_path` varchar(255) NOT NULL,
   `tradingview_url` text NOT NULL,
   `message_text` text DEFAULT NULL,
+  `webhook_raw_data` text DEFAULT NULL,
   `created_at` datetime NOT NULL DEFAULT current_timestamp(),
   `updated_at` datetime DEFAULT NULL ON UPDATE current_timestamp(),
   `status` enum('pending','cropping','analyzing','completed','failed_crop','failed_analysis','failed_download') DEFAULT 'pending',
-  `analysis_data` text DEFAULT NULL
+  `analysis_data` text DEFAULT NULL,
+  `op_type` varchar(10) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- --------------------------------------------------------
@@ -197,9 +199,10 @@ CREATE TABLE `user_telegram_signals` (
   `user_id` int(11) NOT NULL,
   `ticker_symbol` varchar(20) NOT NULL,
   `mt_ticker` varchar(50) NOT NULL,
-  `status` enum('pending','executed','failed_execution','closed','rejected') DEFAULT 'pending',
+  `status` enum('available','claimed','executed','failed_execution','closed','rejected') DEFAULT 'available',
   `execution_data` text DEFAULT NULL,
   `trade_id` varchar(100) DEFAULT NULL,
+  `exit_level` int(2) DEFAULT NULL,
   `created_at` datetime DEFAULT current_timestamp(),
   `updated_at` datetime DEFAULT NULL ON UPDATE current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
@@ -290,7 +293,9 @@ ALTER TABLE `user_telegram_signals`
   ADD KEY `telegram_signal_id` (`telegram_signal_id`),
   ADD KEY `user_id` (`user_id`),
   ADD KEY `status` (`status`),
-  ADD KEY `idx_user_ticker` (`user_id`,`ticker_symbol`);
+  ADD KEY `idx_user_ticker` (`user_id`,`ticker_symbol`),
+  ADD KEY `idx_status_ticker` (`status`,`ticker_symbol`),
+  ADD KEY `idx_user_status` (`user_id`,`status`);
 
 --
 -- AUTO_INCREMENT de las tablas volcadas
@@ -349,63 +354,6 @@ ALTER TABLE `user_selected_tickers`
 --
 ALTER TABLE `user_telegram_signals`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
-
---
--- Restricciones para tablas volcadas
---
-
---
--- Filtros para la tabla `api_keys`
---
-ALTER TABLE `api_keys`
-  ADD CONSTRAINT `api_keys_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE;
-
---
--- Filtros para la tabla `mt_signals`
---
-ALTER TABLE `mt_signals`
-  ADD CONSTRAINT `mt_signals_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
-  ADD CONSTRAINT `mt_signals_ibfk_2` FOREIGN KEY (`strategy_id`) REFERENCES `strategies` (`id`) ON DELETE CASCADE;
-
---
--- Filtros para la tabla `strategies`
---
-ALTER TABLE `strategies`
-  ADD CONSTRAINT `strategies_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE;
-
---
--- Filtros para la tabla `system_logs`
---
-ALTER TABLE `system_logs`
-  ADD CONSTRAINT `system_logs_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL;
-
---
--- Filtros para la tabla `telegram_signals`
---
-ALTER TABLE `telegram_signals`
-  ADD CONSTRAINT `telegram_signals_ibfk_1` FOREIGN KEY (`ticker_symbol`) REFERENCES `available_tickers` (`symbol`) ON DELETE CASCADE;
-
---
--- Filtros para la tabla `trades`
---
-ALTER TABLE `trades`
-  ADD CONSTRAINT `fk_mt_signal` FOREIGN KEY (`mt_signal_id`) REFERENCES `mt_signals` (`id`) ON DELETE SET NULL,
-  ADD CONSTRAINT `trades_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
-  ADD CONSTRAINT `trades_ibfk_2` FOREIGN KEY (`strategy_id`) REFERENCES `strategies` (`id`) ON DELETE CASCADE;
-
---
--- Filtros para la tabla `user_selected_tickers`
---
-ALTER TABLE `user_selected_tickers`
-  ADD CONSTRAINT `user_selected_tickers_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
-  ADD CONSTRAINT `user_selected_tickers_ibfk_2` FOREIGN KEY (`ticker_symbol`) REFERENCES `available_tickers` (`symbol`) ON DELETE CASCADE;
-
---
--- Filtros para la tabla `user_telegram_signals`
---
-ALTER TABLE `user_telegram_signals`
-  ADD CONSTRAINT `user_telegram_signals_ibfk_1` FOREIGN KEY (`telegram_signal_id`) REFERENCES `telegram_signals` (`id`) ON DELETE CASCADE,
-  ADD CONSTRAINT `user_telegram_signals_ibfk_2` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE;
 COMMIT;
 
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
