@@ -44,14 +44,15 @@ $route['available_tickers/edit/(:any)'] = 'Available_tickers/edit/$1';
 $route['available_tickers/toggle/(:any)'] = 'Available_tickers/toggle/$1';
 $route['available_tickers/delete/(:any)'] = 'Available_tickers/delete/$1';
 
-// My Trading routes (User trading dashboard - NUEVO)
-$route['my_trading'] = 'My_trading/index/signals';
-$route['my_trading/(:any)'] = 'My_trading/index/$1';
-$route['my_trading/add_ticker'] = 'My_trading/add_ticker';
+// My Trading routes (User trading dashboard - CORREGIDO)
+$route['my_trading'] = 'My_trading/index/active';                          // CAMBIADO: active por defecto
+$route['my_trading/add_ticker'] = 'My_trading/add_ticker';                  // ANTES de la genérica
+$route['my_trading/update_mt_ticker'] = 'My_trading/update_mt_ticker';      // ANTES de la genérica
+$route['my_trading/get_dashboard_data'] = 'My_trading/get_dashboard_data';  // NUEVO método AJAX
 $route['my_trading/remove_ticker/(:any)'] = 'My_trading/remove_ticker/$1';
 $route['my_trading/toggle_ticker/(:any)'] = 'My_trading/toggle_ticker/$1';
-$route['my_trading/update_mt_ticker'] = 'My_trading/update_mt_ticker';
 $route['my_trading/signal_detail/(:num)'] = 'My_trading/signal_detail/$1';
+$route['my_trading/(:any)'] = 'My_trading/index/$1';                       // GENÉRICA al final
 
 // Telegram Signals routes (Admin only - MODIFICADO)
 $route['telegram_signals'] = 'Telegram_signals';
