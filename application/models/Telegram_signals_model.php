@@ -108,7 +108,28 @@ class Telegram_signals_model extends CI_Model
     }
 
     /**
-     * NUEVO: Reportar apertura de posición (market o pendiente)
+     * Helper: Convertir UTC timestamp del EA a hora local (Argentina UTC-3)
+     */
+    private function convert_utc_to_local($utc_timestamp)
+    {
+        if (empty($utc_timestamp)) {
+            return date('Y-m-d H:i:s'); // Fallback a hora actual local
+        }
+
+        try {
+            // Crear DateTime en UTC
+            $utc_dt = new DateTime($utc_timestamp, new DateTimeZone('UTC'));
+            // Convertir a timezone local (Argentina)
+            $utc_dt->setTimezone(new DateTimeZone('America/Argentina/Buenos_Aires'));
+            return $utc_dt->format('Y-m-d H:i:s');
+        } catch (Exception $e) {
+            // En caso de error, usar hora actual
+            return date('Y-m-d H:i:s');
+        }
+    }
+
+    /**
+     * ACTUALIZADO: Reportar apertura de posición (con conversión UTC)
      */
     public function report_open($user_signal_id, $open_data)
     {
@@ -143,6 +164,11 @@ class Telegram_signals_model extends CI_Model
         $update_data['volume_closed_percent'] = 0.00;
         $update_data['gross_pnl'] = 0.00;
 
+        // NUEVO: Convertir execution_time de UTC a local
+        if (isset($open_data['execution_time'])) {
+            $open_data['execution_time_local'] = $this->convert_utc_to_local($open_data['execution_time']);
+        }
+
         // Actualizar execution_data con info completa
         if ($open_data) {
             $update_data['execution_data'] = json_encode($open_data);
@@ -153,7 +179,7 @@ class Telegram_signals_model extends CI_Model
     }
 
     /**
-     * NUEVO: Reportar progreso de TPs/Breakeven
+     * ACTUALIZADO: Reportar progreso de TPs/Breakeven (con conversión UTC)
      */
     public function report_progress($user_signal_id, $progress_data)
     {
@@ -190,6 +216,16 @@ class Telegram_signals_model extends CI_Model
             $update_data['last_price'] = $progress_data['last_price'];
         }
 
+        // NUEVO: Actualizar stop loss si se reporta
+        if (isset($progress_data['new_stop_loss'])) {
+            $update_data['real_stop_loss'] = $progress_data['new_stop_loss'];
+        }
+
+        // NUEVO: Convertir execution_time de UTC a local
+        if (isset($progress_data['execution_time'])) {
+            $progress_data['execution_time_local'] = $this->convert_utc_to_local($progress_data['execution_time']);
+        }
+
         // Mantener execution_data actualizada
         $update_data['execution_data'] = json_encode($progress_data);
 
@@ -198,7 +234,7 @@ class Telegram_signals_model extends CI_Model
     }
 
     /**
-     * NUEVO: Reportar cierre final de posición
+     * ACTUALIZADO: Reportar cierre final de posición (con conversión UTC)
      */
     public function report_close($user_signal_id, $close_data)
     {
@@ -227,30 +263,13 @@ class Telegram_signals_model extends CI_Model
             $update_data['exit_level'] = $close_data['exit_level'];
         }
 
+        // NUEVO: Convertir execution_time de UTC a local
+        if (isset($close_data['execution_time'])) {
+            $close_data['execution_time_local'] = $this->convert_utc_to_local($close_data['execution_time']);
+        }
+
         // Mantener execution_data actualizada
         $update_data['execution_data'] = json_encode($close_data);
-
-        $this->db->where('id', $user_signal_id);
-        return $this->db->update('user_telegram_signals', $update_data);
-    }
-
-    /**
-     * NUEVO: Convertir orden pendiente a posición activa
-     */
-    public function activate_pending_position($user_signal_id, $activation_data)
-    {
-        $update_data = [
-            'status' => 'open',
-            'updated_at' => date('Y-m-d H:i:s')
-        ];
-
-        // Datos reales de la ejecución
-        if (isset($activation_data['real_entry_price'])) {
-            $update_data['real_entry_price'] = $activation_data['real_entry_price'];
-        }
-        if (isset($activation_data['position_ticket'])) {
-            $update_data['trade_id'] = $activation_data['position_ticket'];
-        }
 
         $this->db->where('id', $user_signal_id);
         return $this->db->update('user_telegram_signals', $update_data);
@@ -354,36 +373,6 @@ class Telegram_signals_model extends CI_Model
         $this->db->where('uts.id', $user_signal_id);
 
         return $this->db->get()->row();
-    }
-
-    /**
-     * Contar señales de usuario hoy
-     */
-    public function count_user_signals_today($user_id)
-    {
-        $this->db->where('user_id', $user_id);
-        $this->db->where('created_at >=', date('Y-m-d 00:00:00'));
-        return $this->db->count_all_results('user_telegram_signals');
-    }
-
-    /**
-     * Contar señales de usuario por status
-     */
-    public function count_user_signals_by_status($user_id, $status)
-    {
-        $this->db->where('user_id', $user_id);
-        $this->db->where('status', $status);
-        return $this->db->count_all_results('user_telegram_signals');
-    }
-
-    /**
-     * Contar señales procesadas (no available) de usuario - CORREGIDO
-     */
-    public function count_user_signals_processed($user_id)
-    {
-        $this->db->where('user_id', $user_id);
-        $this->db->where('status !=', 'available');
-        return $this->db->count_all_results('user_telegram_signals');
     }
 
     // ==========================================
@@ -525,5 +514,77 @@ class Telegram_signals_model extends CI_Model
     {
         $this->db->where('id', $id);
         return $this->db->delete('telegram_signals');
+    }
+
+    /**
+     * NUEVO: Obtener señales para Trading Dashboard con filtros
+     */
+    public function get_trading_dashboard_signals($user_id, $filters = array())
+    {
+        $this->db->select('uts.*, ts.ticker_symbol, ts.analysis_data, ts.op_type, ts.tradingview_url, 
+                          ts.created_at as telegram_created_at');
+        $this->db->from('user_telegram_signals uts');
+        $this->db->join('telegram_signals ts', 'uts.telegram_signal_id = ts.id');
+        $this->db->where('uts.user_id', $user_id);
+
+        // Aplicar filtros
+
+        // Status filter
+        if (!empty($filters['status_filter'])) {
+            switch ($filters['status_filter']) {
+                case 'active':
+                    $this->db->where_in('uts.status', ['pending', 'claimed', 'open']);
+                    break;
+                case 'pending':
+                    $this->db->where_in('uts.status', ['pending', 'claimed']);
+                    break;
+                case 'open':
+                    $this->db->where('uts.status', 'open');
+                    break;
+                case 'closed':
+                    $this->db->where('uts.status', 'closed');
+                    break;
+            }
+        }
+
+        // Ticker filter
+        if (!empty($filters['ticker_filter'])) {
+            $this->db->where('uts.ticker_symbol', $filters['ticker_filter']);
+        }
+
+        // Date range filter
+        if (!empty($filters['date_range']) && $filters['date_range'] !== 'all') {
+            $days = (int)$filters['date_range'];
+            $this->db->where('uts.created_at >=', date('Y-m-d H:i:s', strtotime("-{$days} days")));
+        }
+
+        // PNL filter
+        if (!empty($filters['pnl_filter'])) {
+            switch ($filters['pnl_filter']) {
+                case 'profit':
+                    $this->db->where('uts.gross_pnl >', 0);
+                    break;
+                case 'loss':
+                    $this->db->where('uts.gross_pnl <', 0);
+                    break;
+                case 'breakeven':
+                    $this->db->where('uts.gross_pnl', 0);
+                    break;
+            }
+        }
+
+        // Ordenamiento: Open/Pending primero, luego por fecha DESC
+        $this->db->order_by('CASE uts.status 
+                            WHEN "open" THEN 1 
+                            WHEN "pending" THEN 2 
+                            WHEN "claimed" THEN 2 
+                            WHEN "closed" THEN 3 
+                            ELSE 4 END', '', FALSE);
+        $this->db->order_by('uts.created_at', 'DESC');
+
+        // Limitar para performance
+        $this->db->limit(100);
+
+        return $this->db->get()->result();
     }
 }
