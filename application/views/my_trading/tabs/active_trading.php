@@ -405,132 +405,21 @@
 <?php endif; ?>
 
 <script>
-let autoRefreshInterval = null;
-
 document.addEventListener('DOMContentLoaded', function() {
-    // Auto-refresh functionality
-    const autoRefreshCheckbox = document.getElementById('autoRefresh');
     const refreshBtn = document.getElementById('refreshBtn');
     
-    // Start auto-refresh if enabled
-    if (autoRefreshCheckbox.checked) {
-        startAutoRefresh();
-    }
-    
-    // Toggle auto-refresh
-    autoRefreshCheckbox.addEventListener('change', function() {
-        if (this.checked) {
-            startAutoRefresh();
-        } else {
-            stopAutoRefresh();
-        }
+    // Simple page reload on refresh button click
+    refreshBtn.addEventListener('click', function() {
+        // Show loading state
+        const originalContent = refreshBtn.innerHTML;
+        refreshBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Refreshing...';
+        refreshBtn.disabled = true;
+        
+        // Reload the current page
+        window.location.reload();
     });
-    
-    // Manual refresh
-    refreshBtn.addEventListener('click', refreshDashboardData);
-});
-
-function startAutoRefresh() {
-    // Refresh every 30 seconds
-    autoRefreshInterval = setInterval(refreshDashboardData, 30000);
-}
-
-function stopAutoRefresh() {
-    if (autoRefreshInterval) {
-        clearInterval(autoRefreshInterval);
-        autoRefreshInterval = null;
-    }
-}
-
-function refreshDashboardData() {
-    const refreshBtn = document.getElementById('refreshBtn');
-    const originalContent = refreshBtn.innerHTML;
-    
-    // Show loading state
-    refreshBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Refreshing...';
-    refreshBtn.disabled = true;
-    
-    // Get current filters
-    const urlParams = new URLSearchParams(window.location.search);
-    let refreshUrl = '<?= base_url('my_trading/get_dashboard_data') ?>';
-    if (urlParams.toString()) {
-        refreshUrl += '?' + urlParams.toString();
-    }
-    
-    fetch(refreshUrl)
-        .then(response => response.json())
-        .then(data => {
-            if (data.signals && Array.isArray(data.signals)) {
-                updateDashboardDisplay(data.signals);
-            }
-        })
-        .catch(error => {
-            console.error('Error refreshing data:', error);
-        })
-        .finally(() => {
-            // Restore button state
-            refreshBtn.innerHTML = originalContent;
-            refreshBtn.disabled = false;
-        });
-}
-
-function updateDashboardDisplay(signals) {
-    // Only update active signals data (pending/open)
-    signals.forEach(signal => {
-        const row = document.querySelector(`tr[data-signal-id="${signal.id}"]`);
-        if (row && ['pending', 'claimed', 'open'].includes(row.dataset.status)) {
-            
-            // Update PNL
-            const pnlDisplay = row.querySelector('.pnl-display');
-            if (pnlDisplay && signal.gross_pnl !== undefined) {
-                const pnl = parseFloat(signal.gross_pnl);
-                const pnlClass = pnl > 0 ? 'text-success' : (pnl < 0 ? 'text-danger' : 'text-muted');
-                const pnlIcon = pnl > 0 ? 'fa-arrow-up' : 'fa-arrow-down';
-                
-                if (pnl !== 0) {
-                    pnlDisplay.innerHTML = `<span class="${pnlClass}"><i class="fas ${pnlIcon} me-1"></i>$${Math.abs(pnl).toFixed(2)}</span>`;
-                } else {
-                    pnlDisplay.innerHTML = '<span class="text-muted">$0.00</span>';
-                }
-            }
-            
-            // Update current price if available
-            const currentPriceEl = row.querySelector('.current-price');
-            if (currentPriceEl && signal.last_price) {
-                currentPriceEl.innerHTML = `<small class="text-muted">→ ${parseFloat(signal.last_price).toFixed(5)}</small>`;
-            }
-            
-            // Update remaining volume if changed
-            const volumeInfo = row.querySelector('.volume-info');
-            if (volumeInfo && signal.remaining_volume && signal.real_volume) {
-                const remainingVol = parseFloat(signal.remaining_volume);
-                const totalVol = parseFloat(signal.real_volume);
-                const closedPercent = signal.volume_closed_percent || 0;
-                
-                let volumeHtml = `<strong>${remainingVol.toFixed(2)}</strong> / ${totalVol.toFixed(2)}`;
-                if (closedPercent > 0) {
-                    volumeHtml += `<div class="progress mt-1" style="height: 4px;">
-                                     <div class="progress-bar bg-success" style="width: ${closedPercent}%"></div>
-                                   </div>
-                                   <small class="text-muted">${closedPercent.toFixed(1)}% closed</small>`;
-                }
-                volumeInfo.innerHTML = volumeHtml;
-            }
-        }
-    });
-    
-    // Update last refresh time indicator
-    const now = new Date();
-    const timeString = now.toLocaleTimeString();
-    console.log(`Dashboard data refreshed at ${timeString}`);
-}
-
-// Clean up interval when leaving the page
-window.addEventListener('beforeunload', function() {
-    stopAutoRefresh();
 });
 </script>
-
 <style>
 .signal-row:hover {
     background-color: #f8f9fa;

@@ -137,10 +137,11 @@ class Telegram_signals_model extends CI_Model
             'updated_at' => date('Y-m-d H:i:s')
         ];
 
-        // Determinar status según tipo de orden
+        // Determinar status y current_level según tipo de orden
         if (isset($open_data['order_type'])) {
             $is_market = in_array($open_data['order_type'], ['ORDER_TYPE_BUY', 'ORDER_TYPE_SELL']);
             $update_data['status'] = $is_market ? 'open' : 'pending';
+            $update_data['current_level'] = $is_market ? 0 : -2;  // CORREGIDO: 0 para market, -2 para pending
             $update_data['order_type'] = $open_data['order_type'];
         }
 
@@ -160,7 +161,6 @@ class Telegram_signals_model extends CI_Model
         }
 
         // Resetear campos de progreso
-        $update_data['current_level'] = -2;
         $update_data['volume_closed_percent'] = 0.00;
         $update_data['gross_pnl'] = 0.00;
 
