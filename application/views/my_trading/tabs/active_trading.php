@@ -112,27 +112,27 @@
                     <tbody>
                         <?php foreach ($dashboard_signals as $signal): ?>
                             <?php
-                                // Parse analysis data for operation type
-                                $analysis = json_decode($signal->analysis_data, true);
-                                $op_type = $signal->op_type ?: ($analysis['op_type'] ?? 'UNKNOWN');
-                                
-                                // Calculate time elapsed
-                                $created_time = strtotime($signal->created_at);
-                                $elapsed = time() - $created_time;
-                                $elapsed_formatted = '';
-                                if ($elapsed < 3600) {
-                                    $elapsed_formatted = floor($elapsed / 60) . 'm';
-                                } else if ($elapsed < 86400) {
-                                    $elapsed_formatted = floor($elapsed / 3600) . 'h ' . floor(($elapsed % 3600) / 60) . 'm';
-                                } else {
-                                    $elapsed_formatted = floor($elapsed / 86400) . 'd ' . floor(($elapsed % 86400) / 3600) . 'h';
-                                }
-                                
-                                // Detectar breakeven
-                                $is_breakeven = ($signal->real_stop_loss == $signal->real_entry_price);
-                                
-                                // Row class for active vs closed
-                                $row_class = in_array($signal->status, ['pending', 'claimed', 'open']) ? '' : 'table-secondary';
+                            // Parse analysis data for operation type
+                            $analysis = json_decode($signal->analysis_data, true);
+                            $op_type = $signal->op_type ?: ($analysis['op_type'] ?? 'UNKNOWN');
+
+                            // Calculate time elapsed
+                            $created_time = strtotime($signal->created_at);
+                            $elapsed = time() - $created_time;
+                            $elapsed_formatted = '';
+                            if ($elapsed < 3600) {
+                                $elapsed_formatted = floor($elapsed / 60) . 'm';
+                            } else if ($elapsed < 86400) {
+                                $elapsed_formatted = floor($elapsed / 3600) . 'h ' . floor(($elapsed % 3600) / 60) . 'm';
+                            } else {
+                                $elapsed_formatted = floor($elapsed / 86400) . 'd ' . floor(($elapsed % 86400) / 3600) . 'h';
+                            }
+
+                            // Detectar breakeven
+                            $is_breakeven = ($signal->real_stop_loss == $signal->real_entry_price);
+
+                            // Row class for active vs closed
+                            $row_class = in_array($signal->status, ['pending', 'claimed', 'open']) ? '' : 'table-secondary';
                             ?>
                             <tr data-signal-id="<?= $signal->id ?>" class="signal-row <?= $row_class ?>" data-status="<?= $signal->status ?>">
                                 <td>
@@ -166,12 +166,13 @@
                                     </span>
                                 </td>
                                 <td>
+                                <td>
                                     <?php
-                                    // Status with level information - NUEVA LÓGICA
+                                    // Status principal - SIN incluir BE como status
                                     $status_class = '';
                                     $status_text = '';
-                                    
-                                    switch($signal->status) {
+
+                                    switch ($signal->status) {
                                         case 'pending':
                                         case 'claimed':
                                             $status_class = 'bg-warning text-dark';
@@ -181,14 +182,6 @@
                                             if ($signal->current_level >= 1) {
                                                 $status_class = 'bg-success';
                                                 $status_text = 'TP' . $signal->current_level . ' Reached';
-                                            } elseif ($signal->current_level == 0) {
-                                                if ($is_breakeven) {
-                                                    $status_class = 'bg-info';
-                                                    $status_text = 'Break Even';
-                                                } else {
-                                                    $status_class = 'bg-primary';
-                                                    $status_text = 'Position Open';
-                                                }
                                             } else {
                                                 $status_class = 'bg-primary';
                                                 $status_text = 'Position Open';
@@ -196,7 +189,7 @@
                                             break;
                                         case 'closed':
                                             if ($signal->close_reason) {
-                                                switch($signal->close_reason) {
+                                                switch ($signal->close_reason) {
                                                     case 'CLOSED_COMPLETE':
                                                         $status_class = 'bg-success';
                                                         $status_text = 'TP Complete';
@@ -227,8 +220,15 @@
                                     <span class="badge <?= $status_class ?>">
                                         <?= $status_text ?>
                                     </span>
-                                    <?php if ($is_breakeven && $signal->status == 'open'): ?>
-                                        <br><small class="text-success"><i class="fas fa-shield-alt"></i> BE</small>
+
+                                    <?php
+                                    // NUEVO: BE como indicador separado debajo del status
+                                    $is_breakeven = ($signal->real_stop_loss == $signal->real_entry_price);
+                                    if ($is_breakeven && $signal->status == 'open'):
+                                    ?>
+                                        <br><small class="text-success mt-1 d-inline-block">
+                                            <i class="fas fa-shield-alt"></i> Break Even
+                                        </small>
                                     <?php endif; ?>
                                 </td>
                                 <td>
@@ -259,7 +259,7 @@
                                                 </div>
                                                 <small class="text-muted">100% closed</small>
                                             <?php else: ?>
-                                                <strong><?= number_format($signal->remaining_volume ?: $signal->real_volume, 2) ?></strong> / 
+                                                <strong><?= number_format($signal->remaining_volume ?: $signal->real_volume, 2) ?></strong> /
                                                 <?= number_format($signal->real_volume, 2) ?>
                                                 <?php if ($signal->volume_closed_percent > 0): ?>
                                                     <div class="progress mt-1" style="height: 4px;">
@@ -279,7 +279,7 @@
                                     $level = $signal->current_level;
                                     $level_text = '';
                                     $level_class = 'bg-secondary';
-                                    
+
                                     if ($level == -2) {
                                         $level_text = '-';              // No hay progreso aún
                                         $level_class = 'bg-light text-muted';
@@ -321,13 +321,13 @@
                                 </td>
                                 <td>
                                     <div class="btn-group btn-group-sm">
-                                        <a href="<?= base_url('my_trading/signal_detail/' . $signal->id) ?>" 
-                                           class="btn btn-outline-info" title="View Details">
+                                        <a href="<?= base_url('my_trading/signal_detail/' . $signal->id) ?>"
+                                            class="btn btn-outline-info" title="View Details">
                                             <i class="fas fa-eye"></i>
                                         </a>
                                         <?php if ($signal->tradingview_url): ?>
-                                            <a href="<?= $signal->tradingview_url ?>" target="_blank" 
-                                               class="btn btn-outline-primary" title="TradingView Chart">
+                                            <a href="<?= $signal->tradingview_url ?>" target="_blank"
+                                                class="btn btn-outline-primary" title="TradingView Chart">
                                                 <i class="fas fa-chart-line"></i>
                                             </a>
                                         <?php endif; ?>
@@ -344,109 +344,117 @@
 
 <!-- Quick Stats Cards -->
 <?php if (!empty($dashboard_signals)): ?>
-<div class="row mt-4">
-    <?php
-    $active_signals = array_filter($dashboard_signals, function($s) { return in_array($s->status, ['pending', 'claimed', 'open']); });
-    $closed_signals = array_filter($dashboard_signals, function($s) { return $s->status === 'closed'; });
-    $profitable_signals = array_filter($dashboard_signals, function($s) { return $s->gross_pnl > 0; });
-    $total_pnl = array_sum(array_column($dashboard_signals, 'gross_pnl'));
-    ?>
-    <div class="col-md-3">
-        <div class="card border-info">
-            <div class="card-body text-center">
-                <h6 class="text-muted">Active Positions</h6>
-                <h4 class="text-info mb-0">
-                    <?= count($active_signals) ?>
-                </h4>
-                <small class="text-muted">Pending + Open</small>
+    <div class="row mt-4">
+        <?php
+        $active_signals = array_filter($dashboard_signals, function ($s) {
+            return in_array($s->status, ['pending', 'claimed', 'open']);
+        });
+        $closed_signals = array_filter($dashboard_signals, function ($s) {
+            return $s->status === 'closed';
+        });
+        $profitable_signals = array_filter($dashboard_signals, function ($s) {
+            return $s->gross_pnl > 0;
+        });
+        $total_pnl = array_sum(array_column($dashboard_signals, 'gross_pnl'));
+        ?>
+        <div class="col-md-3">
+            <div class="card border-info">
+                <div class="card-body text-center">
+                    <h6 class="text-muted">Active Positions</h6>
+                    <h4 class="text-info mb-0">
+                        <?= count($active_signals) ?>
+                    </h4>
+                    <small class="text-muted">Pending + Open</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-secondary">
+                <div class="card-body text-center">
+                    <h6 class="text-muted">Closed Positions</h6>
+                    <h4 class="text-secondary mb-0">
+                        <?= count($closed_signals) ?>
+                    </h4>
+                    <small class="text-muted">In selected period</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-success">
+                <div class="card-body text-center">
+                    <h6 class="text-muted">Win Rate</h6>
+                    <?php
+                    $win_rate = count($closed_signals) > 0 ? (count($profitable_signals) / count($closed_signals)) * 100 : 0;
+                    ?>
+                    <h4 class="text-success mb-0">
+                        <?= number_format($win_rate, 1) ?>%
+                    </h4>
+                    <small class="text-muted"><?= count($profitable_signals) ?> / <?= count($closed_signals) ?> wins</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-primary">
+                <div class="card-body text-center">
+                    <h6 class="text-muted">Total PNL</h6>
+                    <?php
+                    $pnl_class = $total_pnl > 0 ? 'text-success' : ($total_pnl < 0 ? 'text-danger' : 'text-muted');
+                    ?>
+                    <h4 class="<?= $pnl_class ?> mb-0">
+                        $<?= number_format(abs($total_pnl), 2) ?>
+                    </h4>
+                    <small class="text-muted">Period P&L</small>
+                </div>
             </div>
         </div>
     </div>
-    <div class="col-md-3">
-        <div class="card border-secondary">
-            <div class="card-body text-center">
-                <h6 class="text-muted">Closed Positions</h6>
-                <h4 class="text-secondary mb-0">
-                    <?= count($closed_signals) ?>
-                </h4>
-                <small class="text-muted">In selected period</small>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="card border-success">
-            <div class="card-body text-center">
-                <h6 class="text-muted">Win Rate</h6>
-                <?php 
-                $win_rate = count($closed_signals) > 0 ? (count($profitable_signals) / count($closed_signals)) * 100 : 0;
-                ?>
-                <h4 class="text-success mb-0">
-                    <?= number_format($win_rate, 1) ?>%
-                </h4>
-                <small class="text-muted"><?= count($profitable_signals) ?> / <?= count($closed_signals) ?> wins</small>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="card border-primary">
-            <div class="card-body text-center">
-                <h6 class="text-muted">Total PNL</h6>
-                <?php
-                $pnl_class = $total_pnl > 0 ? 'text-success' : ($total_pnl < 0 ? 'text-danger' : 'text-muted');
-                ?>
-                <h4 class="<?= $pnl_class ?> mb-0">
-                    $<?= number_format(abs($total_pnl), 2) ?>
-                </h4>
-                <small class="text-muted">Period P&L</small>
-            </div>
-        </div>
-    </div>
-</div>
 <?php endif; ?>
 
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-    const refreshBtn = document.getElementById('refreshBtn');
-    
-    // Simple page reload on refresh button click
-    refreshBtn.addEventListener('click', function() {
-        // Show loading state
-        const originalContent = refreshBtn.innerHTML;
-        refreshBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Refreshing...';
-        refreshBtn.disabled = true;
-        
-        // Reload the current page
-        window.location.reload();
+    document.addEventListener('DOMContentLoaded', function() {
+        const refreshBtn = document.getElementById('refreshBtn');
+
+        // Simple page reload on refresh button click
+        refreshBtn.addEventListener('click', function() {
+            // Show loading state
+            const originalContent = refreshBtn.innerHTML;
+            refreshBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Refreshing...';
+            refreshBtn.disabled = true;
+
+            // Reload the current page
+            window.location.reload();
+        });
     });
-});
 </script>
 <style>
-.signal-row:hover {
-    background-color: #f8f9fa;
-}
+    .signal-row:hover {
+        background-color: #f8f9fa;
+    }
 
-.signal-row.table-secondary {
-    opacity: 0.8;
-}
+    .signal-row.table-secondary {
+        opacity: 0.8;
+    }
 
-.progress {
-    width: 60px;
-}
+    .progress {
+        width: 60px;
+    }
 
-.elapsed-time {
-    font-weight: 500;
-}
+    .elapsed-time {
+        font-weight: 500;
+    }
 
-.volume-info {
-    min-width: 80px;
-}
+    .volume-info {
+        min-width: 80px;
+    }
 
-.pnl-display {
-    min-width: 70px;
-    font-weight: 500;
-}
+    .pnl-display {
+        min-width: 70px;
+        font-weight: 500;
+    }
 
-.entry-price, .current-price, .final-price {
-    line-height: 1.2;
-}
+    .entry-price,
+    .current-price,
+    .final-price {
+        line-height: 1.2;
+    }
 </style>

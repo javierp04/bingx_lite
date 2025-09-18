@@ -208,20 +208,22 @@ class Telegram_signals_model extends CI_Model
             $update_data['remaining_volume'] = $progress_data['remaining_volume'];
         }
 
-        // Actualizar PNL y precio actual
+        // NUEVO: PNL acumulado en lugar de sobrescribir
         if (isset($progress_data['gross_pnl'])) {
-            $update_data['gross_pnl'] = $progress_data['gross_pnl'];
+            $current_pnl = $this->get_current_gross_pnl($user_signal_id);
+            $update_data['gross_pnl'] = $current_pnl + $progress_data['gross_pnl'];
         }
+
         if (isset($progress_data['last_price'])) {
             $update_data['last_price'] = $progress_data['last_price'];
         }
 
-        // NUEVO: Actualizar stop loss si se reporta
+        // Actualizar stop loss si se reporta
         if (isset($progress_data['new_stop_loss'])) {
             $update_data['real_stop_loss'] = $progress_data['new_stop_loss'];
         }
 
-        // NUEVO: Convertir execution_time de UTC a local
+        // Convertir execution_time de UTC a local
         if (isset($progress_data['execution_time'])) {
             $progress_data['execution_time_local'] = $this->convert_utc_to_local($progress_data['execution_time']);
         }
@@ -248,7 +250,8 @@ class Telegram_signals_model extends CI_Model
             $update_data['close_reason'] = $close_data['close_reason'];
         }
         if (isset($close_data['gross_pnl'])) {
-            $update_data['gross_pnl'] = $close_data['gross_pnl'];
+            $current_pnl = $this->get_current_gross_pnl($user_signal_id);
+            $update_data['gross_pnl'] = $current_pnl + $close_data['gross_pnl'];
         }
         if (isset($close_data['last_price'])) {
             $update_data['last_price'] = $close_data['last_price'];
@@ -311,18 +314,24 @@ class Telegram_signals_model extends CI_Model
     // MÉTODOS PARA USUARIOS ESPECÍFICOS
     // ==========================================
 
-    /**
-     * Obtener señales de un usuario específico con filtros
-     */
     public function get_user_signals_with_filters($user_id, $filters = array())
     {
         $this->db->select('uts.*, ts.ticker_symbol, ts.image_path, ts.tradingview_url, ts.message_text, 
-                          ts.analysis_data, ts.op_type, ts.created_at as telegram_created_at');
+                      ts.analysis_data, ts.op_type, ts.created_at as telegram_created_at,
+                      ust_info.active as ticker_is_active');
         $this->db->from('user_telegram_signals uts');
         $this->db->join('telegram_signals ts', 'uts.telegram_signal_id = ts.id');
+
+        // NUEVO: Join para obtener status del ticker
+        $this->db->join(
+            'user_selected_tickers ust_info',
+            'uts.user_id = ust_info.user_id AND uts.ticker_symbol = ust_info.ticker_symbol',
+            'left'
+        );
+
         $this->db->where('uts.user_id', $user_id);
 
-        // Aplicar filtros
+        // Aplicar filtros existentes...
         if (isset($filters['ticker_symbol']) && $filters['ticker_symbol']) {
             $this->db->where('uts.ticker_symbol', $filters['ticker_symbol']);
         }
@@ -340,7 +349,7 @@ class Telegram_signals_model extends CI_Model
         }
 
         $this->db->order_by('uts.created_at', 'DESC');
-        $this->db->limit(100); // Limitar para performance
+        $this->db->limit(100);
 
         return $this->db->get()->result();
     }
@@ -516,20 +525,26 @@ class Telegram_signals_model extends CI_Model
         return $this->db->delete('telegram_signals');
     }
 
-    /**
-     * NUEVO: Obtener señales para Trading Dashboard con filtros
-     */
     public function get_trading_dashboard_signals($user_id, $filters = array())
     {
         $this->db->select('uts.*, ts.ticker_symbol, ts.analysis_data, ts.op_type, ts.tradingview_url, 
-                          ts.created_at as telegram_created_at');
+                      ts.created_at as telegram_created_at, ust_info.active as ticker_is_active');
         $this->db->from('user_telegram_signals uts');
         $this->db->join('telegram_signals ts', 'uts.telegram_signal_id = ts.id');
+
+        // NUEVO: Join con user_selected_tickers para verificar status
+        $this->db->join(
+            'user_selected_tickers ust_info',
+            'uts.user_id = ust_info.user_id AND uts.ticker_symbol = ust_info.ticker_symbol',
+            'left'
+        );
+
         $this->db->where('uts.user_id', $user_id);
 
-        // Aplicar filtros
+        // NUEVO: Solo mostrar tickers activos en dashboard
+        $this->db->where('ust_info.active', 1);
 
-        // Status filter
+        // Aplicar filtros existentes...
         if (!empty($filters['status_filter'])) {
             switch ($filters['status_filter']) {
                 case 'active':
@@ -547,18 +562,15 @@ class Telegram_signals_model extends CI_Model
             }
         }
 
-        // Ticker filter
         if (!empty($filters['ticker_filter'])) {
             $this->db->where('uts.ticker_symbol', $filters['ticker_filter']);
         }
 
-        // Date range filter
         if (!empty($filters['date_range']) && $filters['date_range'] !== 'all') {
             $days = (int)$filters['date_range'];
             $this->db->where('uts.created_at >=', date('Y-m-d H:i:s', strtotime("-{$days} days")));
         }
 
-        // PNL filter
         if (!empty($filters['pnl_filter'])) {
             switch ($filters['pnl_filter']) {
                 case 'profit':
@@ -573,18 +585,24 @@ class Telegram_signals_model extends CI_Model
             }
         }
 
-        // Ordenamiento: Open/Pending primero, luego por fecha DESC
         $this->db->order_by('CASE uts.status 
-                            WHEN "open" THEN 1 
-                            WHEN "pending" THEN 2 
-                            WHEN "claimed" THEN 2 
-                            WHEN "closed" THEN 3 
-                            ELSE 4 END', '', FALSE);
+                        WHEN "open" THEN 1 
+                        WHEN "pending" THEN 2 
+                        WHEN "claimed" THEN 2 
+                        WHEN "closed" THEN 3 
+                        ELSE 4 END', '', FALSE);
         $this->db->order_by('uts.created_at', 'DESC');
-
-        // Limitar para performance
         $this->db->limit(100);
 
         return $this->db->get()->result();
+    }
+
+    private function get_current_gross_pnl($user_signal_id)
+    {
+        $this->db->select('gross_pnl');
+        $this->db->where('id', $user_signal_id);
+        $result = $this->db->get('user_telegram_signals')->row();
+
+        return $result ? $result->gross_pnl : 0.00;
     }
 }

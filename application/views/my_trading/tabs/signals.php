@@ -103,6 +103,9 @@
                             <tr>
                                 <td>
                                     <strong><?= $signal->ticker_symbol ?></strong>
+                                    <?php if (isset($signal->ticker_is_active) && !$signal->ticker_is_active): ?>
+                                        <span class="badge bg-secondary ms-1" title="Ticker disabled">❌</span>
+                                    <?php endif; ?>
                                 </td>
                                 <td>
                                     <?php if ($signal->mt_ticker): ?>
