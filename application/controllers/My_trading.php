@@ -176,21 +176,71 @@ class My_trading extends CI_Controller
         $this->load->view('templates/footer');
     }
 
-    public function get_dashboard_data()
+    // Método para AJAX refresh del dashboard completo
+    public function refresh_dashboard_ajax()
     {
+        // Solo permitir AJAX
+        if (!$this->input->is_ajax_request()) {
+            show_404();
+            return;
+        }
+
         $user_id = $this->session->userdata('user_id');
-        
+
         // Get filter params from query string
         $filters = array();
         $filters['status_filter'] = $this->input->get('status_filter') ?: '';
         $filters['ticker_filter'] = $this->input->get('ticker_filter') ?: '';
         $filters['date_range'] = $this->input->get('date_range') ?: '7';
         $filters['pnl_filter'] = $this->input->get('pnl_filter') ?: '';
-        
+
         $dashboard_signals = $this->Telegram_signals_model->get_trading_dashboard_signals($user_id, $filters);
-        
+
+        // Calculate statistics
+        $stats = $this->calculate_dashboard_stats($dashboard_signals);
+
+        // Prepare data for view
+        $data['dashboard_signals'] = $dashboard_signals;
+
+        // Render complete dashboard content (table + stats)
+        $content_html = $this->load->view('my_trading/partials/dashboard_content', $data, TRUE);
+
+        // Return JSON response
         http_response_code(200);
         header('Content-Type: application/json');
-        echo json_encode(['signals' => $dashboard_signals]);
+        echo json_encode([
+            'success' => true,
+            'content_html' => $content_html,
+            'count' => count($dashboard_signals),
+            'timestamp' => date('Y-m-d H:i:s'),
+            'stats' => $stats
+        ]);
+    }
+
+    private function calculate_dashboard_stats($dashboard_signals)
+    {
+        $active_signals = array_filter($dashboard_signals, function ($s) {
+            return in_array($s->status, ['pending', 'claimed', 'open']);
+        });
+        
+        $closed_signals = array_filter($dashboard_signals, function ($s) {
+            return $s->status === 'closed';
+        });
+        
+        $profitable_signals = array_filter($dashboard_signals, function ($s) {
+            return $s->gross_pnl > 0;
+        });
+        
+        $total_pnl = array_sum(array_column($dashboard_signals, 'gross_pnl'));
+        
+        $win_rate = count($closed_signals) > 0 ? (count($profitable_signals) / count($closed_signals)) * 100 : 0;
+        
+        return [
+            'active_count' => count($active_signals),
+            'closed_count' => count($closed_signals),
+            'profitable_count' => count($profitable_signals),
+            'win_rate' => $win_rate,
+            'total_pnl' => $total_pnl
+        ];
     }
 }
