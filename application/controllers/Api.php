@@ -172,7 +172,7 @@ class Api extends CI_Controller
         }
     }
 
-    public function fut_price($symbol = null)
+    public function fut_price_spark($symbol = null)
     {
         if ($symbol == null) {
             http_response_code(400);
@@ -241,6 +241,80 @@ class Api extends CI_Controller
         }
 
         // 4) Salida minimal
+        $this->output
+            ->set_content_type('application/json')
+            ->set_output(json_encode([
+                'last_close' => $lastClose,
+                'ts_epoch'   => $ts,
+                'ts_local'   => $this->_epoch_to_local($ts),
+            ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+    }
+
+    public function fut_price($symbol = null)
+    {
+        if ($symbol == null) {
+            http_response_code(400);
+            echo json_encode(['error' => 'Symbol parameter is required']);
+            return;
+        }
+        $symbol = strtoupper($symbol) . "=F";
+        $symEnc = rawurlencode($symbol);
+
+        // chart v8 (query1) 1 símbolo, 1d en 1m
+        $url = "https://query1.finance.yahoo.com/v8/finance/chart/{$symEnc}?interval=1m&range=1d";
+
+        // HTTP GET simple
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_ENCODING       => 'gzip',
+            CURLOPT_CONNECTTIMEOUT => 5,
+            CURLOPT_TIMEOUT        => 8,
+            CURLOPT_HTTPHEADER     => ['Accept: application/json'],
+            CURLOPT_USERAGENT      => 'Mozilla/5.0 (CI3)'
+        ]);
+        $body = curl_exec($ch);
+        $code = (int) (curl_getinfo($ch)['http_code'] ?? 0);
+        curl_close($ch);
+
+        $lastClose = null;
+        $ts = null;
+
+        if ($code === 200 && $body) {
+            $j = json_decode($body, true);
+            $res = $j['chart']['result'][0] ?? null;
+            if ($res) {
+                $closes = $res['indicators']['quote'][0]['close'] ?? [];
+                $times  = $res['timestamp'] ?? [];
+
+                // penúltima no-nula (última vela CERRADA)
+                $n = count($closes);
+                if ($n > 0) {
+                    $idxLast = null;
+                    for ($i = $n - 1; $i >= 0; $i--) {
+                        if ($closes[$i] !== null) {
+                            $idxLast = $i;
+                            break;
+                        }
+                    }
+                    if ($idxLast !== null) {
+                        $idxPrev = null;
+                        for ($k = $idxLast - 1; $k >= 0; $k--) {
+                            if ($closes[$k] !== null) {
+                                $idxPrev = $k;
+                                break;
+                            }
+                        }
+                        $idx = ($idxPrev !== null) ? $idxPrev : $idxLast;
+                        $lastClose = $closes[$idx] ?? null;
+                        $ts        = $times[$idx]  ?? null;
+                    }
+                }
+            }
+        }
+
+        // salida minimal
         $this->output
             ->set_content_type('application/json')
             ->set_output(json_encode([

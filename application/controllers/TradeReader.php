@@ -222,8 +222,8 @@ class TradeReader extends CI_Controller
         $prices = $raw_json['label_prices'];
         $op_type = strtoupper(trim($raw_json['op_type']));
 
-        // Validar mínimo 6 precios
-        if (!is_array($prices) || count($prices) < 6) {
+        // CORREGIDO: Validar mínimo 8 precios (2 SL + 1 Entry + 5 TPs)
+        if (!is_array($prices) || count($prices) < 8) {
             return null;
         }
 
@@ -239,12 +239,12 @@ class TradeReader extends CI_Controller
             return null; // op_type inválido
         }
 
-        // Crear estructura final
+        // CORREGIDO: Crear estructura con exactamente 5 TPs
         return [
             'op_type' => $op_type,
             'stoploss' => [$prices[0], $prices[1]],
             'entry' => $prices[2],
-            'tps' => array_slice($prices, 3)
+            'tps' => [$prices[3], $prices[4], $prices[5], $prices[6], $prices[7]]  // 5 TPs exactos
         ];
     }
 
