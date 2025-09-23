@@ -298,7 +298,7 @@
                 <div class="mb-2">
                     <strong>MT Pending Signals:</strong>
                     <div class="input-group input-group-sm">
-                        <input type="text" class="form-control" value="<?= base_url('api/mt/pending_signals') ?>" readonly>
+                        <input type="text" class="form-control" value="<?= base_url('metatrader/pending_signals') ?>" readonly>
                         <button class="btn btn-outline-secondary" onclick="copyToClipboard(this.previousElementSibling)">
                             <i class="fas fa-copy"></i>
                         </button>
@@ -308,7 +308,7 @@
                 <div class="mb-2">
                     <strong>MT Confirm Execution:</strong>
                     <div class="input-group input-group-sm">
-                        <input type="text" class="form-control" value="<?= base_url('api/mt/confirm_execution') ?>" readonly>
+                        <input type="text" class="form-control" value="<?= base_url('metatrader/confirm_execution') ?>" readonly>
                         <button class="btn btn-outline-secondary" onclick="copyToClipboard(this.previousElementSibling)">
                             <i class="fas fa-copy"></i>
                         </button>
