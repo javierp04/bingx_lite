@@ -85,54 +85,55 @@
                 </button>
 
                 <div class="collapse navbar-collapse" id="navbarNav">
-                    <ul class="navbar-nav me-auto">                      
+                    <ul class="navbar-nav me-auto">
+                        <!-- Dashboard -->
                         <li class="nav-item">
-                            <a class="nav-link" href="<?= base_url('signals') ?>">
-                                <i class="fas fa-signal me-1"></i>Signals
+                            <a class="nav-link" href="<?= base_url('dashboard') ?>">
+                                <i class="fas fa-tachometer-alt me-1"></i>Dashboard
                             </a>
                         </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="<?= base_url('strategies') ?>">
-                                <i class="fas fa-chart-line me-1"></i>Strategies
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="<?= base_url('trades') ?>">
-                                <i class="fas fa-history me-1"></i>Trades
-                            </a>
-                        </li>
-                        <!-- My Trading - NUEVO (reemplaza My Tickers y Telegram Signals para usuarios) -->
+
+                        <!-- My Trading -->
                         <li class="nav-item">
                             <a class="nav-link" href="<?= base_url('my_trading') ?>">
                                 <i class="fas fa-chart-line me-1"></i>My Trading
                             </a>
                         </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="<?= base_url('debug') ?>">
-                                <i class="fas fa-bug me-1"></i>Debug
+
+                        <!-- Trading Dropdown -->
+                        <li class="nav-item dropdown">
+                            <a class="nav-link dropdown-toggle" href="#" id="tradingDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                <i class="fas fa-exchange-alt me-1"></i>Trading
                             </a>
+                            <ul class="dropdown-menu">
+                                <li><a class="dropdown-item" href="<?= base_url('trades') ?>">
+                                    <i class="fas fa-history me-2"></i>Trade History
+                                </a></li>
+                                <li><a class="dropdown-item" href="<?= base_url('apikeys') ?>">
+                                    <i class="fas fa-key me-2"></i>API Keys
+                                </a></li>
+                            </ul>
                         </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="<?= base_url('apikeys') ?>">
-                                <i class="fas fa-key me-1"></i>API Keys
-                            </a>
-                        </li>
-                        <?php if ($this->session->userdata('role') == 'admin') : ?>
-                            <li class="nav-item">
-                                <a class="nav-link" href="<?= base_url('users') ?>">
-                                    <i class="fas fa-users me-1"></i>Users
-                                </a>
-                            </li>
-                        <?php endif; ?>
-                        <!-- Telegram Admin Menu - MODIFICADO (solo para admin) -->
+
+                        <!-- Admin Dropdown (Solo Admin) -->
                         <?php if ($this->session->userdata('role') == 'admin') : ?>
                             <li class="nav-item dropdown">
-                                <a class="nav-link dropdown-toggle" href="#" id="telegramDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                                    <i class="fas fa-paper-plane me-1"></i>Telegram Admin
+                                <a class="nav-link dropdown-toggle" href="#" id="adminDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                    <i class="fas fa-cog me-1"></i>Admin
                                 </a>
                                 <ul class="dropdown-menu">
+                                    <li><a class="dropdown-item" href="<?= base_url('signals') ?>">
+                                        <i class="fas fa-signal me-2"></i>MT Signals Management
+                                    </a></li>
+                                    <li><a class="dropdown-item" href="<?= base_url('strategies') ?>">
+                                        <i class="fas fa-chart-line me-2"></i>Strategies Management
+                                    </a></li>
+                                    <li><a class="dropdown-item" href="<?= base_url('users') ?>">
+                                        <i class="fas fa-users me-2"></i>Users Management
+                                    </a></li>
+                                    <li><hr class="dropdown-divider"></li>
                                     <li><a class="dropdown-item" href="<?= base_url('telegram_signals') ?>">
-                                        <i class="fas fa-signal me-2"></i>All Signals
+                                        <i class="fas fa-paper-plane me-2"></i>All Telegram Signals
                                     </a></li>
                                     <li><a class="dropdown-item" href="<?= base_url('available_tickers') ?>">
                                         <i class="fas fa-tags me-2"></i>Manage Tickers
@@ -140,6 +141,8 @@
                                 </ul>
                             </li>
                         <?php endif; ?>
+
+                        <!-- System Logs (Solo Admin) -->
                         <?php if ($this->session->userdata('role') == 'admin') : ?>
                             <li class="nav-item">
                                 <a class="nav-link" href="<?= base_url('systemlogs') ?>">
@@ -147,6 +150,21 @@
                                 </a>
                             </li>
                         <?php endif; ?>
+
+                        <!-- Debug Dropdown -->
+                        <li class="nav-item dropdown">
+                            <a class="nav-link dropdown-toggle" href="#" id="debugDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                <i class="fas fa-bug me-1"></i>Debug
+                            </a>
+                            <ul class="dropdown-menu">
+                                <li><a class="dropdown-item" href="<?= base_url('debug') ?>">
+                                    <i class="fas fa-chart-line me-2"></i>TradingView Debug
+                                </a></li>
+                                <li><a class="dropdown-item" href="<?= base_url('debug/telegram') ?>">
+                                    <i class="fas fa-paper-plane me-2"></i>Telegram Debug
+                                </a></li>
+                            </ul>
+                        </li>
                     </ul>
 
                     <ul class="navbar-nav">
