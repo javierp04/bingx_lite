@@ -122,6 +122,7 @@ class Trades extends CI_Controller
         }
 
         if ($result && isset($result->price)) {
+            // SUCCESS: Position closed in exchange
             // Calculate PNL
             $exit_price = $result->price;
 
@@ -144,7 +145,37 @@ class Trades extends CI_Controller
 
             $this->session->set_flashdata('success', 'Trade closed successfully. PNL: ' . number_format($pnl, 2));
         } else {
-            $this->session->set_flashdata('error', 'Failed to close trade: ' . $this->bingxapi->get_last_error());
+            // FAILED: Position not found in exchange or API error
+            // Close trade in database anyway using estimated values
+            $exit_price = isset($trade->current_price) ? $trade->current_price : $trade->entry_price;
+
+            if ($trade->side == 'BUY') {
+                $pnl = ($exit_price - $trade->entry_price) * $trade->quantity;
+            } else {
+                $pnl = ($trade->entry_price - $exit_price) * $trade->quantity;
+            }
+
+            // Close trade in database
+            $this->Trade_model->close_trade($id, $exit_price, $pnl);
+
+            // Get the BingX error for logging
+            $bingx_error = $this->bingxapi->get_last_error();
+
+            // Log the situation
+            $log_data = array(
+                'user_id' => $user_id,
+                'action' => 'close_trade_fallback',
+                'description' => 'Trade closed in database (position not found in exchange). Symbol: ' . $trade->symbol .
+                    ', Estimated PNL: ' . number_format($pnl, 2) .
+                    ', BingX Error: ' . $bingx_error
+            );
+            $this->Log_model->add_log($log_data);
+
+            // Show warning message
+            $this->session->set_flashdata('warning',
+                'Trade removed from database. Position not found in BingX exchange (may have been closed manually). ' .
+                'Estimated PNL: ' . number_format($pnl, 2) . ' USDT'
+            );
         }
 
         redirect('dashboard');
