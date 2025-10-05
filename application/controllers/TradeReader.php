@@ -24,7 +24,7 @@ class TradeReader extends CI_Controller
     {
         $update = file_get_contents("php://input");
 
-        try {
+        try {   
             // 1. Validar JSON
             $webhook_data = json_decode($update, true);
             if (json_last_error() !== JSON_ERROR_NONE) {
@@ -250,6 +250,7 @@ class TradeReader extends CI_Controller
 
     /**
      * Análisis IA que devuelve JSON transformado o null si falló
+     * Soporta OpenAI y Claude según configuración
      */
     private function createTradeAnalysis($cropped_filename)
     {
@@ -259,49 +260,38 @@ class TradeReader extends CI_Controller
             return null;
         }
 
-        // Leer y codificar imagen
-        $mime = mime_content_type($in_path);
-        $data = base64_encode(file_get_contents($in_path));
-        $data_url = "data:{$mime};base64,{$data}";
-
-        // Prompt
+        // 1. Preparar datos comunes
+        $image_base64 = base64_encode(file_get_contents($in_path));
         $prompt = $this->build_prompt();
 
-        // Llamar API OpenAI
-        $apiKey = $this->config->item('openai_api_key');
-        if (!$apiKey) {
-            return null;
+        // 2. Detectar provider desde configuración
+        $provider = $this->config->item('ai_provider') ?: 'openai';
+
+        // 3. Llamar API según provider
+        if ($provider === 'claude') {
+            $response = $this->call_claude_api($image_base64, $prompt);
+        } else {
+            $response = $this->call_openai_api($image_base64, $prompt);
         }
 
-        $payload = [
-            "model" => "gpt-4.1-mini",
-            "input" => [[
-                "role" => "user",
-                "content" => [
-                    ["type" => "input_text", "text" => $prompt],
-                    ["type" => "input_image", "image_url" => $data_url]
-                ]
-            ]]
-        ];
-
-        $response = $this->openai_post_json("https://api.openai.com/v1/responses", $apiKey, $payload);
+        // 4. Verificar errores
         if (isset($response['error'])) {
+            $this->Log_model->add_log([
+                'user_id' => null,
+                'action' => 'ai_analysis_error',
+                'description' => 'AI analysis failed with ' . $provider . ': ' . json_encode($response['error'])
+            ]);
             return null;
         }
 
-        // Extraer texto
-        $text = '';
-        if (isset($response['output'][0]['content'][0]['text'])) {
-            $text = $response['output'][0]['content'][0]['text'];
-        } elseif (isset($response['output_text'])) {
-            $text = $response['output_text'];
-        }
+        // 5. Extraer texto de la respuesta (normalizado para ambas APIs)
+        $text = $this->extract_ai_response($response, $provider);
 
         if (!$text) {
             return null;
         }
 
-        // Validar JSON inicial de OpenAI
+        // 6. Validar JSON inicial de la IA
         $raw_json = json_decode($text, true);
         if ($raw_json === null) {
             $json_candidate = $this->extract_json($text);
@@ -312,15 +302,15 @@ class TradeReader extends CI_Controller
             }
         }
 
-        // Verificar que no sea JSON vacío
+        // 7. Verificar que no sea JSON vacío
         if (empty($raw_json) || (count($raw_json) == 0)) {
             return null;
         }
 
-        // Transformar JSON al formato final
+        // 8. Transformar JSON al formato final
         $transformed_json = $this->transformAnalysisData($raw_json);
 
-        // Si la transformación falla (menos de 6 precios), retornar null
+        // Si la transformación falla (menos de 8 precios), retornar null
         if ($transformed_json === null) {
             return null;
         }
@@ -516,6 +506,113 @@ PROMPT;
             return ['error' => $json ?: $raw, 'status' => $code];
         }
         return $json ?: ['error' => 'Respuesta no JSON', 'raw' => $raw];
+    }
+
+    private function claude_post_json($url, $apiKey, $payload)
+    {
+        $ch = curl_init($url);
+        $headers = [
+            "x-api-key: {$apiKey}",
+            "anthropic-version: 2023-06-01",
+            "Content-Type: application/json"
+        ];
+        curl_setopt_array($ch, [
+            CURLOPT_POST => true,
+            CURLOPT_HTTPHEADER => $headers,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => 120,
+            CURLOPT_POSTFIELDS => json_encode($payload)
+        ]);
+        $raw = curl_exec($ch);
+        if ($raw === false) {
+            $err = curl_error($ch);
+            curl_close($ch);
+            return ['error' => "cURL error: {$err}"];
+        }
+        $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        $json = json_decode($raw, true);
+        if ($code >= 400) {
+            return ['error' => $json ?: $raw, 'status' => $code];
+        }
+        return $json ?: ['error' => 'Respuesta no JSON', 'raw' => $raw];
+    }
+
+    private function call_openai_api($image_base64, $prompt)
+    {
+        $apiKey = $this->config->item('openai_api_key');
+        if (!$apiKey) {
+            return ['error' => 'OpenAI API key not configured'];
+        }
+
+        // OpenAI espera la imagen con el prefijo data:image
+        $data_url = "data:image/png;base64,{$image_base64}";
+
+        $payload = [
+            "model" => "gpt-4o-mini",
+            "messages" => [[
+                "role" => "user",
+                "content" => [
+                    ["type" => "text", "text" => $prompt],
+                    ["type" => "image_url", "image_url" => ["url" => $data_url]]
+                ]
+            ]]
+        ];
+
+        return $this->openai_post_json("https://api.openai.com/v1/chat/completions", $apiKey, $payload);
+    }
+
+    private function call_claude_api($image_base64, $prompt)
+    {
+        $apiKey = $this->config->item('claude_api_key');
+        if (!$apiKey) {
+            return ['error' => 'Claude API key not configured'];
+        }
+
+        // Claude espera la imagen SIN el prefijo data:image
+        $payload = [
+            "model" => "claude-sonnet-4-5-20250929",
+            "max_tokens" => 4096,
+            "messages" => [[
+                "role" => "user",
+                "content" => [
+                    ["type" => "text", "text" => $prompt],
+                    [
+                        "type" => "image",
+                        "source" => [
+                            "type" => "base64",
+                            "media_type" => "image/png",
+                            "data" => $image_base64
+                        ]
+                    ]
+                ]
+            ]]
+        ];
+
+        return $this->claude_post_json("https://api.anthropic.com/v1/messages", $apiKey, $payload);
+    }
+
+    private function extract_ai_response($response, $provider)
+    {
+        if (isset($response['error'])) {
+            return null;
+        }
+
+        $text = '';
+
+        if ($provider === 'claude') {
+            // Claude: response.content[0].text
+            if (isset($response['content'][0]['text'])) {
+                $text = $response['content'][0]['text'];
+            }
+        } else {
+            // OpenAI: response.choices[0].message.content
+            if (isset($response['choices'][0]['message']['content'])) {
+                $text = $response['choices'][0]['message']['content'];
+            }
+        }
+
+        return $text ?: null;
     }
 
     private function extract_json($text)

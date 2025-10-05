@@ -90,6 +90,7 @@ $route['debug/test_futures_balance'] = 'debug/test_futures_balance';
 $route['debug/test_spot_price'] = 'debug/test_spot_price';
 $route['debug/test_futures_price'] = 'debug/test_futures_price';
 $route['debug/telegram'] = 'debug/telegram';
+$route['debug/telegram/simulate'] = 'debug/simulate_telegram_webhook';  // NUEVO: Full webhook simulator
 $route['debug/telegram/generate'] = 'debug/generate_telegram_signal';
 $route['debug/telegram/test'] = 'debug/test_telegram_signal';
 

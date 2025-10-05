@@ -369,45 +369,27 @@ class Debug extends CI_Controller
         }
 
         try {
-            // Generate analysis JSON in the format expected by EA_Signals
+            // Generate analysis JSON in the CORRECT simple format
             $analysis_data = [
                 'op_type' => strtoupper($op_type),
-                'entry_price' => floatval($entry_price),
-                'volume' => floatval($volume),
-                'stop_losses' => [],
-                'take_profits' => [],
-                'generated_by' => 'debug_panel',
-                'generated_at' => date('Y-m-d H:i:s'),
-                'user' => $this->session->userdata('username')
+                'stoploss' => [],
+                'entry' => floatval($entry_price),
+                'tps' => []
             ];
 
-            // Add stop losses if provided
+            // Add stop losses - simple array of prices
             if ($stop_loss_1) {
-                $analysis_data['stop_losses'][] = [
-                    'level' => 1,
-                    'price' => floatval($stop_loss_1),
-                    'volume_percent' => 50
-                ];
+                $analysis_data['stoploss'][] = floatval($stop_loss_1);
             }
             if ($stop_loss_2) {
-                $analysis_data['stop_losses'][] = [
-                    'level' => 2,
-                    'price' => floatval($stop_loss_2),
-                    'volume_percent' => 50
-                ];
+                $analysis_data['stoploss'][] = floatval($stop_loss_2);
             }
 
-            // Add take profits if provided
+            // Add take profits - simple array of prices
             $tp_values = [$tp1, $tp2, $tp3, $tp4, $tp5];
-            $tp_percentages = [20, 20, 20, 20, 20]; // Equal distribution
-
-            for ($i = 0; $i < 5; $i++) {
-                if ($tp_values[$i]) {
-                    $analysis_data['take_profits'][] = [
-                        'level' => $i + 1,
-                        'price' => floatval($tp_values[$i]),
-                        'volume_percent' => $tp_percentages[$i]
-                    ];
+            foreach ($tp_values as $tp) {
+                if ($tp) {
+                    $analysis_data['tps'][] = floatval($tp);
                 }
             }
 
@@ -515,6 +497,106 @@ class Debug extends CI_Controller
             }
         } catch (Exception $e) {
             $this->_send_json_response(false, 'Error testing signal: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Simulate full Telegram webhook from raw message
+     */
+    public function simulate_telegram_webhook()
+    {
+        $message_text = $this->input->post('message', true);
+
+        if (!$message_text) {
+            $this->_send_json_response(false, 'No message provided');
+            return;
+        }
+
+        try {
+            // 1. Build fake Telegram webhook payload
+            $telegram_payload = [
+                'update_id' => rand(100000, 999999),
+                'message' => [
+                    'message_id' => rand(1000, 9999),
+                    'from' => [
+                        'id' => 999999,
+                        'is_bot' => false,
+                        'first_name' => 'Debug',
+                        'last_name' => 'Simulator',
+                        'username' => 'debug_simulator'
+                    ],
+                    'chat' => [
+                        'id' => -1001234567890,
+                        'title' => 'Debug Test Channel',
+                        'type' => 'channel'
+                    ],
+                    'date' => time(),
+                    'text' => $message_text
+                ]
+            ];
+
+            // 2. POST to real webhook endpoint
+            $webhook_url = base_url('tradereader/run');
+
+            $ch = curl_init($webhook_url);
+            curl_setopt_array($ch, [
+                CURLOPT_POST => true,
+                CURLOPT_POSTFIELDS => json_encode($telegram_payload),
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
+                CURLOPT_TIMEOUT => 120
+            ]);
+
+            $response = curl_exec($ch);
+            $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+
+            // 3. Parse response
+            $result = json_decode($response, true);
+
+            // Check if webhook succeeded
+            if ($result && isset($result['status']) && $result['status'] === 'success' && isset($result['signal_id'])) {
+                // Get final signal data
+                $signal_id = $result['signal_id'];
+                $final_signal = $this->Telegram_signals_model->get_signal_by_id($signal_id);
+
+                // Get AI provider
+                $ai_provider = $this->config->item('ai_provider') ?: 'openai';
+
+                // Log success
+                $this->Log_model->add_log([
+                    'user_id' => $this->session->userdata('user_id'),
+                    'action' => 'telegram_webhook_simulation',
+                    'description' => "Simulated Telegram webhook. Signal ID: {$signal_id}. AI: {$ai_provider}"
+                ]);
+
+                $this->_send_json_response(
+                    true,
+                    'Telegram webhook simulated successfully!',
+                    [
+                        'signal_id' => $signal_id,
+                        'ticker' => $result['ticker'],
+                        'status' => $final_signal->status,
+                        'image_path' => $final_signal->image_path ?? null,
+                        'analysis_data' => json_decode($final_signal->analysis_data, true),
+                        'users_distributed' => $this->db->where('telegram_signal_id', $signal_id)->count_all_results('user_telegram_signals'),
+                        'ai_provider' => $ai_provider
+                    ]
+                );
+            } else {
+                // Webhook failed - show error
+                $error_msg = $result['message'] ?? 'Unknown error';
+
+                $this->_send_json_response(false, 'Webhook processing failed: ' . $error_msg, [
+                    'error_details' => $response,
+                    'http_code' => $http_code
+                ]);
+            }
+
+        } catch (Exception $e) {
+            $this->_send_json_response(false, 'Simulation error: ' . $e->getMessage(), [
+                'error_details' => $e->getTraceAsString()
+            ]);
         }
     }
 
