@@ -377,20 +377,33 @@ class Debug extends CI_Controller
                 'tps' => []
             ];
 
-            // Add stop losses - simple array of prices
-            if ($stop_loss_1) {
-                $analysis_data['stoploss'][] = floatval($stop_loss_1);
-            }
-            if ($stop_loss_2) {
-                $analysis_data['stoploss'][] = floatval($stop_loss_2);
+            // Add stop losses - array must have consistent structure
+            $sl_values = [$stop_loss_1, $stop_loss_2];
+            foreach ($sl_values as $sl) {
+                if ($sl && $sl > 0) {
+                    $analysis_data['stoploss'][] = floatval($sl);
+                } else {
+                    // Pad with 0 if missing
+                    $analysis_data['stoploss'][] = 0.0;
+                }
             }
 
-            // Add take profits - simple array of prices
+            // Add take profits - MUST have exactly 5 TPs
             $tp_values = [$tp1, $tp2, $tp3, $tp4, $tp5];
+            $tp_count = 0;
             foreach ($tp_values as $tp) {
-                if ($tp) {
+                if ($tp && $tp > 0) {
                     $analysis_data['tps'][] = floatval($tp);
+                    $tp_count++;
+                } else {
+                    // Missing TP - pad with 0 to maintain array structure
+                    $analysis_data['tps'][] = 0.0;
                 }
+            }
+
+            // Validate that we have at least 1 TP
+            if ($tp_count == 0) {
+                throw new Exception('At least one Take Profit is required');
             }
 
             // Create fake TradingView URL

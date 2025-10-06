@@ -59,21 +59,24 @@ class Api extends CI_Controller
             if ($this->Telegram_signals_model->claim_user_signal($signal->id, $user_id)) {
                 $analysis_data = json_decode($signal->analysis_data, true);
 
-                $response_signal = array(
+                // Aplanar la estructura para el EA
+                $response = array(
+                    'success' => true,
                     'user_signal_id' => (int)$signal->id,
                     'telegram_signal_id' => (int)$signal->telegram_signal_id,
                     'ticker_symbol' => $signal->ticker_symbol,
                     'mt_ticker' => $signal->mt_ticker,
-                    'analysis' => $analysis_data,
                     'tradingview_url' => $signal->tradingview_url,
                     'created_at' => $signal->created_at
                 );
 
+                // Agregar campos de analysis directamente en el nivel raíz
+                if (is_array($analysis_data)) {
+                    $response = array_merge($response, $analysis_data);
+                }
+
                 http_response_code(200);
-                echo json_encode([
-                    'success' => true,
-                    'signal' => $response_signal
-                ]);
+                echo json_encode($response);
             } else {
                 http_response_code(200);
                 echo json_encode([

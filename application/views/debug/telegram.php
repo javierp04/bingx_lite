@@ -41,11 +41,6 @@
                         </h5>
                     </div>
                     <div class="card-body">
-                        <div class="alert alert-info mb-3">
-                            <i class="fas fa-info-circle me-2"></i>
-                            Simulates complete flow: parse → download → crop → AI (<?= $this->config->item('ai_provider') ?: 'openai' ?>) → signal
-                        </div>
-
                         <form id="webhookSimulatorForm">
                             <div class="input-group mb-3">
                                 <span class="input-group-text"><i class="fas fa-comment-dots"></i></span>
@@ -75,11 +70,6 @@
                         </h5>
                     </div>
                     <div class="card-body">
-                        <div class="alert alert-info mb-3">
-                            <i class="fas fa-info-circle me-2"></i>
-                            Generate signal JSON manually, bypassing AI analysis
-                        </div>
-
                         <form id="telegramSignalForm">
                             <div class="row mb-2">
                                 <div class="col-md-4">
@@ -314,7 +304,6 @@ function simulateTelegramWebhook() {
     .then(data => {
         if (data.success) {
             showWebhookResults(data);
-            showAlert('Webhook simulated successfully!', 'success');
         } else {
             showAlert('Failed: ' + data.message, 'danger');
             if (data.data?.error_details) {
@@ -471,7 +460,6 @@ function generateTelegramSignal() {
     .then(data => {
         if (data.success) {
             showGenerationResults(data);
-            showAlert('Signal generated!', 'success');
             form.reset();
         } else {
             showAlert('Failed: ' + data.message, 'danger');
@@ -560,8 +548,6 @@ function loadSampleData() {
     document.getElementById('tp3').value = '1.09500';
     document.getElementById('tp4').value = '1.09750';
     document.getElementById('tp5').value = '1.10000';
-
-    showAlert('Sample loaded', 'info');
 }
 
 function showAlert(message, type) {
