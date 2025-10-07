@@ -3,173 +3,127 @@
         <i class="fas fa-paper-plane me-2"></i>Telegram Debug Panel
     </h1>
     <div class="btn-group">
-        <a href="<?= base_url('telegram_signals') ?>" class="btn btn-info">
-            <i class="fas fa-list me-1"></i>View Signals
+        <a href="<?= base_url('telegram_signals') ?>" class="btn btn-info btn-sm">
+            <i class="fas fa-list me-1"></i>Signals
         </a>
-        <a href="<?= base_url('my_trading') ?>" class="btn btn-outline-primary">
-            <i class="fas fa-chart-line me-1"></i>My Trading
+        <a href="<?= base_url('my_trading') ?>" class="btn btn-outline-primary btn-sm">
+            <i class="fas fa-chart-line me-1"></i>Trading
         </a>
     </div>
 </div>
 
 <div class="row">
-    <!-- Main Content: Telegram Simulators -->
-    <div class="col-md-8">
-        <!-- Tabs Navigation -->
-        <ul class="nav nav-tabs mb-3" id="debugTabs" role="tablist">
-            <li class="nav-item" role="presentation">
-                <button class="nav-link active" id="webhook-tab" data-bs-toggle="tab" data-bs-target="#webhook-panel" type="button">
-                    <i class="fas fa-globe me-1"></i>Full Webhook
+    <div class="col-lg-8">
+        <!-- Tabs -->
+        <ul class="nav nav-tabs mb-3" role="tablist">
+            <li class="nav-item">
+                <button class="nav-link active" id="json-tab" data-bs-toggle="tab" data-bs-target="#json-panel" type="button">
+                    <i class="fas fa-magic me-1"></i>JSON Generator
                 </button>
             </li>
-            <li class="nav-item" role="presentation">
-                <button class="nav-link" id="json-tab" data-bs-toggle="tab" data-bs-target="#json-panel" type="button">
-                    <i class="fas fa-magic me-1"></i>JSON Generator
+            <li class="nav-item">
+                <button class="nav-link" id="webhook-tab" data-bs-toggle="tab" data-bs-target="#webhook-panel" type="button">
+                    <i class="fas fa-globe me-1"></i>Webhook
                 </button>
             </li>
         </ul>
 
-        <!-- Tab Content -->
-        <div class="tab-content" id="debugTabContent">
-
-            <!-- WEBHOOK SIMULATOR TAB -->
-            <div class="tab-pane fade show active" id="webhook-panel" role="tabpanel">
+        <div class="tab-content">
+            <!-- JSON Generator Tab -->
+            <div class="tab-pane fade show active" id="json-panel">
                 <div class="card">
                     <div class="card-header">
-                        <h5 class="mb-0">
-                            <i class="fas fa-globe me-1"></i>Full Telegram Webhook Simulator
-                        </h5>
+                        <h5 class="mb-0"><i class="fas fa-magic me-1"></i>Signal Generator</h5>
                     </div>
                     <div class="card-body">
-                        <form id="webhookSimulatorForm">
-                            <div class="input-group mb-3">
-                                <span class="input-group-text"><i class="fas fa-comment-dots"></i></span>
-                                <input type="text" class="form-control" id="telegram_message" name="telegram_message"
-                                       placeholder="Sentimiento #ES https://www.tradingview.com/x/abc123" required>
-                                <button type="submit" class="btn btn-primary">
-                                    <i class="fas fa-paper-plane me-1"></i>Simulate Webhook
-                                </button>
-                            </div>
-                        </form>
-
-                        <!-- Webhook Results -->
-                        <div id="webhook-results" style="display: none;">
-                            <hr>
-                            <div id="webhook-content"></div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- JSON GENERATOR TAB -->
-            <div class="tab-pane fade" id="json-panel" role="tabpanel">
-                <div class="card">
-                    <div class="card-header">
-                        <h5 class="mb-0">
-                            <i class="fas fa-magic me-1"></i>Manual JSON Generator
-                        </h5>
-                    </div>
-                    <div class="card-body">
-                        <form id="telegramSignalForm">
-                            <div class="row mb-2">
-                                <div class="col-md-4">
-                                    <label for="ticker" class="form-label">Ticker <span class="text-danger">*</span></label>
+                        <form id="jsonForm">
+                            <div class="row g-2 mb-3">
+                                <div class="col-md-3">
+                                    <label class="form-label small mb-1">Ticker</label>
                                     <select class="form-select form-select-sm" id="ticker" name="ticker" required>
-                                        <option value="">Select Ticker</option>
+                                        <option value="">Select</option>
                                         <?php foreach ($available_tickers as $ticker): ?>
-                                            <option value="<?= $ticker->symbol ?>">
-                                                <?= $ticker->symbol ?> - <?= $ticker->name ?>
-                                            </option>
+                                            <option value="<?= $ticker->symbol ?>"><?= $ticker->symbol ?></option>
                                         <?php endforeach; ?>
                                     </select>
                                 </div>
-                                <div class="col-md-4">
-                                    <label for="op_type" class="form-label">Type <span class="text-danger">*</span></label>
+                                <div class="col-md-3">
+                                    <label class="form-label small mb-1">Type</label>
                                     <select class="form-select form-select-sm" id="op_type" name="op_type" required>
                                         <option value="">Select</option>
                                         <option value="LONG">LONG</option>
                                         <option value="SHORT">SHORT</option>
                                     </select>
                                 </div>
-                                <div class="col-md-4">
-                                    <label for="entry_price" class="form-label">Entry <span class="text-danger">*</span></label>
-                                    <input type="number" class="form-control form-control-sm" id="entry_price" name="entry_price"
-                                           step="0.00001" placeholder="1.08750" required>
+                                <div class="col-md-3">
+                                    <label class="form-label small mb-1">Entry</label>
+                                    <input type="number" class="form-control form-control-sm" id="entry_price" name="entry_price" step="0.00001" placeholder="1.16554" required>
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label small mb-1">Diff</label>
+                                    <input type="number" class="form-control form-control-sm" id="diff_points" name="diff_points" step="0.00001" placeholder="0.003" required>
                                 </div>
                             </div>
 
-                            <div class="row mb-2">
-                                <div class="col-md-6">
-                                    <label for="stop_loss_1" class="form-label">SL1</label>
-                                    <input type="number" class="form-control form-control-sm" id="stop_loss_1" name="stop_loss_1" step="0.00001">
-                                </div>
-                                <div class="col-md-6">
-                                    <label for="stop_loss_2" class="form-label">SL2</label>
-                                    <input type="number" class="form-control form-control-sm" id="stop_loss_2" name="stop_loss_2" step="0.00001">
-                                </div>
-                            </div>
-
-                            <div class="row mb-3">
-                                <div class="col">
-                                    <label class="form-label">Take Profits</label>
-                                    <div class="row g-1">
-                                        <div class="col">
-                                            <input type="number" class="form-control form-control-sm" id="tp1" name="tp1" step="0.00001" placeholder="TP1">
-                                        </div>
-                                        <div class="col">
-                                            <input type="number" class="form-control form-control-sm" id="tp2" name="tp2" step="0.00001" placeholder="TP2">
-                                        </div>
-                                        <div class="col">
-                                            <input type="number" class="form-control form-control-sm" id="tp3" name="tp3" step="0.00001" placeholder="TP3">
-                                        </div>
-                                        <div class="col">
-                                            <input type="number" class="form-control form-control-sm" id="tp4" name="tp4" step="0.00001" placeholder="TP4">
-                                        </div>
-                                        <div class="col">
-                                            <input type="number" class="form-control form-control-sm" id="tp5" name="tp5" step="0.00001" placeholder="TP5">
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="d-flex justify-content-between">
-                                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="loadSampleData()">
-                                    <i class="fas fa-file-import me-1"></i>Load Sample
-                                </button>
-                                <button type="submit" class="btn btn-success btn-sm">
-                                    <i class="fas fa-magic me-1"></i>Generate Signal
+                            <div class="text-end mb-3">
+                                <button type="button" class="btn btn-info btn-sm" onclick="calculate()">
+                                    <i class="fas fa-calculator me-1"></i>Calculate
                                 </button>
                             </div>
+
+                            <!-- Hidden inputs -->
+                            <input type="hidden" id="stop_loss_1" name="stop_loss_1">
+                            <input type="hidden" id="stop_loss_2" name="stop_loss_2">
+                            <input type="hidden" id="tp1" name="tp1">
+                            <input type="hidden" id="tp2" name="tp2">
+                            <input type="hidden" id="tp3" name="tp3">
+                            <input type="hidden" id="tp4" name="tp4">
+                            <input type="hidden" id="tp5" name="tp5">
                         </form>
 
-                        <!-- JSON Results -->
-                        <div id="generation-results" style="display: none;">
-                            <hr>
-                            <div id="generation-content"></div>
-                        </div>
+                        <!-- Preview Container -->
+                        <div id="preview-container"></div>
+
+                        <!-- Results Container -->
+                        <div id="json-results"></div>
                     </div>
                 </div>
             </div>
 
+            <!-- Webhook Tab -->
+            <div class="tab-pane fade" id="webhook-panel">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0"><i class="fas fa-globe me-1"></i>Webhook Simulator</h5>
+                    </div>
+                    <div class="card-body">
+                        <form id="webhookForm">
+                            <div class="input-group mb-3">
+                                <span class="input-group-text"><i class="fas fa-comment-dots"></i></span>
+                                <input type="text" class="form-control" id="telegram_message" name="telegram_message"
+                                       placeholder="Sentimiento #ES https://www.tradingview.com/x/abc123" required>
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="fas fa-paper-plane me-1"></i>Send
+                                </button>
+                            </div>
+                        </form>
+                        <div id="webhook-results"></div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
-    <!-- Sidebar: EA Simulation & Info -->
-    <div class="col-md-4">
-
-        <!-- EA Simulation -->
+    <div class="col-lg-4">
+        <!-- EA Test -->
         <div class="card mb-3">
             <div class="card-header">
-                <h6 class="mb-0">
-                    <i class="fas fa-robot me-1"></i>EA Simulation
-                </h6>
+                <h6 class="mb-0"><i class="fas fa-robot me-1"></i>EA Simulation</h6>
             </div>
             <div class="card-body">
-                <p class="text-muted small mb-2">Test if EA_Signals can consume the signal</p>
-
-                <div class="row mb-2">
+                <div class="row g-2 mb-2">
                     <div class="col-6">
-                        <label for="test_user" class="form-label small">User</label>
+                        <label class="form-label small mb-1">User</label>
                         <select class="form-select form-select-sm" id="test_user">
                             <?php foreach ($users as $user): ?>
                                 <option value="<?= $user->id ?>"><?= $user->username ?></option>
@@ -177,62 +131,23 @@
                         </select>
                     </div>
                     <div class="col-6">
-                        <label for="test_ticker" class="form-label small">Ticker</label>
+                        <label class="form-label small mb-1">Ticker</label>
                         <select class="form-select form-select-sm" id="test_ticker">
                             <option value="">Auto</option>
                         </select>
                     </div>
                 </div>
-
-                <button type="button" class="btn btn-primary btn-sm w-100" onclick="testEAPolling()">
-                    <i class="fas fa-play me-1"></i>Simulate EA Poll
+                <button class="btn btn-primary btn-sm w-100" onclick="testEA()">
+                    <i class="fas fa-play me-1"></i>Test EA Poll
                 </button>
-
-                <div id="ea-test-results" class="mt-2" style="display: none;">
-                    <div id="ea-test-content"></div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Process Flow -->
-        <div class="card mb-3">
-            <div class="card-header">
-                <h6 class="mb-0">
-                    <i class="fas fa-info-circle me-1"></i>Process Flow
-                </h6>
-            </div>
-            <div class="card-body p-2">
-                <div class="timeline-compact">
-                    <div class="timeline-item-compact">
-                        <span class="badge bg-primary">1</span>
-                        <small>Parse Message</small>
-                    </div>
-                    <div class="timeline-item-compact">
-                        <span class="badge bg-success">2</span>
-                        <small>Download Image</small>
-                    </div>
-                    <div class="timeline-item-compact">
-                        <span class="badge bg-info">3</span>
-                        <small>Crop & Analyze AI</small>
-                    </div>
-                    <div class="timeline-item-compact">
-                        <span class="badge bg-warning">4</span>
-                        <small>Create Signal</small>
-                    </div>
-                    <div class="timeline-item-compact">
-                        <span class="badge bg-secondary">5</span>
-                        <small>EA Consumes</small>
-                    </div>
-                </div>
+                <div id="ea-results"></div>
             </div>
         </div>
 
         <!-- Quick Links -->
         <div class="card">
             <div class="card-header">
-                <h6 class="mb-0">
-                    <i class="fas fa-link me-1"></i>Quick Links
-                </h6>
+                <h6 class="mb-0"><i class="fas fa-link me-1"></i>Quick Links</h6>
             </div>
             <div class="card-body p-2">
                 <div class="d-grid gap-1">
@@ -245,263 +160,194 @@
                     <a href="<?= base_url('available_tickers') ?>" class="btn btn-outline-secondary btn-sm">
                         <i class="fas fa-tags me-1"></i>Tickers
                     </a>
-                    <a href="<?= base_url('systemlogs?action=telegram_') ?>" class="btn btn-outline-info btn-sm">
-                        <i class="fas fa-file-alt me-1"></i>Logs
-                    </a>
                 </div>
             </div>
         </div>
-
     </div>
 </div>
 
 <script>
-const base_url = '<?= base_url() ?>';
+const BASE_URL = '<?= base_url() ?>';
 
-document.addEventListener('DOMContentLoaded', function() {
-    // Webhook simulator
-    document.getElementById('webhookSimulatorForm').addEventListener('submit', function(e) {
-        e.preventDefault();
-        simulateTelegramWebhook();
-    });
-
-    // JSON generator
-    document.getElementById('telegramSignalForm').addEventListener('submit', function(e) {
-        e.preventDefault();
-        generateTelegramSignal();
-    });
-
-    // Update test ticker when main ticker changes
-    document.getElementById('ticker').addEventListener('change', function() {
-        const testTickerSelect = document.getElementById('test_ticker');
-        testTickerSelect.innerHTML = this.value ?
-            `<option value="${this.value}">${this.value}</option>` :
-            '<option value="">Auto</option>';
-    });
+// Form handlers
+document.getElementById('jsonForm').addEventListener('submit', e => e.preventDefault());
+document.getElementById('webhookForm').addEventListener('submit', e => {
+    e.preventDefault();
+    simulateWebhook();
 });
 
-function simulateTelegramWebhook() {
-    const message = document.getElementById('telegram_message').value.trim();
-    const btn = document.querySelector('#webhookSimulatorForm button[type="submit"]');
+// Update test ticker on main ticker change
+document.getElementById('ticker').addEventListener('change', function() {
+    const testTicker = document.getElementById('test_ticker');
+    testTicker.innerHTML = this.value ? `<option value="${this.value}">${this.value}</option>` : '<option value="">Auto</option>';
+});
 
-    if (!message) {
-        showAlert('Please enter a message', 'danger');
+// Calculate SL/TP values
+function calculate() {
+    const ticker = document.getElementById('ticker').value;
+    const opType = document.getElementById('op_type').value;
+    const entry = parseFloat(document.getElementById('entry_price').value);
+    const diff = parseFloat(document.getElementById('diff_points').value);
+
+    if (!ticker || !opType || !entry || !diff) {
+        alert('Fill all fields');
         return;
     }
 
-    const originalHtml = btn.innerHTML;
+    if (entry <= 0 || diff <= 0) {
+        alert('Entry and Diff must be > 0');
+        return;
+    }
+
+    let sl1, sl2, tp1, tp2, tp3, tp4, tp5;
+
+    if (opType === 'LONG') {
+        sl1 = entry - (diff * 2);
+        sl2 = entry - diff;
+        tp1 = entry + diff;
+        tp2 = entry + (diff * 2);
+        tp3 = entry + (diff * 3);
+        tp4 = entry + (diff * 4);
+        tp5 = entry + (diff * 5);
+    } else {
+        sl1 = entry + (diff * 2);
+        sl2 = entry + diff;
+        tp1 = entry - diff;
+        tp2 = entry - (diff * 2);
+        tp3 = entry - (diff * 3);
+        tp4 = entry - (diff * 4);
+        tp5 = entry - (diff * 5);
+    }
+
+    // Save to hidden inputs
+    document.getElementById('stop_loss_1').value = sl1.toFixed(5);
+    document.getElementById('stop_loss_2').value = sl2.toFixed(5);
+    document.getElementById('tp1').value = tp1.toFixed(5);
+    document.getElementById('tp2').value = tp2.toFixed(5);
+    document.getElementById('tp3').value = tp3.toFixed(5);
+    document.getElementById('tp4').value = tp4.toFixed(5);
+    document.getElementById('tp5').value = tp5.toFixed(5);
+
+    // Render preview
+    document.getElementById('preview-container').innerHTML = `
+        <div class="alert alert-info mb-3">
+            <h6 class="mb-2"><i class="fas fa-eye me-1"></i>Preview</h6>
+            <div class="row small">
+                <div class="col-6">
+                    <strong>Entry:</strong> ${entry.toFixed(5)}<br>
+                    <strong>SL1:</strong> ${sl1.toFixed(5)}<br>
+                    <strong>SL2:</strong> ${sl2.toFixed(5)}
+                </div>
+                <div class="col-6">
+                    <strong>TP1:</strong> ${tp1.toFixed(5)}<br>
+                    <strong>TP2:</strong> ${tp2.toFixed(5)}<br>
+                    <strong>TP3:</strong> ${tp3.toFixed(5)}<br>
+                    <strong>TP4:</strong> ${tp4.toFixed(5)}<br>
+                    <strong>TP5:</strong> ${tp5.toFixed(5)}
+                </div>
+            </div>
+        </div>
+        <div class="text-end">
+            <button type="button" class="btn btn-success btn-sm" onclick="generateSignal()">
+                <i class="fas fa-magic me-1"></i>Generate Signal
+            </button>
+        </div>
+    `;
+}
+
+// Generate signal
+function generateSignal() {
+    const form = document.getElementById('jsonForm');
+    const formData = new FormData(form);
+    const btn = event.target;
+
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Generating...';
+    btn.disabled = true;
+
+    fetch(`${BASE_URL}debug/telegram/generate`, {
+        method: 'POST',
+        body: formData
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            document.getElementById('json-results').innerHTML = `
+                <div class="alert alert-success mt-3">
+                    <strong><i class="fas fa-check me-1"></i>Generated!</strong>
+                    <p class="mb-2 small">${data.message}</p>
+                    <a href="${data.data.view_url}" target="_blank" class="btn btn-sm btn-primary">
+                        <i class="fas fa-eye me-1"></i>View Signal #${data.data.telegram_signal_id}
+                    </a>
+                </div>
+            `;
+            form.reset();
+            document.getElementById('preview-container').innerHTML = '';
+        } else {
+            alert('Error: ' + data.message);
+        }
+    })
+    .catch(e => alert('Error: ' + e.message))
+    .finally(() => {
+        btn.innerHTML = '<i class="fas fa-magic me-1"></i>Generate Signal';
+        btn.disabled = false;
+    });
+}
+
+// Simulate webhook
+function simulateWebhook() {
+    const msg = document.getElementById('telegram_message').value.trim();
+    const btn = document.querySelector('#webhookForm button[type="submit"]');
+
+    if (!msg) {
+        alert('Enter message');
+        return;
+    }
+
     btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Processing...';
     btn.disabled = true;
 
     const formData = new FormData();
-    formData.append('message', message);
+    formData.append('message', msg);
 
-    fetch(`${base_url}debug/telegram/simulate`, {
+    fetch(`${BASE_URL}debug/telegram/simulate`, {
         method: 'POST',
         body: formData
     })
-    .then(response => response.json())
+    .then(r => r.json())
     .then(data => {
         if (data.success) {
-            showWebhookResults(data);
+            document.getElementById('webhook-results').innerHTML = `
+                <div class="alert alert-success mt-3">
+                    <strong><i class="fas fa-check me-1"></i>Success!</strong>
+                    <p class="mb-2 small">${data.message}</p>
+                    <a href="${BASE_URL}telegram_signals/view/${data.data.signal_id}" target="_blank" class="btn btn-sm btn-primary">
+                        <i class="fas fa-eye me-1"></i>View Signal #${data.data.signal_id}
+                    </a>
+                </div>
+            `;
         } else {
-            showAlert('Failed: ' + data.message, 'danger');
-            if (data.data?.error_details) {
-                showWebhookResults(data);
-            }
+            document.getElementById('webhook-results').innerHTML = `
+                <div class="alert alert-danger mt-3">
+                    <strong><i class="fas fa-times me-1"></i>Failed</strong>
+                    <p class="mb-0 small">${data.message}</p>
+                </div>
+            `;
         }
     })
-    .catch(error => showAlert('Error: ' + error.message, 'danger'))
+    .catch(e => alert('Error: ' + e.message))
     .finally(() => {
-        btn.innerHTML = originalHtml;
+        btn.innerHTML = '<i class="fas fa-paper-plane me-1"></i>Send';
         btn.disabled = false;
     });
 }
 
-function showWebhookResults(data) {
-    const resultsDiv = document.getElementById('webhook-results');
-    const contentDiv = document.getElementById('webhook-content');
-
-    let html = '';
-
-    // DEBUG MODE - Show raw response
-    if (data.success && data.data?.debug_mode) {
-        html = `
-            <div class="alert alert-warning">
-                <strong><i class="fas fa-bug me-1"></i>DEBUG MODE</strong>
-                <p class="mb-0 small">${data.message}</p>
-            </div>
-
-            <div class="row mb-2">
-                <div class="col-4"><small><strong>HTTP Code:</strong> ${data.data.http_code}</small></div>
-                <div class="col-4"><small><strong>Length:</strong> ${data.data.response_length} bytes</small></div>
-                <div class="col-4"><small><strong>Valid JSON:</strong> ${data.data.is_valid_json ? '✅' : '❌'}</small></div>
-            </div>
-
-            <div class="accordion accordion-flush" id="debugAccordion">
-                <div class="accordion-item">
-                    <h2 class="accordion-header">
-                        <button class="accordion-button py-2" type="button" data-bs-toggle="collapse" data-bs-target="#rawResponseCollapse">
-                            <small><i class="fas fa-file-code me-1"></i>Full Raw Response</small>
-                        </button>
-                    </h2>
-                    <div id="rawResponseCollapse" class="accordion-collapse collapse show" data-bs-parent="#debugAccordion">
-                        <div class="accordion-body p-2">
-                            <pre class="bg-dark text-light p-2 rounded mb-0 small" style="max-height: 400px; overflow-y: auto;">${escapeHtml(data.data.raw_response)}</pre>
-                        </div>
-                    </div>
-                </div>
-                <div class="accordion-item">
-                    <h2 class="accordion-header">
-                        <button class="accordion-button collapsed py-2" type="button" data-bs-toggle="collapse" data-bs-target="#firstCharsCollapse">
-                            <small><i class="fas fa-arrow-down me-1"></i>First 200 Characters</small>
-                        </button>
-                    </h2>
-                    <div id="firstCharsCollapse" class="accordion-collapse collapse" data-bs-parent="#debugAccordion">
-                        <div class="accordion-body p-2">
-                            <pre class="bg-light p-2 rounded mb-0 small">${escapeHtml(data.data.first_200_chars)}</pre>
-                        </div>
-                    </div>
-                </div>
-                <div class="accordion-item">
-                    <h2 class="accordion-header">
-                        <button class="accordion-button collapsed py-2" type="button" data-bs-toggle="collapse" data-bs-target="#lastCharsCollapse">
-                            <small><i class="fas fa-arrow-up me-1"></i>Last 200 Characters</small>
-                        </button>
-                    </h2>
-                    <div id="lastCharsCollapse" class="accordion-collapse collapse" data-bs-parent="#debugAccordion">
-                        <div class="accordion-body p-2">
-                            <pre class="bg-light p-2 rounded mb-0 small">${escapeHtml(data.data.last_200_chars)}</pre>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        `;
-    } else if (data.success) {
-        // Normal success mode
-        html = `
-            <div class="alert alert-success">
-                <strong><i class="fas fa-check-circle me-1"></i>Pipeline Completed!</strong>
-                <p class="mb-0 small">${data.message}</p>
-            </div>
-
-            <div class="row mb-2">
-                <div class="col-4"><small><strong>Signal:</strong> ${data.data.signal_id}</small></div>
-                <div class="col-4"><small><strong>Ticker:</strong> ${data.data.ticker}</small></div>
-                <div class="col-4"><small><strong>Users:</strong> ${data.data.users_distributed || 0}</small></div>
-            </div>
-
-            <a href="${base_url}telegram_signals/view/${data.data.signal_id}" target="_blank" class="btn btn-sm btn-primary mb-2">
-                <i class="fas fa-eye me-1"></i>View Signal
-            </a>
-
-            ${data.data.analysis_data ? `
-                <div class="accordion accordion-flush" id="webhookAccordion">
-                    <div class="accordion-item">
-                        <h2 class="accordion-header">
-                            <button class="accordion-button collapsed py-2" type="button" data-bs-toggle="collapse" data-bs-target="#analysisCollapse">
-                                <small><i class="fas fa-brain me-1"></i>AI Analysis (${data.data.ai_provider})</small>
-                            </button>
-                        </h2>
-                        <div id="analysisCollapse" class="accordion-collapse collapse" data-bs-parent="#webhookAccordion">
-                            <div class="accordion-body p-2">
-                                <pre class="bg-light p-2 rounded mb-0 small">${JSON.stringify(data.data.analysis_data, null, 2)}</pre>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            ` : ''}
-        `;
-    } else {
-        // Error mode
-        html = `
-            <div class="alert alert-danger">
-                <strong><i class="fas fa-exclamation-triangle me-1"></i>Failed</strong>
-                <p class="mb-0 small">${data.message}</p>
-                ${data.data?.error_details ? `<hr><small>${data.data.error_details}</small>` : ''}
-            </div>
-        `;
-    }
-
-    contentDiv.innerHTML = html;
-    resultsDiv.style.display = 'block';
-}
-
-function escapeHtml(text) {
-    const map = {
-        '&': '&amp;',
-        '<': '&lt;',
-        '>': '&gt;',
-        '"': '&quot;',
-        "'": '&#039;'
-    };
-    return text.replace(/[&<>"']/g, m => map[m]);
-}
-
-function generateTelegramSignal() {
-    const form = document.getElementById('telegramSignalForm');
-    const formData = new FormData(form);
-    const btn = form.querySelector('button[type="submit"]');
-
-    if (!formData.get('ticker') || !formData.get('op_type') || !formData.get('entry_price')) {
-        showAlert('Fill required fields', 'danger');
-        return;
-    }
-
-    const originalHtml = btn.innerHTML;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Generating...';
-    btn.disabled = true;
-
-    fetch(`${base_url}debug/telegram/generate`, {
-        method: 'POST',
-        body: formData
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            showGenerationResults(data);
-            form.reset();
-        } else {
-            showAlert('Failed: ' + data.message, 'danger');
-        }
-    })
-    .catch(error => showAlert('Error: ' + error.message, 'danger'))
-    .finally(() => {
-        btn.innerHTML = originalHtml;
-        btn.disabled = false;
-    });
-}
-
-function showGenerationResults(data) {
-    const resultsDiv = document.getElementById('generation-results');
-    const contentDiv = document.getElementById('generation-content');
-
-    const html = `
-        <div class="alert alert-success">
-            <strong><i class="fas fa-check-circle me-1"></i>Generated!</strong>
-            <p class="mb-0 small">${data.message}</p>
-        </div>
-
-        <div class="row mb-2">
-            <div class="col-6"><small><strong>Signal ID:</strong> ${data.data.telegram_signal_id}</small></div>
-            <div class="col-6"><small><strong>Users:</strong> ${data.data.users_affected}</small></div>
-        </div>
-
-        <a href="${data.data.view_url}" target="_blank" class="btn btn-sm btn-primary">
-            <i class="fas fa-eye me-1"></i>View Signal
-        </a>
-    `;
-
-    contentDiv.innerHTML = html;
-    resultsDiv.style.display = 'block';
-}
-
-function testEAPolling() {
+// Test EA
+function testEA() {
     const userId = document.getElementById('test_user').value;
     const ticker = document.getElementById('test_ticker').value;
 
     if (!userId) {
-        showAlert('Select user', 'warning');
+        alert('Select user');
         return;
     }
 
@@ -509,92 +355,20 @@ function testEAPolling() {
     formData.append('user_id', userId);
     formData.append('ticker', ticker || '');
 
-    fetch(`${base_url}debug/telegram/test`, {
+    fetch(`${BASE_URL}debug/telegram/test`, {
         method: 'POST',
         body: formData
     })
-    .then(response => response.json())
+    .then(r => r.json())
     .then(data => {
-        const resultsDiv = document.getElementById('ea-test-results');
-        const contentDiv = document.getElementById('ea-test-content');
-
-        if (data.success) {
-            contentDiv.innerHTML = `
-                <div class="alert alert-success alert-sm p-2 mb-0 mt-2">
-                    <small><strong>Success!</strong><br>${data.message}</small>
-                </div>
-            `;
-        } else {
-            contentDiv.innerHTML = `
-                <div class="alert alert-danger alert-sm p-2 mb-0 mt-2">
-                    <small><strong>Failed!</strong><br>${data.message}</small>
-                </div>
-            `;
-        }
-
-        resultsDiv.style.display = 'block';
+        const cls = data.success ? 'success' : 'danger';
+        const icon = data.success ? 'check' : 'times';
+        document.getElementById('ea-results').innerHTML = `
+            <div class="alert alert-${cls} mt-2 p-2">
+                <small><i class="fas fa-${icon} me-1"></i>${data.message}</small>
+            </div>
+        `;
     })
-    .catch(error => showAlert('Error: ' + error.message, 'danger'));
-}
-
-function loadSampleData() {
-    document.getElementById('ticker').value = 'EURUSD';
-    document.getElementById('op_type').value = 'LONG';
-    document.getElementById('entry_price').value = '1.08750';
-    document.getElementById('stop_loss_1').value = '1.08500';
-    document.getElementById('stop_loss_2').value = '1.08250';
-    document.getElementById('tp1').value = '1.09000';
-    document.getElementById('tp2').value = '1.09250';
-    document.getElementById('tp3').value = '1.09500';
-    document.getElementById('tp4').value = '1.09750';
-    document.getElementById('tp5').value = '1.10000';
-}
-
-function showAlert(message, type) {
-    const existingAlert = document.querySelector('.temp-alert');
-    if (existingAlert) existingAlert.remove();
-
-    const alert = document.createElement('div');
-    alert.className = `alert alert-${type} alert-sm temp-alert mt-2`;
-    alert.innerHTML = `<small>${message}</small>`;
-
-    const activeTab = document.querySelector('.tab-pane.active .card-body');
-    if (activeTab) {
-        activeTab.insertBefore(alert, activeTab.firstChild);
-    }
-
-    setTimeout(() => alert.remove(), 3000);
+    .catch(e => alert('Error: ' + e.message));
 }
 </script>
-
-<style>
-.timeline-compact {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-.timeline-item-compact {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.timeline-item-compact .badge {
-    width: 24px;
-    height: 24px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.75rem;
-}
-
-.alert-sm {
-    padding: 0.5rem;
-    font-size: 0.875rem;
-}
-
-.accordion-button {
-    font-size: 0.875rem;
-}
-</style>
