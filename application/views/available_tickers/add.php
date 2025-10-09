@@ -20,7 +20,19 @@
                         <input type="text" class="form-control" id="name" name="name" value="<?= set_value('name') ?>" required>
                         <div class="form-text">Descriptive name for the ticker (e.g., "Euro/US Dollar", "Bitcoin/USDT", "Nasdaq 100")</div>
                     </div>
-                    
+
+                    <div class="mb-3">
+                        <label for="display_decimals" class="form-label">Display Decimals</label>
+                        <select class="form-select" id="display_decimals" name="display_decimals" required>
+                            <option value="1" <?= set_select('display_decimals', '1') ?>>1 (Indices: US500, US100, US30)</option>
+                            <option value="2" <?= set_select('display_decimals', '2') ?>>2 (Crypto: BTCUSDT)</option>
+                            <option value="3" <?= set_select('display_decimals', '3') ?>>3 (Gold/Oil: XAUUSD, USOIL, US2000)</option>
+                            <option value="5" <?= set_select('display_decimals', '5', true) ?>>5 (Forex: EURUSD, GBPUSD)</option>
+                            <option value="8" <?= set_select('display_decimals', '8') ?>>8 (Custom/High Precision)</option>
+                        </select>
+                        <div class="form-text">Number of decimal places to display prices for this ticker</div>
+                    </div>
+
                     <div class="mb-3 form-check">
                         <input type="checkbox" class="form-check-input" id="active" name="active" value="1" <?= set_checkbox('active', '1', true) ?>>
                         <label class="form-check-label" for="active">Active</label>

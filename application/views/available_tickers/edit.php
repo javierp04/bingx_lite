@@ -26,7 +26,19 @@
                         <input type="text" class="form-control" id="name" name="name" value="<?= set_value('name', $ticker->name) ?>" required>
                         <div class="form-text">Descriptive name for the ticker (e.g., "Euro/US Dollar", "Bitcoin/USDT", "Nasdaq 100")</div>
                     </div>
-                    
+
+                    <div class="mb-3">
+                        <label for="display_decimals" class="form-label">Display Decimals</label>
+                        <select class="form-select" id="display_decimals" name="display_decimals" required>
+                            <option value="1" <?= $ticker->display_decimals == 1 ? 'selected' : '' ?>>1 (Indices: US500, US100, US30)</option>
+                            <option value="2" <?= $ticker->display_decimals == 2 ? 'selected' : '' ?>>2 (Crypto: BTCUSDT)</option>
+                            <option value="3" <?= $ticker->display_decimals == 3 ? 'selected' : '' ?>>3 (Gold/Oil: XAUUSD, USOIL, US2000)</option>
+                            <option value="5" <?= $ticker->display_decimals == 5 ? 'selected' : '' ?>>5 (Forex: EURUSD, GBPUSD)</option>
+                            <option value="8" <?= $ticker->display_decimals == 8 ? 'selected' : '' ?>>8 (Custom/High Precision)</option>
+                        </select>
+                        <div class="form-text">Number of decimal places to display prices for this ticker</div>
+                    </div>
+
                     <div class="mb-3 form-check">
                         <input type="checkbox" class="form-check-input" id="active" name="active" value="1" <?= $ticker->active ? 'checked' : '' ?>>
                         <label class="form-check-label" for="active">Active</label>
@@ -76,12 +88,17 @@
                 </div>
                 
                 <div class="d-flex justify-content-between align-items-center mb-2">
+                    <span>Display Decimals:</span>
+                    <span class="badge bg-info"><?= $ticker->display_decimals ?></span>
+                </div>
+
+                <div class="d-flex justify-content-between align-items-center mb-2">
                     <span>Status:</span>
                     <span class="badge <?= $ticker->active ? 'bg-success' : 'bg-secondary' ?>">
                         <?= $ticker->active ? 'Active' : 'Inactive' ?>
                     </span>
                 </div>
-                
+
                 <hr>
                 
                 <div class="d-flex justify-content-between align-items-center mb-2">
@@ -116,22 +133,41 @@
                     </h6>
                 </div>
                 <div class="card-body">
-                    <?php 
-                        $this->db->select('id, created_at, processed');
+                    <?php
+                        $this->db->select('id, created_at, status');
                         $this->db->where('ticker_symbol', $ticker->symbol);
                         $this->db->order_by('created_at', 'DESC');
                         $this->db->limit(5);
                         $recent_signals = $this->db->get('telegram_signals')->result();
                     ?>
-                    
+
                     <?php if (!empty($recent_signals)): ?>
                         <?php foreach ($recent_signals as $signal): ?>
                             <div class="d-flex justify-content-between align-items-center mb-2">
                                 <small class="text-muted">
                                     <?= date('M j, H:i', strtotime($signal->created_at)) ?>
                                 </small>
-                                <span class="badge <?= $signal->processed ? 'bg-success' : 'bg-warning text-dark' ?> badge-sm">
-                                    <?= $signal->processed ? 'Processed' : 'Pending' ?>
+                                <?php
+                                    $status_class = 'bg-secondary';
+                                    $status_text = ucfirst($signal->status);
+                                    switch($signal->status) {
+                                        case 'completed':
+                                            $status_class = 'bg-success';
+                                            break;
+                                        case 'pending':
+                                        case 'cropping':
+                                        case 'analyzing':
+                                            $status_class = 'bg-warning text-dark';
+                                            break;
+                                        case 'failed_crop':
+                                        case 'failed_analysis':
+                                        case 'failed_download':
+                                            $status_class = 'bg-danger';
+                                            break;
+                                    }
+                                ?>
+                                <span class="badge <?= $status_class ?> badge-sm">
+                                    <?= $status_text ?>
                                 </span>
                             </div>
                         <?php endforeach; ?>

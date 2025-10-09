@@ -24,6 +24,7 @@ input double    RISK_PERCENT = 2.0;
 input int       POLL_INTERVAL = 30;
 input double    MAX_SPREAD = 500.0;
 input int       PRICE_TOLERANCE_POINTS = 50;
+input double    PRICE_TOLERANCE_PERCENT = 0.0;  // 0.0 = usar points, > 0 = usar porcentaje (prioridad)
 
 input group "=== Price Correction ==="
 input bool      ENABLE_PRICE_CORRECTION = true;
@@ -405,26 +406,41 @@ APIResponse SendAPIRequest(string method, string url, string jsonData = "", bool
 }
 
 // FUNCIONES DE REPORTE
-void ReportOpen(int userSignalId, bool isMarketOrder, ENUM_ORDER_TYPE orderType, 
-                double entryPrice, double stopLoss, double volume, ulong ticket) {
-    
+void ReportOpen(int userSignalId, bool isMarketOrder, ENUM_ORDER_TYPE orderType,
+                double entryPrice, double stopLoss, double volume, ulong ticket,
+                string opType = "", double signalEntry = 0, double signalSL1 = 0, double signalSL2 = 0,
+                double signalTP1 = 0, double signalTP2 = 0, double signalTP3 = 0,
+                double signalTP4 = 0, double signalTP5 = 0) {
+
     string url = BuildAPIUrl("open", userSignalId);
-    
+
     string json = "{";
     json += "\"success\":true,";
     json += "\"trade_id\":\"" + IntegerToString(ticket) + "\",";
     json += "\"order_type\":\"" + EnumToString(orderType) + "\",";
-    
+
     if(isMarketOrder) {
         json += "\"real_entry_price\":" + DoubleToString(entryPrice, 5) + ",";
         json += "\"real_stop_loss\":" + DoubleToString(stopLoss, 5) + ",";
         json += "\"real_volume\":" + DoubleToString(volume, 2) + ",";
     }
-    
+
+    // NUEVO: Agregar signal_data con precios originales (pre-corrección)
+    if(signalEntry > 0 && opType != "") {
+        json += "\"signal_data\":{";
+        json += "\"op_type\":\"" + opType + "\",";
+        json += "\"entry\":" + DoubleToString(signalEntry, 5) + ",";
+        json += "\"stoploss\":[" + DoubleToString(signalSL1, 5) + "," + DoubleToString(signalSL2, 5) + "],";
+        json += "\"tps\":[" + DoubleToString(signalTP1, 5) + "," + DoubleToString(signalTP2, 5) + ","
+                + DoubleToString(signalTP3, 5) + "," + DoubleToString(signalTP4, 5) + ","
+                + DoubleToString(signalTP5, 5) + "]";
+        json += "},";
+    }
+
     json += "\"symbol\":\"" + TICKER_SYMBOL + "\",";
     json += "\"execution_time\":\"" + TimeToString(TimeGMT(), TIME_DATE|TIME_SECONDS) + "\"";
     json += "}";
-    
+
     APIResponse response = SendAPIRequest("POST", url, json);
     if(response.result == API_SUCCESS) {
         Log(INFO_LVL, "REPORT", "Open reportado exitosamente");
@@ -573,8 +589,7 @@ double CalculatePriceCorrection(string symbol, string &errorMessage) {
         Log(ERROR_LVL, "PRICE_CORR", errorMessage);
         return 0.0;
     }
-    
-    Log(INFO_LVL, "PRICE_CORR", StringFormat("Price correction exitosa: Factor=%.6f", factor));
+
     return factor;
 }
 
@@ -592,8 +607,23 @@ double CalculatePNL(double currentPrice, double volume = 0) {
     return (priceDiff / specs.point) * volume * (specs.tickValue * (specs.point / specs.tickSize));
 }
 
+double NormalizeVolume(double volume, SymbolSpecs &specs) {
+    if(!specs.isValid || specs.stepVolume <= 0) return volume;
+
+    // Redondear al step más cercano
+    double normalized = MathRound(volume / specs.stepVolume) * specs.stepVolume;
+
+    // Validar límites
+    normalized = MathMax(specs.minVolume, normalized);
+    normalized = MathMin(specs.maxVolume, normalized);
+
+    return normalized;
+}
+
 double CalculateVolumeToClose(double percentOfOriginal) {
-    return (currentTP.originalVolume * percentOfOriginal) / 100.0;
+    double rawVolume = (currentTP.originalVolume * percentOfOriginal) / 100.0;
+    SymbolSpecs specs = GetSymbolSpecs();
+    return NormalizeVolume(rawVolume, specs);
 }
 
 double CalculateVolumeOptimized(double entryPrice, double stopLoss) {
@@ -866,12 +896,22 @@ bool CheckAndExecuteTP(int tpLevel, double tpPrice, double tpPercent, double cur
         bool shouldActivateBE = (BE_LEVEL == tpLevel && !currentTP.slMovedToBE);
         
         // LOG: TP alcanzado
-        Log(INFO_LVL, "TP_HIT", StringFormat("TP%d alcanzado! Precio=%.5f, Target=%.5f, Volumen a cerrar=%.2f%%, BE=%s", 
+        Log(INFO_LVL, "TP_HIT", StringFormat("TP%d alcanzado! Precio=%.5f, Target=%.5f, Volumen a cerrar=%.2f%%, BE=%s",
             tpLevel, currentPrice, tpPrice, tpPercent, (shouldActivateBE ? "SÍ" : "NO")));
-        
+
         // Paso 1: Cerrar volumen si aplica
         if(hasVolumeToClose) {
+            // Calcular volumen crudo y normalizado
+            double rawVolume = (currentTP.originalVolume * tpPercent) / 100.0;
             double volumeToClose = CalculateVolumeToClose(tpPercent);
+
+            // LOG: Volumen calculado vs normalizado
+            if(rawVolume != volumeToClose) {
+                SymbolSpecs specs = GetSymbolSpecs();
+                Log(INFO_LVL, "VOLUME_NORM", StringFormat("TP%d: Volumen calculado=%.3f → normalizado=%.2f (step=%.2f)",
+                    tpLevel, rawVolume, volumeToClose, specs.stepVolume));
+            }
+
             ClosePartialPosition(volumeToClose);
         }
         
@@ -933,17 +973,20 @@ void SetBreakeven() {
     }
 }
 
-// CLOSEPARTIALPOSITION MANTIENE SU LÓGICA ACTUAL
 bool ClosePartialPosition(double volume) {
     if(!position.SelectByTicket(currentTP.ticket)) return false;
-    
+
     SymbolSpecs specs = GetSymbolSpecs();
-    volume = MathMin(position.Volume(), MathMax(specs.minVolume, volume));
-    
-    double currentPrice = (currentTP.direction == "LONG") ? 
-                         SymbolInfoDouble(currentSymbol, SYMBOL_BID) : 
+
+    // Validar que el volumen no exceda el volumen actual de la posición
+    if(volume > position.Volume()) {
+        volume = position.Volume();
+    }
+
+    double currentPrice = (currentTP.direction == "LONG") ?
+                         SymbolInfoDouble(currentSymbol, SYMBOL_BID) :
                          SymbolInfoDouble(currentSymbol, SYMBOL_ASK);
-    
+
     // PNL del volumen que se va a cerrar
     double closedPnl = CalculatePNL(currentPrice, volume);
     
@@ -1071,26 +1114,37 @@ void ProcessSignalResponse(string jsonResponse) {
         return;
     }
     
-    if(ExecuteTrade(userSignalId, opType, entry, sl1, tp1, tp2, tp3, tp4, tp5)) {
+    if(ExecuteTrade(userSignalId, opType, entry, sl1, sl2, tp1, tp2, tp3, tp4, tp5)) {
         currentUserSignalId = userSignalId;
         Log(INFO_LVL, "TRADE", "Trade ejecutado exitosamente");
     }
 }
 
-bool ExecuteTrade(int userSignalId, string opType, double entryPrice, double stopLoss, 
-                  double tp1, double tp2, double tp3, double tp4, double tp5) {
-    
+bool ExecuteTrade(int userSignalId, string opType, double entryPrice, double stopLoss,
+                  double tp1, double tp2, double tp3, double tp4, double tp5,
+                  double sl2 = 0) {
+
     if(currentTP.isActive) return false;
-    
+
+    // NUEVO: Guardar precios originales de la señal (pre-corrección)
+    double originalEntry = entryPrice;
+    double originalSL1 = stopLoss;
+    double originalSL2 = sl2;
+    double originalTP1 = tp1;
+    double originalTP2 = tp2;
+    double originalTP3 = tp3;
+    double originalTP4 = tp4;
+    double originalTP5 = tp5;
+
     // Aplicar corrección de precios
     string errorMessage = "";
     double correctionFactor = CalculatePriceCorrection(TICKER_SYMBOL, errorMessage);
-    
+
     if(correctionFactor <= 0.0) {
         ReportClose(userSignalId, -999, "PRICE_CORRECTION_ERROR", 0, 0);
         return false;
     }
-    
+
     // Aplicar corrección si es necesaria (convertir ES → US500)
     if(correctionFactor != 1.0) {
         entryPrice /= correctionFactor;  // CORREGIDO: dividir para convertir ES a US500
@@ -1132,30 +1186,59 @@ bool ExecuteTrade(int userSignalId, string opType, double entryPrice, double sto
     
     // Determinar tipo de orden
     ENUM_ORDER_TYPE orderType;
-    double currentPrice = (opType == "LONG") ? 
-                         SymbolInfoDouble(currentSymbol, SYMBOL_ASK) : 
+    double currentPrice = (opType == "LONG") ?
+                         SymbolInfoDouble(currentSymbol, SYMBOL_ASK) :
                          SymbolInfoDouble(currentSymbol, SYMBOL_BID);
-    
-    double tolerance = PRICE_TOLERANCE_POINTS * SymbolInfoDouble(currentSymbol, SYMBOL_POINT);
+
+    double point = SymbolInfoDouble(currentSymbol, SYMBOL_POINT);
     double priceDifference = MathAbs(entryPrice - currentPrice);
-    
+    double differencePoints = priceDifference / point;
+
+    // Determinar tolerancia según configuración (prioridad: PERCENT > POINTS)
+    double tolerance;
+    double tolerancePoints;
+    string toleranceMode;
+
+    if(PRICE_TOLERANCE_PERCENT > 0.0) {
+        // Modo: Porcentaje del precio de entrada
+        tolerance = entryPrice * (PRICE_TOLERANCE_PERCENT / 100.0);
+        tolerancePoints = tolerance / point;
+        toleranceMode = StringFormat("%.3f%% (%.1f points)", PRICE_TOLERANCE_PERCENT, tolerancePoints);
+    } else {
+        // Modo: Points absolutos (fallback)
+        tolerance = PRICE_TOLERANCE_POINTS * point;
+        tolerancePoints = (double)PRICE_TOLERANCE_POINTS;
+        toleranceMode = StringFormat("%d points", PRICE_TOLERANCE_POINTS);
+    }
+
+    string orderDecision = "";
+
     if(opType == "LONG") {
         if(priceDifference <= tolerance) {
             orderType = ORDER_TYPE_BUY;
+            orderDecision = "MARKET";
         } else if(entryPrice < currentPrice) {
             orderType = ORDER_TYPE_BUY_LIMIT;
+            orderDecision = "LIMIT";
         } else {
             orderType = ORDER_TYPE_BUY_STOP;
+            orderDecision = "STOP";
         }
     } else {
         if(priceDifference <= tolerance) {
             orderType = ORDER_TYPE_SELL;
+            orderDecision = "MARKET";
         } else if(entryPrice > currentPrice) {
             orderType = ORDER_TYPE_SELL_LIMIT;
+            orderDecision = "LIMIT";
         } else {
             orderType = ORDER_TYPE_SELL_STOP;
+            orderDecision = "STOP";
         }
     }
+
+    Log(INFO_LVL, "ORDER_DECISION", StringFormat("Precio actual=%.5f, Entry=%.5f, Diff=%.1f points, Tolerancia=%s, Decisión=%s",
+        currentPrice, entryPrice, differencePoints, toleranceMode, orderDecision));
     
     // Configurar SL según modo - CORREGIDO: multiplicar DISTANCIA, no precio
     double slDistance = MathAbs(entryPrice - stopLoss);
@@ -1203,13 +1286,15 @@ bool ExecuteTrade(int userSignalId, string opType, double entryPrice, double sto
         }
         
         SetupTPState(userSignalId, opType, entryPrice, stopLoss, calculatedVolume, tp1, tp2, tp3, tp4, tp5, ticket, isMarketOrder);
-        
+
         // LOG: Posición abierta con detalles
-        Log(INFO_LVL, "TRADE_OPEN", StringFormat("Posición abierta: %s %s, Ticket=%d, Vol=%.2f, Tipo=%s, Entry=%.5f, Corrección=%.4f", 
+        Log(INFO_LVL, "TRADE_OPEN", StringFormat("Posición abierta: %s %s, Ticket=%d, Vol=%.2f, Tipo=%s, Entry=%.5f, Corrección=%.4f",
             (isMarketOrder ? "MARKET" : "PENDING"), opType, ticket, calculatedVolume, EnumToString(orderType), entryPrice, correctionFactor));
-        
-        // Reportar con precio real para market orders
-        ReportOpen(userSignalId, isMarketOrder, orderType, entryPrice, orderStopLoss, calculatedVolume, ticket);
+
+        // NUEVO: Reportar con precio real para market orders + datos originales de la señal
+        ReportOpen(userSignalId, isMarketOrder, orderType, entryPrice, orderStopLoss, calculatedVolume, ticket,
+                   opType, originalEntry, originalSL1, originalSL2,
+                   originalTP1, originalTP2, originalTP3, originalTP4, originalTP5);
         return true;
     } else {
         ReportClose(userSignalId, -999, "EXECUTION_FAILED", 0, 0);

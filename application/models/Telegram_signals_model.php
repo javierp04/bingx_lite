@@ -169,6 +169,11 @@ class Telegram_signals_model extends CI_Model
             $open_data['execution_time_local'] = $this->convert_utc_to_local($open_data['execution_time']);
         }
 
+        // NUEVO: Guardar mt_execution_data con datos originales de la señal (pre-corrección)
+        if (isset($open_data['signal_data'])) {
+            $update_data['mt_execution_data'] = json_encode($open_data['signal_data']);
+        }
+
         // Actualizar execution_data con info completa
         if ($open_data) {
             $update_data['execution_data'] = json_encode($open_data);
@@ -374,10 +379,11 @@ class Telegram_signals_model extends CI_Model
      */
     public function get_user_signal_detail($user_id, $user_signal_id)
     {
-        $this->db->select('uts.*, ts.ticker_symbol, ts.image_path, ts.tradingview_url, 
-                          ts.message_text, ts.analysis_data, ts.op_type');
+        $this->db->select('uts.*, ts.ticker_symbol, ts.image_path, ts.tradingview_url,
+                          ts.message_text, ts.analysis_data, ts.op_type, at.display_decimals');
         $this->db->from('user_telegram_signals uts');
         $this->db->join('telegram_signals ts', 'uts.telegram_signal_id = ts.id');
+        $this->db->join('available_tickers at', 'ts.ticker_symbol = at.symbol', 'left');
         $this->db->where('uts.user_id', $user_id);
         $this->db->where('uts.id', $user_signal_id);
 
@@ -527,8 +533,9 @@ class Telegram_signals_model extends CI_Model
 
     public function get_trading_dashboard_signals($user_id, $filters = array())
     {
-        $this->db->select('uts.*, ts.ticker_symbol, ts.analysis_data, ts.op_type, ts.tradingview_url, 
-                      ts.created_at as telegram_created_at, ust_info.active as ticker_is_active');
+        $this->db->select('uts.*, ts.ticker_symbol, ts.analysis_data, ts.op_type, ts.tradingview_url,
+                      ts.created_at as telegram_created_at, ust_info.active as ticker_is_active,
+                      at.display_decimals');
         $this->db->from('user_telegram_signals uts');
         $this->db->join('telegram_signals ts', 'uts.telegram_signal_id = ts.id');
 
@@ -538,6 +545,9 @@ class Telegram_signals_model extends CI_Model
             'uts.user_id = ust_info.user_id AND uts.ticker_symbol = ust_info.ticker_symbol',
             'left'
         );
+
+        // Join con available_tickers para obtener display_decimals
+        $this->db->join('available_tickers at', 'ts.ticker_symbol = at.symbol', 'left');
 
         $this->db->where('uts.user_id', $user_id);
 

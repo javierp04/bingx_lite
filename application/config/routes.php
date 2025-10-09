@@ -51,7 +51,8 @@ $route['my_trading/update_mt_ticker'] = 'My_trading/update_mt_ticker';      // A
 $route['my_trading/refresh_dashboard_ajax'] = 'My_trading/refresh_dashboard_ajax';  // AGREGAR ESTA LÍNEA
 $route['my_trading/remove_ticker/(:any)'] = 'My_trading/remove_ticker/$1';
 $route['my_trading/toggle_ticker/(:any)'] = 'My_trading/toggle_ticker/$1';
-$route['my_trading/signal_detail/(:num)'] = 'My_trading/signal_detail/$1';
+$route['my_trading/trading_detail/(:num)'] = 'My_trading/trading_detail/$1';  // NUEVO: Trading detail
+$route['my_trading/signal_detail/(:num)'] = 'My_trading/signal_detail/$1';    // MANTENER: Redirige a trading_detail
 $route['my_trading/(:any)'] = 'My_trading/index/$1';                       // GENÉRICA al final
 
 // Telegram Signals routes (Admin only - MODIFICADO)

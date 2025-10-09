@@ -23,9 +23,10 @@
                     <tr>
                         <th>Symbol</th>
                         <th>Name</th>
+                        <th>Decimals</th>
                         <th>Status</th>
                         <th>User Selections</th>
-                        <th>Signals</th>                        
+                        <th>Signals</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
@@ -41,6 +42,9 @@
                                     <strong><?= $ticker->symbol ?></strong>
                                 </td>
                                 <td><?= $ticker->name ?></td>
+                                <td>
+                                    <span class="badge bg-secondary"><?= $ticker->display_decimals ?></span>
+                                </td>
                                 <td>
                                     <span class="badge <?= $ticker->active ? 'bg-success' : 'bg-secondary' ?>">
                                         <?= $ticker->active ? 'Active' : 'Inactive' ?>

@@ -36,6 +36,9 @@
                             $analysis = json_decode($signal->analysis_data, true);
                             $op_type = $signal->op_type ?: ($analysis['op_type'] ?? 'UNKNOWN');
 
+                            // Decimals for price display
+                            $decimals = $signal->display_decimals ?? 5;
+
                             // Calculate time elapsed
                             $created_time = strtotime($signal->created_at);
                             $elapsed = time() - $created_time;
@@ -153,15 +156,15 @@
                                 <td>
                                     <?php if ($signal->real_entry_price): ?>
                                         <div class="entry-price" data-entry="<?= $signal->real_entry_price ?>">
-                                            <strong><?= number_format($signal->real_entry_price, 5) ?></strong>
+                                            <strong><?= number_format($signal->real_entry_price, $decimals) ?></strong>
                                         </div>
                                         <?php if ($signal->last_price && $signal->status != 'closed'): ?>
                                             <div class="current-price" data-current="<?= $signal->last_price ?>">
-                                                <small class="text-muted">→ <?= number_format($signal->last_price, 5) ?></small>
+                                                <small class="text-muted">→ <?= number_format($signal->last_price, $decimals) ?></small>
                                             </div>
                                         <?php elseif ($signal->status == 'closed' && $signal->last_price): ?>
                                             <div class="final-price">
-                                                <small class="text-muted">Final: <?= number_format($signal->last_price, 5) ?></small>
+                                                <small class="text-muted">Final: <?= number_format($signal->last_price, $decimals) ?></small>
                                             </div>
                                         <?php endif; ?>
                                     <?php else: ?>
@@ -240,7 +243,7 @@
                                 </td>
                                 <td>
                                     <div class="btn-group btn-group-sm">
-                                        <a href="<?= base_url('my_trading/signal_detail/' . $signal->id) ?>"
+                                        <a href="<?= base_url('my_trading/trading_detail/' . $signal->id) ?>"
                                             class="btn btn-outline-info" title="View Details">
                                             <i class="fas fa-eye"></i>
                                         </a>

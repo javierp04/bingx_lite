@@ -158,22 +158,28 @@ class My_trading extends CI_Controller
         redirect('my_trading/tickers');
     }
 
-    // View signal detail
-    public function signal_detail($user_signal_id)
+    // View trading detail (renamed from signal_detail)
+    public function trading_detail($user_signal_id)
     {
         $user_id = $this->session->userdata('user_id');
-        $data['title'] = 'Signal Detail';
+        $data['title'] = 'Trading Detail';
 
         $data['signal'] = $this->Telegram_signals_model->get_user_signal_detail($user_id, $user_signal_id);
 
         if (!$data['signal']) {
             $this->session->set_flashdata('error', 'Signal not found');
-            redirect('my_trading/signals');
+            redirect('my_trading/active');
         }
 
         $this->load->view('templates/header', $data);
-        $this->load->view('my_trading/signal_detail', $data);
+        $this->load->view('my_trading/trading_detail', $data);
         $this->load->view('templates/footer');
+    }
+
+    // Mantener compatibilidad con enlaces antiguos
+    public function signal_detail($user_signal_id)
+    {
+        redirect('my_trading/trading_detail/' . $user_signal_id);
     }
 
     // Método para AJAX refresh del dashboard completo

@@ -40,6 +40,7 @@ class Available_tickers extends CI_Controller
         // Form validation
         $this->form_validation->set_rules('symbol', 'Symbol', 'required|alpha_dash|is_unique[available_tickers.symbol]');
         $this->form_validation->set_rules('name', 'Name', 'required');
+        $this->form_validation->set_rules('display_decimals', 'Display Decimals', 'required|integer|greater_than_equal_to[0]|less_than_equal_to[8]');
 
         if ($this->form_validation->run() === FALSE) {
             $this->load->view('templates/header', $data);
@@ -50,6 +51,7 @@ class Available_tickers extends CI_Controller
             $ticker_data = array(
                 'symbol' => strtoupper($this->input->post('symbol')),
                 'name' => $this->input->post('name'),
+                'display_decimals' => $this->input->post('display_decimals') ?: 5,
                 'active' => $this->input->post('active') ? 1 : 0
             );
 
@@ -80,6 +82,7 @@ class Available_tickers extends CI_Controller
         // Form validation
         $this->form_validation->set_rules('symbol', 'Symbol', 'required|alpha_dash');
         $this->form_validation->set_rules('name', 'Name', 'required');
+        $this->form_validation->set_rules('display_decimals', 'Display Decimals', 'required|integer|greater_than_equal_to[0]|less_than_equal_to[8]');
 
         // Check if symbol changed and is unique
         if ($this->input->post('symbol') !== $symbol) {
@@ -97,6 +100,7 @@ class Available_tickers extends CI_Controller
             $ticker_data = array(
                 'symbol' => $new_symbol,
                 'name' => $this->input->post('name'),
+                'display_decimals' => $this->input->post('display_decimals') ?: 5,
                 'active' => $this->input->post('active') ? 1 : 0
             );
 
