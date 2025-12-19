@@ -172,12 +172,14 @@ class TradeReader extends CI_Controller
                 return;
             }
 
-            // PASO 3: Cambiar status a 'analyzing' 
+            // PASO 3: Cambiar status a 'analyzing'
             $this->Telegram_signals_model->update_signal_status($signal_id, 'analyzing');
 
-            // PASO 4: Ejecutar análisis IA
+            // PASO 4: Ejecutar análisis IA con información de la caja verde
             $cropped_filename = 'cropped-' . pathinfo($image_filename, PATHINFO_FILENAME);
-            $analysis_result = $this->createTradeAnalysis($cropped_filename);
+            $cajaCoords = $crop_result['box_coords'];
+            $imageHeight = $crop_result['image_height'];
+            $analysis_result = $this->createTradeAnalysis($cropped_filename, $cajaCoords, $imageHeight);
 
             if (!$analysis_result) {
                 // Análisis falló o devolvió JSON vacío
@@ -222,37 +224,61 @@ class TradeReader extends CI_Controller
         $prices = $raw_json['label_prices'];
         $op_type = strtoupper(trim($raw_json['op_type']));
 
-        // CORREGIDO: Validar mínimo 8 precios (2 SL + 1 Entry + 5 TPs)
+        // Validar mínimo 8 precios (2 SL + 1 Entry + 5 TPs)
         if (!is_array($prices) || count($prices) < 8) {
             return null;
         }
 
-        // Convertir todos los precios a float para asegurar ordenamiento correcto
+        // Convertir todos los precios a float
         $prices = array_map('floatval', $prices);
 
-        // Ordenar según operación
+        // LOS PRECIOS VIENEN ORDENADOS VISUALMENTE DE ARRIBA HACIA ABAJO
+        // NO necesitamos sort/rsort, solo asignarlos correctamente según el tipo de operación
+
         if ($op_type === 'LONG') {
-            sort($prices, SORT_NUMERIC);  // Ascendente (menor a mayor)
+            // LONG: Visualmente de arriba hacia abajo = TP5, TP4, TP3, TP2, TP1, Entry, SL2, SL1
+            // Los TPs están arriba (profit), SL y Entry abajo
+            return [
+                'op_type' => $op_type,
+                'stoploss' => [$prices[7], $prices[6]],  // Los 2 últimos (más abajo)
+                'entry' => $prices[5],                    // Tercero desde abajo
+                'tps' => [                                // Invertir orden (de TP1 a TP5)
+                    $prices[4],  // TP1
+                    $prices[3],  // TP2
+                    $prices[2],  // TP3
+                    $prices[1],  // TP4
+                    $prices[0]   // TP5 (el más arriba)
+                ]
+            ];
         } elseif ($op_type === 'SHORT') {
-            rsort($prices, SORT_NUMERIC); // Descendente (mayor a menor)
+            // SHORT: Visualmente de arriba hacia abajo = SL1, SL2, Entry, TP1, TP2, TP3, TP4, TP5
+            // Los SL están arriba (stop), TPs y Entry abajo
+            return [
+                'op_type' => $op_type,
+                'stoploss' => [$prices[0], $prices[1]],  // Los 2 primeros (más arriba)
+                'entry' => $prices[2],                    // Tercero desde arriba
+                'tps' => [                                // Orden directo (de TP1 a TP5)
+                    $prices[3],  // TP1
+                    $prices[4],  // TP2
+                    $prices[5],  // TP3
+                    $prices[6],  // TP4
+                    $prices[7]   // TP5 (el más abajo)
+                ]
+            ];
         } else {
             return null; // op_type inválido
         }
-
-        // CORREGIDO: Crear estructura con exactamente 5 TPs
-        return [
-            'op_type' => $op_type,
-            'stoploss' => [$prices[0], $prices[1]],
-            'entry' => $prices[2],
-            'tps' => [$prices[3], $prices[4], $prices[5], $prices[6], $prices[7]]  // 5 TPs exactos
-        ];
     }
 
     /**
      * Análisis IA que devuelve JSON transformado o null si falló
      * Soporta OpenAI y Claude según configuración
+     *
+     * @param string $cropped_filename Nombre del archivo cropped
+     * @param array  $cajaCoords Coordenadas de la caja verde (con y_min y y_max)
+     * @param int    $imageHeight Altura de la imagen original
      */
-    private function createTradeAnalysis($cropped_filename)
+    private function createTradeAnalysis($cropped_filename, $cajaCoords, $imageHeight)
     {
         $in_path = "uploads/trades/" . $cropped_filename . ".png";
 
@@ -260,21 +286,24 @@ class TradeReader extends CI_Controller
             return null;
         }
 
-        // 1. Preparar datos comunes
+        // 1. Detectar tipo de operación ANTES de llamar a la IA
+        $op_type = $this->detectOperationType($cajaCoords, $imageHeight);
+
+        // 2. Preparar datos comunes
         $image_base64 = base64_encode(file_get_contents($in_path));
         $prompt = $this->build_prompt();
 
-        // 2. Detectar provider desde configuración
+        // 3. Detectar provider desde configuración
         $provider = $this->config->item('ai_provider') ?: 'openai';
 
-        // 3. Llamar API según provider
+        // 4. Llamar API según provider
         if ($provider === 'claude') {
             $response = $this->call_claude_api($image_base64, $prompt);
         } else {
             $response = $this->call_openai_api($image_base64, $prompt);
         }
 
-        // 4. Verificar errores
+        // 5. Verificar errores
         if (isset($response['error'])) {
             $this->Log_model->add_log([
                 'user_id' => null,
@@ -284,14 +313,14 @@ class TradeReader extends CI_Controller
             return null;
         }
 
-        // 5. Extraer texto de la respuesta (normalizado para ambas APIs)
+        // 6. Extraer texto de la respuesta (normalizado para ambas APIs)
         $text = $this->extract_ai_response($response, $provider);
 
         if (!$text) {
             return null;
         }
 
-        // 6. Validar JSON inicial de la IA
+        // 7. Validar JSON inicial de la IA
         $raw_json = json_decode($text, true);
         if ($raw_json === null) {
             $json_candidate = $this->extract_json($text);
@@ -302,12 +331,15 @@ class TradeReader extends CI_Controller
             }
         }
 
-        // 7. Verificar que no sea JSON vacío
+        // 8. Verificar que no sea JSON vacío
         if (empty($raw_json) || (count($raw_json) == 0)) {
             return null;
         }
 
-        // 8. Transformar JSON al formato final
+        // 9. NUEVO: Agregar op_type detectado automáticamente
+        $raw_json['op_type'] = $op_type;
+
+        // 10. Transformar JSON al formato final
         $transformed_json = $this->transformAnalysisData($raw_json);
 
         // Si la transformación falla (menos de 8 precios), retornar null
@@ -459,7 +491,9 @@ class TradeReader extends CI_Controller
                     'x2' => $cropX2,
                     'y1' => $cropY1,
                     'y2' => $cropY2
-                ]
+                ],
+                'box_coords' => $cajaCoords,  // Coordenadas de la caja verde detectada
+                'image_height' => $height      // Altura de la imagen original
             ];
         } else {
             return ['error' => 'No se pudo guardar la imagen croppada'];
@@ -469,13 +503,29 @@ class TradeReader extends CI_Controller
     private function build_prompt()
     {
         return <<<'PROMPT'
-Necesito que analices esta imagen de un plan de trading de TradingView:
-1. Extrae los precios UNICAMENTE de las etiquetas que se encuentran inmediatamente a la derecha de la caja de operación que IGNORANDO cualquier otra etiqueta que esté en la parte superior o inferior de la imagen.
-2. Los numeros se presentan con separador de miles (.) y decimal (,) Debes convertirlos a formato internacional sin separador de miles y con punto decimal. Ejemplo: 1.234,56 -> 1234.56
-3. Identifica si la operación es LONG o SHORT. La forma de identificarlo es:
-    - ES LONG SI Y SOLO SI los números de las etiquetas con fondo verde o rojo son menores a los números de las etiquetas con fondo azul estan en el mismo eje vertical.
-    - ES SHORT SI Y SOLO SI los números de las etiquetas con fondo verde o rojo son mayores a los números de las etiquetas con fondo azul que estan en el mismo eje vertical.    
-La salida tiene que ser un JSON estrictamente solo, sin explicacion adicional: {op_type : "long o short", "label_prices" : array de precios}. En caso de no tener por lo menos 7 números, devolver un JSON vacio {}.
+Analiza esta imagen de TradingView y extrae ÚNICAMENTE los precios de las etiquetas que aparecen a la derecha de la caja de operación.
+
+INSTRUCCIONES:
+1. Extrae SOLO los números de las etiquetas inmediatamente a la derecha de la caja coloreada
+2. IGNORA cualquier etiqueta que esté en la parte superior o inferior de la imagen
+3. Los números usan formato europeo: separador de miles (.) y decimal (,)
+4. Convierte al formato estándar: sin separador de miles y punto decimal
+   Ejemplo: 1.234,56 → 1234.56
+
+ORDEN DE EXTRACCIÓN:
+- Extrae los precios en orden visual DE ARRIBA HACIA ABAJO
+- El primer precio debe ser el que está visualmente más arriba
+- El último precio debe ser el que está visualmente más abajo
+
+FORMATO DE SALIDA:
+Devuelve un JSON con un array de precios ordenados de arriba hacia abajo:
+{"label_prices": [precio1, precio2, precio3, ...]}
+
+IMPORTANTE:
+- Devuelve al menos 8 precios (si hay menos de 8, devuelve {})
+- Solo números en formato estándar (punto decimal)
+- Sin texto adicional, solo el JSON
+- Mantén el orden visual estricto: de arriba hacia abajo
 PROMPT;
     }
 
@@ -628,13 +678,17 @@ PROMPT;
     {
         $targetGreens = [
             ['r' => 197, 'g' => 233, 'b' => 197],
-            ['r' => 170, 'g' => 222, 'b' => 170]
+            ['r' => 170, 'g' => 222, 'b' => 170],
+            ['r' => 170, 'g' => 222, 'b' => 134]
         ];
-        $tolerance = 20;
+        $tolerance = 15;
+        $gapThreshold = 20;  // Píxeles no-verdes consecutivos para considerar fin de caja
 
         $cajaX1 = null;
         $cajaX2 = null;
         $cajaY1 = null;
+        $cajaYMin = null;  // Primera Y donde encontró verde
+        $cajaYMax = null;  // Última Y donde encontró verde
 
         for ($y = 100; $y < $height - 150; $y++) {
             $limiteScaneo = ($cajaX2 !== null) ? $cajaX2 + 10 : (int)($width * 0.4);
@@ -646,12 +700,20 @@ PROMPT;
                 $b = $rgb & 0xFF;
 
                 if ($this->isGreenColor($r, $g, $b, $targetGreens, $tolerance)) {
-                    $cajaInfo = $this->findBoxRange($image, $x, $y, $targetGreens, $tolerance);
+                    $cajaInfo = $this->findBoxRange($image, $x, $y, $targetGreens, $tolerance, $gapThreshold);
 
                     if ($cajaInfo !== null) {
                         $cajaX1 = $cajaInfo['x1'];
                         $cajaX2 = $cajaInfo['x2'];
                         $cajaY1 = $y;
+
+                        // Rastrear Y mínimo (primera vez que encontramos verde)
+                        if ($cajaYMin === null) {
+                            $cajaYMin = $y;
+                        }
+                        // Actualizar Y máximo (última vez que encontramos verde)
+                        $cajaYMax = $y;
+
                         break;
                     }
                 }
@@ -662,16 +724,52 @@ PROMPT;
             return [
                 'x1' => $cajaX1,
                 'x2' => $cajaX2,
-                'y1' => $cajaY1
+                'y1' => $cajaY1,
+                'y_min' => $cajaYMin,
+                'y_max' => $cajaYMax
             ];
         }
 
         return null;
     }
 
-    private function findBoxRange($image, $startX, $y, $targetGreens, $tolerance)
+    /**
+     * Detecta si la operación es LONG o SHORT basándose en la posición vertical del verde
+     *
+     * LÓGICA:
+     * - Verde en mitad SUPERIOR de la imagen → LONG (take profit arriba)
+     * - Verde en mitad INFERIOR de la imagen → SHORT (take profit abajo)
+     *
+     * @param array $cajaCoords Coordenadas de la caja verde (con y_min y y_max)
+     * @param int   $imageHeight Altura total de la imagen
+     * @return string 'LONG' o 'SHORT'
+     */
+    private function detectOperationType($cajaCoords, $imageHeight)
     {
-        $greenCount = 0;
+        // Calcular el centro vertical de la caja verde
+        $green_center_y = ($cajaCoords['y_min'] + $cajaCoords['y_max']) / 2;
+
+        // Calcular el punto medio de la imagen
+        $image_midpoint_y = $imageHeight / 2;
+
+        // Comparar posiciones
+        if ($green_center_y < $image_midpoint_y) {
+            // Centro del verde está en la MITAD SUPERIOR → LONG
+            return 'LONG';
+        } else {
+            // Centro del verde está en la MITAD INFERIOR → SHORT
+            return 'SHORT';
+        }
+    }
+
+    private function findBoxRange($image, $startX, $y, $targetGreens, $tolerance, $gapThreshold = 20)
+    {
+        $x2 = $startX;        // Borde derecho (donde empezamos)
+        $x1 = null;           // Borde izquierdo (lo encontramos escaneando)
+        $nonGreenCount = 0;   // Contador de píxeles no-verdes consecutivos
+        $minBoxWidth = 20;    // Ancho mínimo de caja válida
+
+        // UN SOLO LOOP: escanear de derecha a izquierda tolerando ruido
         for ($x = $startX; $x >= 0; $x--) {
             $rgb = imagecolorat($image, $x, $y);
             $r = ($rgb >> 16) & 0xFF;
@@ -679,35 +777,30 @@ PROMPT;
             $b = $rgb & 0xFF;
 
             if ($this->isGreenColor($r, $g, $b, $targetGreens, $tolerance)) {
-                $greenCount++;
+                // Encontramos píxel verde → actualizar borde izquierdo
+                $x1 = $x;
+                $nonGreenCount = 0;  // Reset contador (toleramos ruido)
             } else {
-                break;
-            }
-        }
-
-        if ($greenCount < 20) {
-            return null;
-        }
-
-        $x2 = $startX;
-        $x1 = $startX;
-        $nonGreenCount = 0;
-
-        for ($x = $startX - 1; $x >= 0; $x--) {
-            $rgb = imagecolorat($image, $x, $y);
-            $r = ($rgb >> 16) & 0xFF;
-            $g = ($rgb >> 8) & 0xFF;
-            $b = $rgb & 0xFF;
-
-            if (!$this->isGreenColor($r, $g, $b, $targetGreens, $tolerance)) {
+                // Encontramos píxel no-verde → incrementar contador
                 $nonGreenCount++;
-                if ($nonGreenCount >= 20) {
-                    $x1 = $x + 20;
+
+                // ¿Llegamos al threshold de píxeles no-verdes consecutivos?
+                if ($nonGreenCount >= $gapThreshold) {
+                    // Encontramos el fin de la caja (gap definitivo)
                     break;
                 }
-            } else {
-                $nonGreenCount = 0;
             }
+        }
+
+        // Validar que encontramos al menos un píxel verde
+        if ($x1 === null) {
+            return null;  // No hay píxeles verdes en esta línea
+        }
+
+        // Validar que la caja sea suficientemente ancha
+        $width = $x2 - $x1;
+        if ($width < $minBoxWidth) {
+            return null;  // Caja demasiado angosta (probablemente ruido)
         }
 
         return [

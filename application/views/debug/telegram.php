@@ -47,7 +47,7 @@
                                         <?php endforeach; ?>
                                     </select>
                                 </div>
-                                <div class="col-md-3">
+                                <div class="col-md-2">
                                     <label class="form-label small mb-1">Type</label>
                                     <select class="form-select form-select-sm" id="op_type" name="op_type" required>
                                         <option value="">Select</option>
@@ -55,13 +55,20 @@
                                         <option value="SHORT">SHORT</option>
                                     </select>
                                 </div>
-                                <div class="col-md-3">
+                                <div class="col-md-2">
                                     <label class="form-label small mb-1">Entry</label>
                                     <input type="number" class="form-control form-control-sm" id="entry_price" name="entry_price" step="0.00001" placeholder="1.16554" required>
                                 </div>
-                                <div class="col-md-3">
+                                <div class="col-md-2">
                                     <label class="form-label small mb-1">Diff</label>
                                     <input type="number" class="form-control form-control-sm" id="diff_points" name="diff_points" step="0.00001" placeholder="0.003" required>
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label small mb-1"><i class="fas fa-robot me-1"></i>AI Provider</label>
+                                    <select class="form-select form-select-sm" id="json_ai_provider" name="ai_provider">
+                                        <option value="openai">OpenAI (GPT-4o-mini)</option>
+                                        <option value="claude" selected>Claude (Sonnet 4.5)</option>
+                                    </select>
                                 </div>
                             </div>
 
@@ -98,12 +105,23 @@
                     </div>
                     <div class="card-body">
                         <form id="webhookForm">
-                            <div class="input-group mb-3">
-                                <span class="input-group-text"><i class="fas fa-comment-dots"></i></span>
-                                <input type="text" class="form-control" id="telegram_message" name="telegram_message"
-                                       placeholder="Sentimiento #ES https://www.tradingview.com/x/abc123" required>
-                                <button type="submit" class="btn btn-primary">
-                                    <i class="fas fa-paper-plane me-1"></i>Send
+                            <div class="row g-2 mb-3">
+                                <div class="col-md-8">
+                                    <label class="form-label small mb-1">Telegram Message</label>
+                                    <input type="text" class="form-control form-control-sm" id="telegram_message" name="telegram_message"
+                                           placeholder="Sentimiento #ES https://www.tradingview.com/x/abc123" required>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label small mb-1"><i class="fas fa-robot me-1"></i>AI Provider</label>
+                                    <select class="form-select form-select-sm" id="webhook_ai_provider" name="ai_provider">
+                                        <option value="openai">OpenAI (GPT-4o-mini)</option>
+                                        <option value="claude" selected>Claude (Sonnet 4.5)</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="text-end">
+                                <button type="submit" class="btn btn-primary btn-sm">
+                                    <i class="fas fa-paper-plane me-1"></i>Send Webhook
                                 </button>
                             </div>
                         </form>
@@ -271,12 +289,18 @@ function generateSignal() {
     .then(r => r.json())
     .then(data => {
         if (data.success) {
+            const aiProviderName = data.data.ai_provider === 'claude' ? 'Claude Sonnet 4.5' : 'OpenAI GPT-4o-mini';
+            const aiProviderBadge = data.data.ai_provider === 'claude'
+                ? '<span class="badge bg-primary">Claude</span>'
+                : '<span class="badge bg-success">OpenAI</span>';
+
             document.getElementById('json-results').innerHTML = `
                 <div class="alert alert-success mt-3">
-                    <strong><i class="fas fa-check me-1"></i>Generated!</strong>
+                    <strong><i class="fas fa-check me-1"></i>Generated!</strong> ${aiProviderBadge}
                     <p class="mb-2 small">${data.message}</p>
+                    <p class="mb-2 small"><strong>Signal ID:</strong> ${data.data.telegram_signal_id} | <strong>AI:</strong> ${aiProviderName}</p>
                     <a href="${data.data.view_url}" target="_blank" class="btn btn-sm btn-primary">
-                        <i class="fas fa-eye me-1"></i>View Signal #${data.data.telegram_signal_id}
+                        <i class="fas fa-eye me-1"></i>View Signal
                     </a>
                 </div>
             `;
@@ -296,6 +320,7 @@ function generateSignal() {
 // Simulate webhook
 function simulateWebhook() {
     const msg = document.getElementById('telegram_message').value.trim();
+    const aiProvider = document.getElementById('webhook_ai_provider').value;
     const btn = document.querySelector('#webhookForm button[type="submit"]');
 
     if (!msg) {
@@ -308,6 +333,7 @@ function simulateWebhook() {
 
     const formData = new FormData();
     formData.append('message', msg);
+    formData.append('ai_provider', aiProvider);
 
     fetch(`${BASE_URL}debug/telegram/simulate`, {
         method: 'POST',
@@ -316,10 +342,16 @@ function simulateWebhook() {
     .then(r => r.json())
     .then(data => {
         if (data.success) {
+            const aiProviderName = data.data.ai_provider === 'claude' ? 'Claude Sonnet 4.5' : 'OpenAI GPT-4o-mini';
+            const aiProviderBadge = data.data.ai_provider === 'claude'
+                ? '<span class="badge bg-primary">Claude</span>'
+                : '<span class="badge bg-success">OpenAI</span>';
+
             document.getElementById('webhook-results').innerHTML = `
                 <div class="alert alert-success mt-3">
-                    <strong><i class="fas fa-check me-1"></i>Success!</strong>
+                    <strong><i class="fas fa-check me-1"></i>Success!</strong> ${aiProviderBadge}
                     <p class="mb-2 small">${data.message}</p>
+                    <p class="mb-2 small"><strong>AI Provider:</strong> ${aiProviderName}</p>
                     <a href="${BASE_URL}telegram_signals/view/${data.data.signal_id}" target="_blank" class="btn btn-sm btn-primary">
                         <i class="fas fa-eye me-1"></i>View Signal #${data.data.signal_id}
                     </a>
@@ -336,7 +368,7 @@ function simulateWebhook() {
     })
     .catch(e => alert('Error: ' + e.message))
     .finally(() => {
-        btn.innerHTML = '<i class="fas fa-paper-plane me-1"></i>Send';
+        btn.innerHTML = '<i class="fas fa-paper-plane me-1"></i>Send Webhook';
         btn.disabled = false;
     });
 }

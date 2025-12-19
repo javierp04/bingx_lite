@@ -362,10 +362,27 @@ class Debug extends CI_Controller
         $tp4 = $this->input->post('tp4', true);
         $tp5 = $this->input->post('tp5', true);
         $volume = $this->input->post('volume', true) ?: 1.0;
+        $ai_provider = $this->input->post('ai_provider', true) ?: 'claude';
 
         if (!$ticker || !$op_type || !$entry_price) {
             $this->_send_json_response(false, 'Missing required fields: ticker, operation type, and entry price');
             return;
+        }
+
+        // Validate AI provider
+        if (!in_array($ai_provider, ['openai', 'claude'])) {
+            $ai_provider = 'claude';
+        }
+
+        // Validate API key is configured (note: JSON generator doesn't use AI, but we log it)
+        $validation = $this->_validate_ai_provider($ai_provider);
+        if (!$validation['valid']) {
+            // Warning only - JSON generator doesn't actually call AI
+            $this->Log_model->add_log([
+                'user_id' => $this->session->userdata('user_id'),
+                'action' => 'telegram_debug_warning',
+                'description' => "JSON Generator used with {$ai_provider} but API key not configured: " . $validation['error']
+            ]);
         }
 
         try {
@@ -446,7 +463,7 @@ class Debug extends CI_Controller
                 'user_id' => $this->session->userdata('user_id'),
                 'action' => 'telegram_debug_signal',
                 'description' => "Generated debug Telegram signal for {$ticker} ({$op_type}). " .
-                    "Signal ID: {$telegram_signal_id}, Users affected: {$users_affected}"
+                    "Signal ID: {$telegram_signal_id}, Users affected: {$users_affected}, AI: {$ai_provider}"
             ]);
 
             $this->_send_json_response(
@@ -457,7 +474,8 @@ class Debug extends CI_Controller
                     'telegram_signal_id' => $telegram_signal_id,
                     'users_affected' => $users_affected,
                     'analysis_data' => $analysis_data,
-                    'view_url' => base_url('telegram_signals/view/' . $telegram_signal_id)
+                    'view_url' => base_url('telegram_signals/view/' . $telegram_signal_id),
+                    'ai_provider' => $ai_provider
                 ]
             );
         } catch (Exception $e) {
@@ -514,18 +532,57 @@ class Debug extends CI_Controller
     }
 
     /**
+     * Validate AI provider has API key configured
+     */
+    private function _validate_ai_provider($provider)
+    {
+        if ($provider === 'openai') {
+            $api_key = $this->config->item('openai_api_key');
+            if (!$api_key || strlen($api_key) < 20) {
+                return ['valid' => false, 'error' => 'OpenAI API key not configured in config.php'];
+            }
+        } elseif ($provider === 'claude') {
+            $api_key = $this->config->item('claude_api_key');
+            if (!$api_key || strlen($api_key) < 20) {
+                return ['valid' => false, 'error' => 'Claude API key not configured in config.php'];
+            }
+        } else {
+            return ['valid' => false, 'error' => 'Invalid AI provider. Must be "openai" or "claude"'];
+        }
+
+        return ['valid' => true];
+    }
+
+    /**
      * Simulate full Telegram webhook from raw message
      */
     public function simulate_telegram_webhook()
     {
         $message_text = $this->input->post('message', true);
+        $ai_provider = $this->input->post('ai_provider', true) ?: 'claude';
 
         if (!$message_text) {
             $this->_send_json_response(false, 'No message provided');
             return;
         }
 
+        // Validate AI provider
+        if (!in_array($ai_provider, ['openai', 'claude'])) {
+            $ai_provider = 'claude';
+        }
+
+        // Validate API key is configured
+        $validation = $this->_validate_ai_provider($ai_provider);
+        if (!$validation['valid']) {
+            $this->_send_json_response(false, $validation['error']);
+            return;
+        }
+
         try {
+            // IMPORTANT: Temporarily override AI provider configuration
+            $original_provider = $this->config->item('ai_provider');
+            $this->config->set_item('ai_provider', $ai_provider);
+
             // 1. Build fake Telegram webhook payload
             $telegram_payload = [
                 'update_id' => rand(100000, 999999),
@@ -564,6 +621,9 @@ class Debug extends CI_Controller
             $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
             curl_close($ch);
 
+            // Restore original AI provider
+            $this->config->set_item('ai_provider', $original_provider);
+
             // 3. Parse response
             $result = json_decode($response, true);
 
@@ -572,9 +632,6 @@ class Debug extends CI_Controller
                 // Get final signal data
                 $signal_id = $result['signal_id'];
                 $final_signal = $this->Telegram_signals_model->get_signal_by_id($signal_id);
-
-                // Get AI provider
-                $ai_provider = $this->config->item('ai_provider') ?: 'openai';
 
                 // Log success
                 $this->Log_model->add_log([
@@ -607,6 +664,11 @@ class Debug extends CI_Controller
             }
 
         } catch (Exception $e) {
+            // Restore original provider on error
+            if (isset($original_provider)) {
+                $this->config->set_item('ai_provider', $original_provider);
+            }
+
             $this->_send_json_response(false, 'Simulation error: ' . $e->getMessage(), [
                 'error_details' => $e->getTraceAsString()
             ]);
