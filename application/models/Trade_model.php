@@ -163,12 +163,13 @@ class Trade_model extends CI_Model
 
     /**
      * Get platform-specific statistics
-     * 
+     *
      * @param int $user_id User ID
      * @param string $platform Platform filter (bingx/metatrader/null for all)
+     * @param int $strategy_id Strategy filter (strategy ID or null for all)
      * @return array Statistics
      */
-    public function get_platform_statistics($user_id, $platform = null)
+    public function get_platform_statistics($user_id, $platform = null, $strategy_id = null)
     {
         // Always JOIN with strategies to get platform
         $this->db->select('trades.*, strategies.platform');
@@ -181,6 +182,10 @@ class Trade_model extends CI_Model
 
         if ($platform) {
             $this->db->where('strategies.platform', $platform);
+        }
+
+        if ($strategy_id) {
+            $this->db->where('trades.strategy_id', $strategy_id);
         }
 
         $trades = $this->db->get()->result();

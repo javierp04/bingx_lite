@@ -167,6 +167,22 @@
             <?php else: ?>
                 <span class="badge bg-secondary ms-2">All Platforms</span>
             <?php endif; ?>
+
+            <?php if (!empty($current_strategy)): ?>
+                <?php
+                // Find the strategy name from the strategies array
+                $strategy_name = 'Unknown';
+                foreach ($strategies as $strat) {
+                    if ($strat->id == $current_strategy) {
+                        $strategy_name = $strat->name;
+                        break;
+                    }
+                }
+                ?>
+                <span class="badge bg-warning text-dark ms-2">
+                    Strategy: <?= $strategy_name ?>
+                </span>
+            <?php endif; ?>
         </h5>
     </div>
     <div class="card-body">
@@ -248,7 +264,7 @@
                         <h6 class="text-muted">Performance Summary</h6>
                         <p class="mb-2">
                             <i class="fas fa-info-circle me-1 text-primary"></i>
-                            These statistics reflect only your closed trades<?= !empty($current_platform) ? ' on ' . ucfirst($current_platform) : ' across all platforms' ?>.
+                            These statistics reflect only your closed trades<?= !empty($current_platform) ? ' on ' . ucfirst($current_platform) : ' across all platforms' ?><?= !empty($current_strategy) ? ' for the selected strategy' : '' ?>.
                             <?php if (empty($current_platform) || $current_platform === 'bingx'): ?>
                                 The PNL percentage accounts for leverage on BingX trades.
                             <?php endif; ?>

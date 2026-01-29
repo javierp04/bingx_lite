@@ -40,8 +40,8 @@ class Trades extends CI_Controller
             'strategy_id' => $strategy  // CAMBIO: era 'strategy'
         ], ['with_relations' => true]);
 
-        // Calculate trading statistics (unified for selected platform)
-        $stats = $this->Trade_model->get_platform_statistics($user_id, $platform);
+        // Calculate trading statistics (unified for selected platform and strategy)
+        $stats = $this->Trade_model->get_platform_statistics($user_id, $platform, $strategy);
         $data['stats'] = $stats;
 
         // Pass current filters to view
