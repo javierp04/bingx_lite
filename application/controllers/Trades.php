@@ -205,9 +205,10 @@ class Trades extends CI_Controller
             $this->Log_model->add_log($log_data);
 
             // Show warning message
-            $this->session->set_flashdata('warning',
+            $this->session->set_flashdata(
+                'warning',
                 'Trade removed from database. Position not found in BingX exchange (may have been closed manually). ' .
-                'Estimated PNL: ' . number_format($pnl, 2) . ' USDT'
+                    'Estimated PNL: ' . number_format($pnl, 2) . ' USDT'
             );
         }
 
