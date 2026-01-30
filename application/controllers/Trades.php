@@ -19,14 +19,12 @@ class Trades extends CI_Controller
         $data['title'] = 'Trade History';
         $user_id = $this->session->userdata('user_id');
 
-        // Get filter params
-        $status = $this->input->get('status');
+        // Get filter params (only closed trades shown here, open trades are on Dashboard)
         $strategy = $this->input->get('strategy');
         $platform = $this->input->get('platform');
         $symbol = $this->input->get('symbol');
 
         // Convertir strings vacíos a null
-        $status = empty($status) ? null : $status;
         $strategy = empty($strategy) ? null : $strategy;
         $platform = empty($platform) ? null : $platform;
         $symbol = empty($symbol) ? null : $symbol;
@@ -37,10 +35,10 @@ class Trades extends CI_Controller
         // Get all symbols for filter dropdown
         $data['symbols'] = $this->Trade_model->get_distinct_symbols($user_id);
 
-        // Get all trades with filters
+        // Get all closed trades with filters
         $trades = $this->Trade_model->find_trades([
             'user_id' => $user_id,
-            'status' => $status,
+            'status' => 'closed',
             'platform' => $platform,
             'strategy_id' => $strategy,
             'symbol' => $symbol
@@ -78,7 +76,6 @@ class Trades extends CI_Controller
 
         // Pass current filters to view
         $data['current_platform'] = $platform;
-        $data['current_status'] = $status;
         $data['current_strategy'] = $strategy;
         $data['current_symbol'] = $symbol;
 

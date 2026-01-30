@@ -4,27 +4,33 @@
     </h1>
 </div>
 
+<!-- Platform Tabs -->
+<ul class="nav nav-tabs mb-4">
+    <li class="nav-item">
+        <a class="nav-link <?= empty($current_platform) ? 'active' : '' ?>" href="<?= base_url('trades') ?>?<?= http_build_query(array_filter(['strategy' => $current_strategy, 'symbol' => $current_symbol])) ?>">
+            All Platforms
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link <?= $current_platform === 'bingx' ? 'active' : '' ?>" href="<?= base_url('trades') ?>?<?= http_build_query(array_filter(['platform' => 'bingx', 'strategy' => $current_strategy, 'symbol' => $current_symbol])) ?>">
+            <i class="fas fa-chart-line me-1"></i>BingX
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link <?= $current_platform === 'metatrader' ? 'active' : '' ?>" href="<?= base_url('trades') ?>?<?= http_build_query(array_filter(['platform' => 'metatrader', 'strategy' => $current_strategy, 'symbol' => $current_symbol])) ?>">
+            <i class="fas fa-robot me-1"></i>MetaTrader
+        </a>
+    </li>
+</ul>
+
 <!-- Filter Form -->
 <div class="card mb-4">
     <div class="card-body">
         <?= form_open('trades', ['method' => 'get', 'class' => 'row g-3']) ?>
-            <div class="col-md-2">
-                <label for="platform" class="form-label">Platform</label>
-                <select class="form-select" id="platform" name="platform">
-                    <option value="" <?= empty($current_platform) ? 'selected' : '' ?>>All Platforms</option>
-                    <option value="bingx" <?= $current_platform === 'bingx' ? 'selected' : '' ?>>BingX</option>
-                    <option value="metatrader" <?= $current_platform === 'metatrader' ? 'selected' : '' ?>>MetaTrader</option>
-                </select>
-            </div>
-            <div class="col-md-2">
-                <label for="status" class="form-label">Status</label>
-                <select class="form-select" id="status" name="status">
-                    <option value="" <?= empty($current_status) ? 'selected' : '' ?>>All</option>
-                    <option value="open" <?= $current_status === 'open' ? 'selected' : '' ?>>Open</option>
-                    <option value="closed" <?= $current_status === 'closed' ? 'selected' : '' ?>>Closed</option>
-                </select>
-            </div>
-            <div class="col-md-2">
+            <?php if ($current_platform): ?>
+                <input type="hidden" name="platform" value="<?= $current_platform ?>">
+            <?php endif; ?>
+            <div class="col-md-3">
                 <label for="symbol" class="form-label">Symbol</label>
                 <select class="form-select" id="symbol" name="symbol">
                     <option value="" <?= empty($current_symbol) ? 'selected' : '' ?>>All Symbols</option>
@@ -35,7 +41,7 @@
                     <?php endforeach; ?>
                 </select>
             </div>
-            <div class="col-md-4">
+            <div class="col-md-6">
                 <label for="strategy" class="form-label">Strategy</label>
                 <select class="form-select" id="strategy" name="strategy">
                     <option value="">All Strategies</option>
@@ -46,16 +52,16 @@
                     <?php endforeach; ?>
                 </select>
             </div>
-            <div class="col-md-2 d-flex align-items-end">
+            <div class="col-md-3 d-flex align-items-end">
                 <button type="submit" class="btn btn-primary w-100">
                     <i class="fas fa-filter me-1"></i>Filter
                 </button>
             </div>
         <?= form_close() ?>
 
-        <?php if (!empty($current_platform) || !empty($current_status) || !empty($current_strategy) || !empty($current_symbol)): ?>
+        <?php if (!empty($current_strategy) || !empty($current_symbol)): ?>
             <div class="mt-2">
-                <a href="<?= base_url('trades') ?>" class="btn btn-sm btn-outline-secondary">
+                <a href="<?= base_url('trades') ?><?= $current_platform ? '?platform=' . $current_platform : '' ?>" class="btn btn-sm btn-outline-secondary">
                     <i class="fas fa-times me-1"></i>Clear Filters
                 </a>
             </div>
@@ -133,7 +139,6 @@
                                     <th>Quantity</th>
                                     <th>Leverage</th>
                                     <th>PNL</th>
-                                    <th>Status</th>
                                     <th>Date</th>
                                     <th>Actions</th>
                                 </tr>
@@ -141,9 +146,8 @@
                             <tbody>
                                 <?php foreach ($group['trades'] as $trade): ?>
                                     <?php
-                                        $pnl_class = isset($trade->pnl) && $trade->pnl >= 0 ? 'text-profit' : 'text-loss';
+                                        $pnl_class = isset($trade->pnl) && $trade->pnl >= 0 ? 'text-success' : 'text-danger';
                                         $side_class = $trade->side == 'BUY' ? 'text-success' : 'text-danger';
-                                        $status_class = $trade->status == 'open' ? 'bg-primary' : 'bg-success';
 
                                         $type_badges = [
                                             'futures' => 'bg-warning text-dark',
@@ -169,27 +173,11 @@
                                         <td class="<?= $pnl_class ?>">
                                             <?= isset($trade->pnl) ? number_format($trade->pnl, 2) . ' USDT' : '-' ?>
                                         </td>
-                                        <td>
-                                            <span class="badge <?= $status_class ?>">
-                                                <?= ucfirst($trade->status) ?>
-                                            </span>
-                                        </td>
                                         <td><?= date('Y-m-d H:i', strtotime($trade->created_at)) ?></td>
                                         <td>
                                             <a href="<?= base_url('trades/detail/' . $trade->id) ?>" class="btn btn-sm btn-info">
                                                 <i class="fas fa-eye"></i>
                                             </a>
-                                            <?php if ($trade->status == 'open'): ?>
-                                                <?php if ($trade->platform === 'bingx'): ?>
-                                                    <a href="<?= base_url('trades/close/' . $trade->id) ?>" class="btn btn-sm btn-danger" onclick="return confirm('Are you sure you want to close this trade?')">
-                                                        <i class="fas fa-times-circle"></i>
-                                                    </a>
-                                                <?php else: ?>
-                                                    <button class="btn btn-sm btn-outline-secondary" disabled title="Close via MT EA">
-                                                        <i class="fas fa-robot"></i>
-                                                    </button>
-                                                <?php endif; ?>
-                                            <?php endif; ?>
                                         </td>
                                     </tr>
                                 <?php endforeach; ?>
