@@ -200,7 +200,9 @@ class Trade_model extends CI_Model
             'losing_trades' => 0,
             'winrate' => 0,
             'profit_per_trade' => 0,
-            'total_pnl_percentage' => 0
+            'total_pnl_percentage' => 0,
+            'best_trade' => 0,
+            'worst_trade' => 0
         ];
 
         if (empty($trades)) {
@@ -214,6 +216,14 @@ class Trade_model extends CI_Model
                 $stats['winning_trades']++;
             } else {
                 $stats['losing_trades']++;
+            }
+
+            // Track best and worst trades
+            if ($trade->pnl > $stats['best_trade']) {
+                $stats['best_trade'] = $trade->pnl;
+            }
+            if ($trade->pnl < $stats['worst_trade']) {
+                $stats['worst_trade'] = $trade->pnl;
             }
 
             // Calculate investment (considering leverage for BingX)

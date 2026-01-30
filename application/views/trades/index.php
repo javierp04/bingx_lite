@@ -72,141 +72,154 @@
         </div>
     </div>
 <?php else: ?>
+    <?php $group_index = 0; ?>
     <?php foreach ($grouped_trades as $group): ?>
         <?php
             $platform_badge = $group['platform'] === 'metatrader' ? 'bg-dark' : 'bg-info';
             $group_stats = $group['stats'];
+            $collapse_id = 'collapse-strategy-' . $group_index;
         ?>
-        <div class="card mb-4">
-            <!-- Strategy Header -->
-            <div class="card-header bg-light">
+        <div class="card mb-3">
+            <!-- Strategy Header with Subtotals (always visible) -->
+            <div class="card-header bg-light" style="cursor: pointer;" data-bs-toggle="collapse" data-bs-target="#<?= $collapse_id ?>">
                 <div class="d-flex justify-content-between align-items-center">
-                    <div>
+                    <div class="d-flex align-items-center">
+                        <i class="fas fa-chevron-down me-2 collapse-icon" id="icon-<?= $collapse_id ?>"></i>
                         <h5 class="mb-0">
-                            <i class="fas fa-chart-line me-2"></i>
                             <?= $group['strategy_name'] ?>
                             <span class="badge bg-secondary ms-2"><?= $group['symbol'] ?></span>
                             <span class="badge <?= $platform_badge ?> ms-1"><?= ucfirst($group['platform']) ?></span>
                         </h5>
                     </div>
-                    <div>
-                        <span class="text-muted"><?= count($group['trades']) ?> trades</span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Trades Table -->
-            <div class="card-body p-0">
-                <div class="table-responsive">
-                    <table class="table table-striped table-hover mb-0">
-                        <thead>
-                            <tr>
-                                <th>ID</th>
-                                <th>Side</th>
-                                <th>Type</th>
-                                <th>Entry Price</th>
-                                <th>Exit Price</th>
-                                <th>Quantity</th>
-                                <th>Leverage</th>
-                                <th>PNL</th>
-                                <th>Status</th>
-                                <th>Date</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php foreach ($group['trades'] as $trade): ?>
-                                <?php
-                                    $pnl_class = isset($trade->pnl) && $trade->pnl >= 0 ? 'text-profit' : 'text-loss';
-                                    $side_class = $trade->side == 'BUY' ? 'text-success' : 'text-danger';
-                                    $status_class = $trade->status == 'open' ? 'bg-primary' : 'bg-success';
-
-                                    $type_badges = [
-                                        'futures' => 'bg-warning text-dark',
-                                        'spot' => 'bg-info',
-                                        'forex' => 'bg-success',
-                                        'indices' => 'bg-primary',
-                                        'commodities' => 'bg-danger'
-                                    ];
-                                    $type_badge = $type_badges[$trade->trade_type] ?? 'bg-secondary';
-                                ?>
-                                <tr>
-                                    <td><?= $trade->id ?></td>
-                                    <td class="<?= $side_class ?> fw-bold"><?= $trade->side ?></td>
-                                    <td>
-                                        <span class="badge <?= $type_badge ?>">
-                                            <?= ucfirst($trade->trade_type) ?>
-                                        </span>
-                                    </td>
-                                    <td><?= number_format($trade->entry_price, 2) ?></td>
-                                    <td><?= $trade->exit_price ? number_format($trade->exit_price, 2) : '-' ?></td>
-                                    <td><?= rtrim(rtrim(number_format($trade->quantity, 8), '0'), '.') ?></td>
-                                    <td><?= $trade->leverage ?>x</td>
-                                    <td class="<?= $pnl_class ?>">
-                                        <?= isset($trade->pnl) ? number_format($trade->pnl, 2) . ' USDT' : '-' ?>
-                                    </td>
-                                    <td>
-                                        <span class="badge <?= $status_class ?>">
-                                            <?= ucfirst($trade->status) ?>
-                                        </span>
-                                    </td>
-                                    <td><?= date('Y-m-d H:i', strtotime($trade->created_at)) ?></td>
-                                    <td>
-                                        <a href="<?= base_url('trades/detail/' . $trade->id) ?>" class="btn btn-sm btn-info">
-                                            <i class="fas fa-eye"></i>
-                                        </a>
-                                        <?php if ($trade->status == 'open'): ?>
-                                            <?php if ($trade->platform === 'bingx'): ?>
-                                                <a href="<?= base_url('trades/close/' . $trade->id) ?>" class="btn btn-sm btn-danger" onclick="return confirm('Are you sure you want to close this trade?')">
-                                                    <i class="fas fa-times-circle"></i>
-                                                </a>
-                                            <?php else: ?>
-                                                <button class="btn btn-sm btn-outline-secondary" disabled title="Close via MT EA">
-                                                    <i class="fas fa-robot"></i>
-                                                </button>
-                                            <?php endif; ?>
-                                        <?php endif; ?>
-                                    </td>
-                                </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
-            <!-- Strategy Subtotals -->
-            <?php if ($group_stats && $group_stats['total_trades'] > 0): ?>
-                <div class="card-footer bg-light">
-                    <div class="row text-center">
-                        <div class="col-md-3">
-                            <small class="text-muted d-block">Total PNL</small>
+                    <?php if ($group_stats && $group_stats['total_trades'] > 0): ?>
+                    <div class="d-flex align-items-center gap-4">
+                        <div class="text-center">
+                            <small class="text-muted d-block" style="font-size: 0.7rem;">PNL</small>
                             <strong class="<?= $group_stats['total_pnl'] >= 0 ? 'text-success' : 'text-danger' ?>">
-                                <?= number_format($group_stats['total_pnl'], 2) ?> USDT
+                                <?= number_format($group_stats['total_pnl'], 2) ?>
                             </strong>
                         </div>
-                        <div class="col-md-3">
-                            <small class="text-muted d-block">PNL %</small>
+                        <div class="text-center">
+                            <small class="text-muted d-block" style="font-size: 0.7rem;">PNL %</small>
                             <strong class="<?= $group_stats['total_pnl_percentage'] >= 0 ? 'text-success' : 'text-danger' ?>">
                                 <?= number_format($group_stats['total_pnl_percentage'], 2) ?>%
                             </strong>
                         </div>
-                        <div class="col-md-3">
-                            <small class="text-muted d-block">Winrate</small>
+                        <div class="text-center">
+                            <small class="text-muted d-block" style="font-size: 0.7rem;">Winrate</small>
                             <strong><?= number_format($group_stats['winrate'], 1) ?>%</strong>
-                            <small class="text-muted">(<?= $group_stats['winning_trades'] ?>/<?= $group_stats['total_trades'] ?>)</small>
                         </div>
-                        <div class="col-md-3">
-                            <small class="text-muted d-block">Avg Profit/Trade</small>
-                            <strong class="<?= $group_stats['profit_per_trade'] >= 0 ? 'text-success' : 'text-danger' ?>">
-                                <?= number_format($group_stats['profit_per_trade'], 2) ?> USDT
-                            </strong>
+                        <div class="text-center">
+                            <small class="text-muted d-block" style="font-size: 0.7rem;">Trades</small>
+                            <strong><?= $group_stats['total_trades'] ?></strong>
                         </div>
                     </div>
+                    <?php endif; ?>
                 </div>
-            <?php endif; ?>
+            </div>
+
+            <!-- Collapsible Trades Table -->
+            <div class="collapse" id="<?= $collapse_id ?>">
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-striped table-hover mb-0">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Side</th>
+                                    <th>Type</th>
+                                    <th>Entry Price</th>
+                                    <th>Exit Price</th>
+                                    <th>Quantity</th>
+                                    <th>Leverage</th>
+                                    <th>PNL</th>
+                                    <th>Status</th>
+                                    <th>Date</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($group['trades'] as $trade): ?>
+                                    <?php
+                                        $pnl_class = isset($trade->pnl) && $trade->pnl >= 0 ? 'text-profit' : 'text-loss';
+                                        $side_class = $trade->side == 'BUY' ? 'text-success' : 'text-danger';
+                                        $status_class = $trade->status == 'open' ? 'bg-primary' : 'bg-success';
+
+                                        $type_badges = [
+                                            'futures' => 'bg-warning text-dark',
+                                            'spot' => 'bg-info',
+                                            'forex' => 'bg-success',
+                                            'indices' => 'bg-primary',
+                                            'commodities' => 'bg-danger'
+                                        ];
+                                        $type_badge = $type_badges[$trade->trade_type] ?? 'bg-secondary';
+                                    ?>
+                                    <tr>
+                                        <td><?= $trade->id ?></td>
+                                        <td class="<?= $side_class ?> fw-bold"><?= $trade->side ?></td>
+                                        <td>
+                                            <span class="badge <?= $type_badge ?>">
+                                                <?= ucfirst($trade->trade_type) ?>
+                                            </span>
+                                        </td>
+                                        <td><?= number_format($trade->entry_price, 2) ?></td>
+                                        <td><?= $trade->exit_price ? number_format($trade->exit_price, 2) : '-' ?></td>
+                                        <td><?= rtrim(rtrim(number_format($trade->quantity, 8), '0'), '.') ?></td>
+                                        <td><?= $trade->leverage ?>x</td>
+                                        <td class="<?= $pnl_class ?>">
+                                            <?= isset($trade->pnl) ? number_format($trade->pnl, 2) . ' USDT' : '-' ?>
+                                        </td>
+                                        <td>
+                                            <span class="badge <?= $status_class ?>">
+                                                <?= ucfirst($trade->status) ?>
+                                            </span>
+                                        </td>
+                                        <td><?= date('Y-m-d H:i', strtotime($trade->created_at)) ?></td>
+                                        <td>
+                                            <a href="<?= base_url('trades/detail/' . $trade->id) ?>" class="btn btn-sm btn-info">
+                                                <i class="fas fa-eye"></i>
+                                            </a>
+                                            <?php if ($trade->status == 'open'): ?>
+                                                <?php if ($trade->platform === 'bingx'): ?>
+                                                    <a href="<?= base_url('trades/close/' . $trade->id) ?>" class="btn btn-sm btn-danger" onclick="return confirm('Are you sure you want to close this trade?')">
+                                                        <i class="fas fa-times-circle"></i>
+                                                    </a>
+                                                <?php else: ?>
+                                                    <button class="btn btn-sm btn-outline-secondary" disabled title="Close via MT EA">
+                                                        <i class="fas fa-robot"></i>
+                                                    </button>
+                                                <?php endif; ?>
+                                            <?php endif; ?>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
         </div>
+        <?php $group_index++; ?>
     <?php endforeach; ?>
 <?php endif; ?>
+
+<script>
+// Toggle chevron icon on collapse
+document.querySelectorAll('[data-bs-toggle="collapse"]').forEach(function(element) {
+    var targetId = element.getAttribute('data-bs-target');
+    var target = document.querySelector(targetId);
+    var icon = element.querySelector('.collapse-icon');
+
+    target.addEventListener('show.bs.collapse', function() {
+        icon.classList.remove('fa-chevron-down');
+        icon.classList.add('fa-chevron-up');
+    });
+    target.addEventListener('hide.bs.collapse', function() {
+        icon.classList.remove('fa-chevron-up');
+        icon.classList.add('fa-chevron-down');
+    });
+});
+</script>
 
 <!-- Global Trading Statistics -->
 <?php if (!empty($stats) && $stats['total_trades'] > 0): ?>
@@ -225,6 +238,7 @@
         </h5>
     </div>
     <div class="card-body">
+        <!-- First Row: Main Stats -->
         <div class="row">
             <div class="col-md-3 mb-3">
                 <div class="card h-100 <?= $stats['total_pnl'] >= 0 ? 'bg-success bg-opacity-10' : 'bg-danger bg-opacity-10' ?>">
@@ -263,6 +277,51 @@
                         <h6 class="text-muted">Avg Profit/Trade</h6>
                         <h4 class="mb-0 <?= $stats['profit_per_trade'] >= 0 ? 'text-success' : 'text-danger' ?>">
                             <?= number_format($stats['profit_per_trade'], 2) ?> USDT
+                        </h4>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Second Row: Additional Stats -->
+        <div class="row">
+            <div class="col-md-3 mb-3">
+                <div class="card h-100">
+                    <div class="card-body text-center">
+                        <h6 class="text-muted">Total Invested</h6>
+                        <h4 class="mb-0">
+                            <?= number_format($stats['total_invested'], 2) ?> USDT
+                        </h4>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 mb-3">
+                <div class="card h-100">
+                    <div class="card-body text-center">
+                        <h6 class="text-muted">Trades</h6>
+                        <h4 class="mb-0">
+                            <span class="text-success"><?= $stats['winning_trades'] ?> W</span>
+                            /
+                            <span class="text-danger"><?= $stats['losing_trades'] ?> L</span>
+                        </h4>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 mb-3">
+                <div class="card h-100 bg-success bg-opacity-10">
+                    <div class="card-body text-center">
+                        <h6 class="text-muted">Best Trade</h6>
+                        <h4 class="mb-0 text-success">
+                            +<?= number_format($stats['best_trade'], 2) ?> USDT
+                        </h4>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 mb-3">
+                <div class="card h-100 bg-danger bg-opacity-10">
+                    <div class="card-body text-center">
+                        <h6 class="text-muted">Worst Trade</h6>
+                        <h4 class="mb-0 text-danger">
+                            <?= number_format($stats['worst_trade'], 2) ?> USDT
                         </h4>
                     </div>
                 </div>
