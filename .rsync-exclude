@@ -28,3 +28,8 @@ phpunit.xml
 .DS_Store
 Thumbs.db
 *.sql
+
+# Server-side files (no borrar del servidor)
+uploads/
+application/logs/
+mt_out_signals/
