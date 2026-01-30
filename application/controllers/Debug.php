@@ -21,7 +21,7 @@ class Debug extends CI_Controller
         }
 
         // Load BingX API library
-        $this->load->library('BingxApi');
+        $this->load->library('BingXApi');
 
         // Load Webhook processor library
         $this->load->library('Webhook_processor');
@@ -662,7 +662,6 @@ class Debug extends CI_Controller
                     'http_code' => $http_code
                 ]);
             }
-
         } catch (Exception $e) {
             // Restore original provider on error
             if (isset($original_provider)) {
