@@ -1,0 +1,30 @@
+# Git
+.git
+.gitignore
+.github
+
+# IDE
+.vscode
+.idea
+*.sublime-*
+
+# Development files
+CLAUDE.md
+README.md
+*.log
+
+# Local config (si tienes config local diferente a produccion)
+# application/config/database.php
+
+# Archivos de prueba
+tests/
+phpunit.xml
+
+# MetaTrader EA (no necesarios en servidor web)
+*.mq5
+*.ex5
+
+# Otros
+.DS_Store
+Thumbs.db
+*.sql

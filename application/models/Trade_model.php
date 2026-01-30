@@ -18,10 +18,10 @@ class Trade_model extends CI_Model
      */
     public function find_trades($filters = [], $options = [])
     {
-        // Default options - CAMBIAR ORDEN POR DEFECTO
+        // Default options
         $defaults = [
             'with_relations' => false,
-            'order_by' => 'trades.status ASC, trades.created_at DESC', // OPEN primero, luego por fecha
+            'order_by' => 'trades.symbol ASC, trades.strategy_id ASC, trades.status ASC, trades.created_at DESC',
             'limit' => null
         ];
         $options = array_merge($defaults, $options);
@@ -43,8 +43,9 @@ class Trade_model extends CI_Model
                 if ($field === 'platform') {
                     $this->db->where('strategies.platform', $value);
                 } elseif ($field === 'strategy_id') {
-                    // NUEVO: manejar strategy_id correctamente
                     $this->db->where('trades.strategy_id', $value);
+                } elseif ($field === 'symbol') {
+                    $this->db->where('trades.symbol', $value);
                 } elseif ($need_join && in_array($field, ['user_id', 'status'])) {
                     // Calificar campos que existen en trades cuando hay JOIN
                     $this->db->where('trades.' . $field, $value);
@@ -246,5 +247,29 @@ class Trade_model extends CI_Model
         unset($stats['trades_data']);
 
         return $stats;
+    }
+
+    /**
+     * Get distinct symbols for a user (for filter dropdown)
+     *
+     * @param int $user_id User ID
+     * @return array Array of symbol strings
+     */
+    public function get_distinct_symbols($user_id)
+    {
+        $this->db->select('DISTINCT(symbol) as symbol');
+        $this->db->from('trades');
+        $this->db->where('user_id', $user_id);
+        $this->db->where('symbol IS NOT NULL');
+        $this->db->order_by('symbol', 'ASC');
+
+        $results = $this->db->get()->result();
+
+        $symbols = [];
+        foreach ($results as $row) {
+            $symbols[] = $row->symbol;
+        }
+
+        return $symbols;
     }
 }

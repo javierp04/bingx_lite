@@ -19,28 +19,60 @@ class Trades extends CI_Controller
         $data['title'] = 'Trade History';
         $user_id = $this->session->userdata('user_id');
 
-        // Get filter params - LIMPIAR VALORES VACÍOS
+        // Get filter params
         $status = $this->input->get('status');
         $strategy = $this->input->get('strategy');
         $platform = $this->input->get('platform');
+        $symbol = $this->input->get('symbol');
 
         // Convertir strings vacíos a null
         $status = empty($status) ? null : $status;
         $strategy = empty($strategy) ? null : $strategy;
         $platform = empty($platform) ? null : $platform;
+        $symbol = empty($symbol) ? null : $symbol;
 
         // Get all strategies for filter dropdown
         $data['strategies'] = $this->Strategy_model->get_all_strategies($user_id);
 
-        // Get all trades with filters (usando strategy_id en lugar de strategy)
-        $data['trades'] = $this->Trade_model->find_trades([
+        // Get all symbols for filter dropdown
+        $data['symbols'] = $this->Trade_model->get_distinct_symbols($user_id);
+
+        // Get all trades with filters
+        $trades = $this->Trade_model->find_trades([
             'user_id' => $user_id,
             'status' => $status,
             'platform' => $platform,
-            'strategy_id' => $strategy  // CAMBIO: era 'strategy'
+            'strategy_id' => $strategy,
+            'symbol' => $symbol
         ], ['with_relations' => true]);
 
-        // Calculate trading statistics (unified for selected platform and strategy)
+        // Group trades by strategy_id
+        $grouped_trades = [];
+        foreach ($trades as $trade) {
+            $sid = $trade->strategy_id ?? 0;
+            if (!isset($grouped_trades[$sid])) {
+                $grouped_trades[$sid] = [
+                    'strategy_id' => $sid,
+                    'strategy_name' => $trade->strategy_name ?? 'Unknown',
+                    'symbol' => $trade->symbol,
+                    'platform' => $trade->platform ?? 'unknown',
+                    'trades' => [],
+                    'stats' => null
+                ];
+            }
+            $grouped_trades[$sid]['trades'][] = $trade;
+        }
+
+        // Calculate stats for each strategy group
+        foreach ($grouped_trades as $sid => &$group) {
+            $group['stats'] = $this->Trade_model->get_platform_statistics($user_id, null, $sid);
+        }
+        unset($group);
+
+        $data['grouped_trades'] = $grouped_trades;
+        $data['trades'] = $trades; // Keep for global stats
+
+        // Calculate global trading statistics
         $stats = $this->Trade_model->get_platform_statistics($user_id, $platform, $strategy);
         $data['stats'] = $stats;
 
@@ -48,6 +80,7 @@ class Trades extends CI_Controller
         $data['current_platform'] = $platform;
         $data['current_status'] = $status;
         $data['current_strategy'] = $strategy;
+        $data['current_symbol'] = $symbol;
 
         $this->load->view('templates/header', $data);
         $this->load->view('trades/index', $data);
