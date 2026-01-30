@@ -33,3 +33,4 @@ Thumbs.db
 uploads/
 application/logs/
 mt_out_signals/
+.htaccess
