@@ -102,13 +102,18 @@ $route['tradereader/run'] = 'tradereader/generateSignalFromTelegram';
 // API ROUTES FOR METATRADER EA - ORDEN CORRECTO
 // ==========================================
 
-// POST reportes específicos (DEBEN IR PRIMERO)
-$route['api/signals/(:num)/open'] = 'Api/report_open/$1';             
-$route['api/signals/(:num)/progress'] = 'Api/report_progress/$1';     
-$route['api/signals/(:num)/close'] = 'Api/report_close/$1';           
+// EA Autónomo - Trades API (DEBEN IR PRIMERO)
+$route['api/trades/open'] = 'Api/trade_open';
+$route['api/trades/(:num)/update'] = 'Api/trade_update/$1';
+$route['api/trades/(:num)/close'] = 'Api/trade_close/$1';
+
+// ATVIP - POST reportes específicos
+$route['api/signals/(:num)/open'] = 'Api/report_open/$1';
+$route['api/signals/(:num)/progress'] = 'Api/report_progress/$1';
+$route['api/signals/(:num)/close'] = 'Api/report_close/$1';
 
 // GET precio de futuros
-$route['api/fut_price/(:any)'] = 'Api/fut_price/$1';                 
+$route['api/fut_price/(:any)'] = 'Api/fut_price/$1';
 
 // GET señales disponibles (GENÉRICA - VA AL FINAL)
 $route['api/signals/(:num)/(:any)'] = 'Api/get_signals/$1/$2';

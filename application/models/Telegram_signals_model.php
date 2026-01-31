@@ -242,6 +242,7 @@ class Telegram_signals_model extends CI_Model
 
     /**
      * ACTUALIZADO: Reportar cierre final de posición (con conversión UTC)
+     * También inserta en tabla trades para unificar Trade History
      */
     public function report_close($user_signal_id, $close_data)
     {
@@ -280,7 +281,103 @@ class Telegram_signals_model extends CI_Model
         $update_data['execution_data'] = json_encode($close_data);
 
         $this->db->where('id', $user_signal_id);
-        return $this->db->update('user_telegram_signals', $update_data);
+        $result = $this->db->update('user_telegram_signals', $update_data);
+
+        // Insertar en tabla trades para unificar Trade History
+        if ($result) {
+            $this->insert_closed_trade_to_trades($user_signal_id, $close_data, $update_data['gross_pnl']);
+        }
+
+        return $result;
+    }
+
+    /**
+     * Inserta el trade cerrado en la tabla trades para unificar Trade History
+     */
+    private function insert_closed_trade_to_trades($user_signal_id, $close_data, $final_pnl)
+    {
+        // Obtener datos de la señal del usuario
+        $signal = $this->get_user_signal_by_id($user_signal_id);
+        if (!$signal) {
+            return false;
+        }
+
+        // Obtener o crear strategy_id para ATVIP
+        $strategy_id = $this->get_or_create_atvip_strategy($signal->user_id);
+        if (!$strategy_id) {
+            return false;
+        }
+
+        // Determinar side basado en order_type
+        $side = 'BUY';
+        if (!empty($signal->order_type)) {
+            $side = (strpos($signal->order_type, 'SELL') !== false) ? 'SELL' : 'BUY';
+        }
+
+        $this->load->model('Trade_model');
+
+        $trade_data = [
+            'user_id' => $signal->user_id,
+            'strategy_id' => $strategy_id,
+            'symbol' => $signal->ticker_symbol,
+            'timeframe' => 'ATVIP',
+            'side' => $side,
+            'trade_type' => 'forex',
+            'quantity' => $signal->real_volume ?? 0.01,
+            'entry_price' => $signal->real_entry_price ?? 0,
+            'exit_price' => $close_data['last_price'] ?? 0,
+            'pnl' => $final_pnl ?? 0,
+            'status' => 'closed',
+            'source' => 'atvip',
+            'user_signal_id' => $user_signal_id,
+            'order_id' => $signal->trade_id ?? null,
+            'created_at' => $signal->created_at,
+            'closed_at' => date('Y-m-d H:i:s'),
+            'updated_at' => date('Y-m-d H:i:s')
+        ];
+
+        return $this->Trade_model->add_trade($trade_data);
+    }
+
+    /**
+     * Obtiene o crea una estrategia ATVIP para el usuario
+     */
+    private function get_or_create_atvip_strategy($user_id)
+    {
+        $this->load->model('Strategy_model');
+
+        // Buscar estrategia ATVIP existente
+        $this->db->where('user_id', $user_id);
+        $this->db->where('strategy_id', 'ATVIP_SIGNALS');
+        $existing = $this->db->get('strategies')->row();
+
+        if ($existing) {
+            return $existing->id;
+        }
+
+        // Crear estrategia ATVIP si no existe
+        $strategy_data = [
+            'user_id' => $user_id,
+            'strategy_id' => 'ATVIP_SIGNALS',
+            'name' => 'ATVIP Signals',
+            'type' => 'forex',
+            'platform' => 'metatrader',
+            'description' => 'Trades from ATVIP Telegram signals',
+            'active' => 1,
+            'created_at' => date('Y-m-d H:i:s')
+        ];
+
+        $this->db->insert('strategies', $strategy_data);
+        return $this->db->insert_id();
+    }
+
+    /**
+     * Obtiene una señal de usuario por ID
+     */
+    private function get_user_signal_by_id($user_signal_id)
+    {
+        $this->db->where('id', $user_signal_id);
+        return $this->db->get('user_telegram_signals')->row();
     }
 
     /**
