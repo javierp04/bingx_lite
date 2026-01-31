@@ -79,7 +79,7 @@
                 <div class="alert alert-info mt-3">
                     <small>
                         <i class="fas fa-info-circle me-1"></i>
-                        Make sure the symbol exactly matches what comes from your Telegram signals.
+                        Make sure the symbol exactly matches what comes from your ATVIP signals.
                     </small>
                 </div>
             </div>

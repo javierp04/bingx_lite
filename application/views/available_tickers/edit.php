@@ -83,7 +83,7 @@
                 </div>
                 
                 <div class="d-flex justify-content-between align-items-center mb-2">
-                    <span>Telegram Signals:</span>
+                    <span>ATVIP Signals:</span>
                     <span class="badge bg-warning text-dark"><?= $signals_count ?></span>
                 </div>
                 

@@ -108,7 +108,7 @@
         </h5>
     </div>
     <div class="card-body">
-        <p>Available tickers represent the symbols that can be traded through Telegram signals. Users can select which tickers they want to trade from this list.</p>
+        <p>Available tickers represent the symbols that can be traded through ATVIP signals. Users can select which tickers they want to trade from this list.</p>
         
         <div class="row">
             <div class="col-md-6">
@@ -122,7 +122,7 @@
                 <h6>Deletion Rules:</h6>
                 <ul>
                     <li>Tickers with user selections cannot be deleted</li>
-                    <li>Tickers with telegram signals cannot be deleted</li>
+                    <li>Tickers with ATVIP signals cannot be deleted</li>
                     <li>Use deactivation instead to hide tickers</li>
                 </ul>
             </div>
@@ -130,7 +130,7 @@
         
         <div class="alert alert-info mt-3">
             <i class="fas fa-lightbulb me-2"></i>
-            <strong>Tip:</strong> Use clear, standardized symbols (e.g., EURUSD, BTCUSDT, NQ) that match your Telegram signals.
+            <strong>Tip:</strong> Use clear, standardized symbols (e.g., EURUSD, BTCUSDT, NQ) that match your ATVIP signals.
         </div>
     </div>
 </div>

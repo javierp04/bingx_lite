@@ -1,6 +1,6 @@
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h1 class="h3 mb-0">
-        <i class="fas fa-paper-plane me-2"></i>Telegram Debug Panel
+        <i class="fas fa-broadcast-tower me-2"></i>ATVIP Debug Panel
     </h1>
     <div class="btn-group">
         <a href="<?= base_url('telegram_signals') ?>" class="btn btn-info btn-sm">
@@ -107,7 +107,7 @@
                         <form id="webhookForm">
                             <div class="row g-2 mb-3">
                                 <div class="col-md-8">
-                                    <label class="form-label small mb-1">Telegram Message</label>
+                                    <label class="form-label small mb-1">ATVIP Message</label>
                                     <input type="text" class="form-control form-control-sm" id="telegram_message" name="telegram_message"
                                            placeholder="Sentimiento #ES https://www.tradingview.com/x/abc123" required>
                                 </div>

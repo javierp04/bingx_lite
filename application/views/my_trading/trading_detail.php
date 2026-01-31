@@ -269,7 +269,7 @@
                 </div>
 
                 <small class="text-muted">
-                    <i class="fas fa-info-circle"></i> Signal prices from Telegram (pre-correction)
+                    <i class="fas fa-info-circle"></i> Signal prices from ATVIP (pre-correction)
                 </small>
             </div>
         </div>
@@ -389,7 +389,7 @@
         </div>
         <?php endif; ?>
 
-        <!-- Original Telegram Message -->
+        <!-- Original ATVIP Message -->
         <div class="card">
             <div class="card-header">
                 <h6 class="mb-0"><i class="fas fa-comment-dots me-1"></i>Original Message</h6>
@@ -460,7 +460,7 @@
             </div>
             <div class="card-body">
                 <small class="text-muted d-block mb-1">User Signal ID: <?= $signal->id ?></small>
-                <small class="text-muted d-block mb-1">Telegram Signal ID: <?= $signal->telegram_signal_id ?></small>
+                <small class="text-muted d-block mb-1">ATVIP Signal ID: <?= $signal->telegram_signal_id ?></small>
                 <small class="text-muted d-block mb-1">User ID: <?= $this->session->userdata('user_id') ?></small>
                 <small class="text-muted d-block">Created: <?= $signal->created_at ?></small>
                 <small class="text-muted d-block">Updated: <?= $signal->updated_at ?: '-' ?></small>

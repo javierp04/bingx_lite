@@ -1,6 +1,6 @@
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h1 class="h3 mb-0">
-        <i class="fas fa-paper-plane me-2"></i>Telegram Signals
+        <i class="fas fa-broadcast-tower me-2"></i>ATVIP Signals
     </h1>
     <div class="btn-group">
         <button class="btn btn-outline-primary" onclick="location.reload()">
@@ -110,7 +110,7 @@
 <div class="card">
     <div class="card-header">
         <h5 class="mb-0">
-            <i class="fas fa-list me-1"></i>Telegram Signals
+            <i class="fas fa-list me-1"></i>ATVIP Signals
             <span class="badge bg-secondary ms-2"><?= count($signals) ?></span>
         </h5>
     </div>

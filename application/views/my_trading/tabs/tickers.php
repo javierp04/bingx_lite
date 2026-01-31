@@ -17,7 +17,7 @@
                 <table class="table table-hover mb-0">
                     <thead class="table-light">
                         <tr>
-                            <th>Telegram Symbol</th>
+                            <th>ATVIP Symbol</th>
                             <th>Name</th>
                             <th>MetaTrader Symbol</th>
                             <th>Status</th>
@@ -127,7 +127,7 @@
             <div class="modal-body">
                 <div class="row">
                     <div class="col-sm-4">
-                        <label class="form-label">Telegram Symbol:</label>
+                        <label class="form-label">ATVIP Symbol:</label>
                         <div class="form-control-plaintext"><strong id="modal-symbol"></strong></div>
                     </div>
                     <div class="col-sm-8">

@@ -1,7 +1,7 @@
 <div class="mb-4">
     <div class="d-flex justify-content-between align-items-center">
         <h1 class="h3 mb-0">
-            <i class="fas fa-paper-plane me-2"></i>Telegram Signal #<?= $signal->id ?>
+            <i class="fas fa-broadcast-tower me-2"></i>ATVIP Signal #<?= $signal->id ?>
         </h1>
         <div>
             <a href="<?= base_url('telegram_signals') ?>" class="btn btn-secondary">
@@ -87,7 +87,7 @@
         <!-- Original Message -->
         <div class="card mb-4">
             <div class="card-header">
-                <h5 class="mb-0">Original Telegram Message</h5>
+                <h5 class="mb-0">Original ATVIP Message</h5>
             </div>
             <div class="card-body">
                 <pre class="bg-light p-3 rounded mb-0"><?= htmlspecialchars($signal->message_text) ?></pre>

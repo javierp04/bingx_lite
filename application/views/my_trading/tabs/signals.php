@@ -86,7 +86,7 @@
                                             <i class="fas fa-plus me-1"></i>Add Tickers to Start Receiving Signals
                                         </a>
                                     <?php else: ?>
-                                        Your trading signals will appear here once received from Telegram.
+                                        Your trading signals will appear here once received from ATVIP.
                                     <?php endif; ?>
                                 </p>
                             </td>
