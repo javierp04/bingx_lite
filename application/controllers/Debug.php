@@ -558,7 +558,7 @@ class Debug extends CI_Controller
      */
     public function simulate_telegram_webhook()
     {
-        $message_text = $this->input->post('message', true);
+        $message_text = $this->input->post('message');
         $ai_provider = $this->input->post('ai_provider', true) ?: 'claude';
 
         if (!$message_text) {
@@ -606,20 +606,26 @@ class Debug extends CI_Controller
             ];
 
             // 2. POST to real webhook endpoint
-            $webhook_url = base_url('tradereader/run');
+            $webhook_url = base_url('tradereader/run') . '?ai_provider=' . $ai_provider;
 
             $ch = curl_init($webhook_url);
+            $json_payload = json_encode($telegram_payload);
+            error_log('[Debug] cURL URL: ' . $webhook_url);
+            error_log('[Debug] cURL payload length: ' . strlen($json_payload));
             curl_setopt_array($ch, [
                 CURLOPT_POST => true,
-                CURLOPT_POSTFIELDS => json_encode($telegram_payload),
+                CURLOPT_POSTFIELDS => $json_payload,
                 CURLOPT_RETURNTRANSFER => true,
                 CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
                 CURLOPT_TIMEOUT => 120
             ]);
 
             $response = curl_exec($ch);
+            $curl_error = curl_error($ch);
             $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
             curl_close($ch);
+            error_log('[Debug] cURL response code: ' . $http_code . ' error: ' . $curl_error);
+            error_log('[Debug] cURL response: ' . substr($response, 0, 500));
 
             // Restore original AI provider
             $this->config->set_item('ai_provider', $original_provider);

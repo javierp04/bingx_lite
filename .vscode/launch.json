@@ -14,7 +14,7 @@
             "request": "launch",
             "port": 9003,
             "pathMappings": {
-                "/var/www/html/bunnylabs/bingxlite": "C:\\xampp\\htdocs\\bingx_lite"
+                "/var/www/html/bx-trade": "C:\\xampp\\htdocs\\bingx_lite"
             }
         },
         {

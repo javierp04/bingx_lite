@@ -80,6 +80,12 @@
                     </div>
                 <?php endif; ?>
                 
+                <?php if (in_array($_SERVER['REMOTE_ADDR'], ['127.0.0.1', '::1'])): ?>
+                    <div class="alert alert-warning py-2 small">
+                        <i class="fas fa-bug me-1"></i><strong>Dev:</strong> admin / admin123
+                    </div>
+                <?php endif; ?>
+
                 <?= form_open('login') ?>
                     <div class="mb-3">
                         <label for="username" class="form-label">Username</label>

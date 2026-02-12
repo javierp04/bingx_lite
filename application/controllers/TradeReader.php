@@ -23,8 +23,9 @@ class TradeReader extends CI_Controller
     public function generateSignalFromTelegram()
     {
         $update = file_get_contents("php://input");
+        error_log('[TradeReader] RAW INPUT: ' . substr($update, 0, 500));
 
-        try {   
+        try {
             // 1. Validar JSON
             $webhook_data = json_decode($update, true);
             if (json_last_error() !== JSON_ERROR_NONE) {
@@ -175,11 +176,12 @@ class TradeReader extends CI_Controller
             // PASO 3: Cambiar status a 'analyzing'
             $this->Telegram_signals_model->update_signal_status($signal_id, 'analyzing');
 
-            // PASO 4: Ejecutar análisis IA con información de la caja verde
+            // PASO 4: Ejecutar análisis IA con información de las cajas verde y roja
             $cropped_filename = 'cropped-' . pathinfo($image_filename, PATHINFO_FILENAME);
             $cajaCoords = $crop_result['box_coords'];
+            $redCoords = $crop_result['red_coords'];
             $imageHeight = $crop_result['image_height'];
-            $analysis_result = $this->createTradeAnalysis($cropped_filename, $cajaCoords, $imageHeight);
+            $analysis_result = $this->createTradeAnalysis($cropped_filename, $cajaCoords, $imageHeight, $redCoords);
 
             if (!$analysis_result) {
                 // Análisis falló o devolvió JSON vacío
@@ -223,9 +225,10 @@ class TradeReader extends CI_Controller
 
         $prices = $raw_json['label_prices'];
         $op_type = strtoupper(trim($raw_json['op_type']));
+        $n = count($prices);
 
-        // Validar mínimo 8 precios (2 SL + 1 Entry + 5 TPs)
-        if (!is_array($prices) || count($prices) < 8) {
+        // Validar mínimo 8 precios (2 SL + 1 Entry + 5+ TPs)
+        if (!is_array($prices) || $n < 8) {
             return null;
         }
 
@@ -233,37 +236,33 @@ class TradeReader extends CI_Controller
         $prices = array_map('floatval', $prices);
 
         // LOS PRECIOS VIENEN ORDENADOS VISUALMENTE DE ARRIBA HACIA ABAJO
-        // NO necesitamos sort/rsort, solo asignarlos correctamente según el tipo de operación
+        // Dinámico: siempre 2 SL + 1 Entry, el resto son TPs (5 o más)
 
         if ($op_type === 'LONG') {
-            // LONG: Visualmente de arriba hacia abajo = TP5, TP4, TP3, TP2, TP1, Entry, SL2, SL1
-            // Los TPs están arriba (profit), SL y Entry abajo
+            // LONG: de arriba a abajo = TPs..., Entry, SL2, SL1
+            $sl1 = $prices[$n - 1];       // último (más abajo)
+            $sl2 = $prices[$n - 2];       // anteúltimo
+            $entry = $prices[$n - 3];     // tercero desde abajo
+            $tps = array_reverse(array_slice($prices, 0, $n - 3));  // todo el resto, invertido (TP1 a TPn)
+
             return [
                 'op_type' => $op_type,
-                'stoploss' => [$prices[7], $prices[6]],  // Los 2 últimos (más abajo)
-                'entry' => $prices[5],                    // Tercero desde abajo
-                'tps' => [                                // Invertir orden (de TP1 a TP5)
-                    $prices[4],  // TP1
-                    $prices[3],  // TP2
-                    $prices[2],  // TP3
-                    $prices[1],  // TP4
-                    $prices[0]   // TP5 (el más arriba)
-                ]
+                'stoploss' => [$sl1, $sl2],
+                'entry' => $entry,
+                'tps' => $tps
             ];
         } elseif ($op_type === 'SHORT') {
-            // SHORT: Visualmente de arriba hacia abajo = SL1, SL2, Entry, TP1, TP2, TP3, TP4, TP5
-            // Los SL están arriba (stop), TPs y Entry abajo
+            // SHORT: de arriba a abajo = SL1, SL2, Entry, TPs...
+            $sl1 = $prices[0];            // primero (más arriba)
+            $sl2 = $prices[1];            // segundo
+            $entry = $prices[2];          // tercero desde arriba
+            $tps = array_slice($prices, 3);  // todo el resto (TP1 a TPn)
+
             return [
                 'op_type' => $op_type,
-                'stoploss' => [$prices[0], $prices[1]],  // Los 2 primeros (más arriba)
-                'entry' => $prices[2],                    // Tercero desde arriba
-                'tps' => [                                // Orden directo (de TP1 a TP5)
-                    $prices[3],  // TP1
-                    $prices[4],  // TP2
-                    $prices[5],  // TP3
-                    $prices[6],  // TP4
-                    $prices[7]   // TP5 (el más abajo)
-                ]
+                'stoploss' => [$sl1, $sl2],
+                'entry' => $entry,
+                'tps' => $tps
             ];
         } else {
             return null; // op_type inválido
@@ -274,11 +273,12 @@ class TradeReader extends CI_Controller
      * Análisis IA que devuelve JSON transformado o null si falló
      * Soporta OpenAI y Claude según configuración
      *
-     * @param string $cropped_filename Nombre del archivo cropped
-     * @param array  $cajaCoords Coordenadas de la caja verde (con y_min y y_max)
-     * @param int    $imageHeight Altura de la imagen original
+     * @param string     $cropped_filename Nombre del archivo cropped
+     * @param array      $cajaCoords       Coordenadas de la caja verde (con y_min y y_max)
+     * @param int        $imageHeight      Altura de la imagen original
+     * @param array|null $redCoords        Coordenadas de la caja roja (o null)
      */
-    private function createTradeAnalysis($cropped_filename, $cajaCoords, $imageHeight)
+    private function createTradeAnalysis($cropped_filename, $cajaCoords, $imageHeight, $redCoords = null)
     {
         $in_path = "uploads/trades/" . $cropped_filename . ".png";
 
@@ -287,14 +287,14 @@ class TradeReader extends CI_Controller
         }
 
         // 1. Detectar tipo de operación ANTES de llamar a la IA
-        $op_type = $this->detectOperationType($cajaCoords, $imageHeight);
+        $op_type = $this->detectOperationType($cajaCoords, $imageHeight, $redCoords);
 
         // 2. Preparar datos comunes
         $image_base64 = base64_encode(file_get_contents($in_path));
-        $prompt = $this->build_prompt();
+        $prompt = $this->build_prompt2();
 
         // 3. Detectar provider desde configuración
-        $provider = $this->config->item('ai_provider') ?: 'openai';
+        $provider = $this->input->get('ai_provider') ?: $this->config->item('ai_provider') ?: 'openai';
 
         // 4. Llamar API según provider
         if ($provider === 'claude') {
@@ -466,10 +466,13 @@ class TradeReader extends CI_Controller
             return ['error' => 'No se encontraron cajas verdes'];
         }
 
-        $cropX1 = $cajaCoords['x1'] - 50;
+        // Detectar caja roja ANTES de destruir la imagen
+        $redCoords = $this->findRedBox($image, $width, $height, $cajaCoords);
+
+        $cropX1 = $cajaCoords['x1'] - 5;
         $cropX2 = $cajaCoords['x2'] + 150;
         $cropY1 = 40;
-        $cropY2 = $height - 150;
+        $cropY2 = $height - 120;
 
         $cropWidth = $cropX2 - $cropX1;
         $cropHeight = $cropY2 - $cropY1;
@@ -492,12 +495,33 @@ class TradeReader extends CI_Controller
                     'y1' => $cropY1,
                     'y2' => $cropY2
                 ],
-                'box_coords' => $cajaCoords,  // Coordenadas de la caja verde detectada
-                'image_height' => $height      // Altura de la imagen original
+                'box_coords' => $cajaCoords,   // Coordenadas de la caja verde detectada
+                'red_coords' => $redCoords,     // Coordenadas de la caja roja (o null)
+                'image_height' => $height       // Altura de la imagen original
             ];
         } else {
             return ['error' => 'No se pudo guardar la imagen croppada'];
         }
+    }
+    private function build_prompt2()
+    {
+        return <<<'PROMPT'
+La imagen es un gráfico de TradingView con un plan de operación. El plan tiene una caja coloreada (zona de operación) con etiquetas de precio alineadas verticalmente a su derecha.
+
+Extrae los precios de esas etiquetas.
+
+REGLAS:
+1. Solo las etiquetas del plan de operación: están alineadas verticalmente a la derecha de la caja coloreada
+2. Si una etiqueta está aislada o separada del grupo principal, no la incluyas
+3. Ignorar etiquetas del broker, Fibonacci, indicadores, eje de precios
+4. Orden: de ARRIBA hacia ABAJO visualmente
+5. Formato europeo (1.234,56) → convertir a estándar (1234.56)
+
+SALIDA:
+{"label_prices": [precio1, precio2, ...]}
+
+Si hay menos de 8 etiquetas, devuelve {}. Solo el JSON, sin texto adicional.
+PROMPT;
     }
 
     private function build_prompt()
@@ -599,7 +623,7 @@ PROMPT;
         $data_url = "data:image/png;base64,{$image_base64}";
 
         $payload = [
-            "model" => "gpt-4o-mini",
+            "model" => "gpt-4o",
             "messages" => [[
                 "role" => "user",
                 "content" => [
@@ -682,7 +706,7 @@ PROMPT;
             ['r' => 170, 'g' => 222, 'b' => 134]
         ];
         $tolerance = 15;
-        $gapThreshold = 20;  // Píxeles no-verdes consecutivos para considerar fin de caja
+        $gapThreshold = 40;  // Píxeles no-verdes consecutivos para considerar fin de caja
 
         $cajaX1 = null;
         $cajaX2 = null;
@@ -690,7 +714,7 @@ PROMPT;
         $cajaYMin = null;  // Primera Y donde encontró verde
         $cajaYMax = null;  // Última Y donde encontró verde
 
-        for ($y = 100; $y < $height - 150; $y++) {
+        for ($y = 100; $y < $height - 150; $y += 3) {
             $limiteScaneo = ($cajaX2 !== null) ? $cajaX2 + 10 : (int)($width * 0.4);
 
             for ($x = $width - 300; $x >= $limiteScaneo; $x--) {
@@ -734,32 +758,128 @@ PROMPT;
     }
 
     /**
-     * Detecta si la operación es LONG o SHORT basándose en la posición vertical del verde
+     * Detecta si la operación es LONG o SHORT comparando posición verde vs roja
      *
      * LÓGICA:
-     * - Verde en mitad SUPERIOR de la imagen → LONG (take profit arriba)
-     * - Verde en mitad INFERIOR de la imagen → SHORT (take profit abajo)
+     * - Verde ARRIBA, Rojo ABAJO → LONG (TPs arriba, SL abajo)
+     * - Rojo ARRIBA, Verde ABAJO → SHORT (SL arriba, TPs abajo)
+     * - Si no encuentra rojo, fallback a verde vs midpoint de imagen
      *
-     * @param array $cajaCoords Coordenadas de la caja verde (con y_min y y_max)
-     * @param int   $imageHeight Altura total de la imagen
+     * @param array      $cajaCoords  Coordenadas de la caja verde (con y_min, y_max)
+     * @param int        $imageHeight Altura total de la imagen
+     * @param array|null $redCoords   Coordenadas de la caja roja (con y_min, y_max) o null
      * @return string 'LONG' o 'SHORT'
      */
-    private function detectOperationType($cajaCoords, $imageHeight)
+    private function detectOperationType($cajaCoords, $imageHeight, $redCoords = null)
     {
-        // Calcular el centro vertical de la caja verde
-        $green_center_y = ($cajaCoords['y_min'] + $cajaCoords['y_max']) / 2;
+        // Si tenemos coordenadas de la caja roja, comparar posiciones
+        if ($redCoords !== null) {
+            $green_center_y = ($cajaCoords['y_min'] + $cajaCoords['y_max']) / 2;
+            $red_center_y = ($redCoords['y_min'] + $redCoords['y_max']) / 2;
 
-        // Calcular el punto medio de la imagen
+            if ($red_center_y > $green_center_y) {
+                // Rojo DEBAJO del verde → LONG
+                return 'LONG';
+            } else {
+                // Rojo ENCIMA del verde → SHORT
+                return 'SHORT';
+            }
+        }
+
+        // Fallback: verde vs midpoint de la imagen
+        $green_center_y = ($cajaCoords['y_min'] + $cajaCoords['y_max']) / 2;
         $image_midpoint_y = $imageHeight / 2;
 
-        // Comparar posiciones
         if ($green_center_y < $image_midpoint_y) {
-            // Centro del verde está en la MITAD SUPERIOR → LONG
             return 'LONG';
         } else {
-            // Centro del verde está en la MITAD INFERIOR → SHORT
             return 'SHORT';
         }
+    }
+
+    /**
+     * Busca la caja roja/rosa en el mismo rango X que la caja verde
+     * La caja roja es la zona de Stop Loss en los planes de TradingView
+     *
+     * @param resource $image       Recurso GD de la imagen
+     * @param int      $width       Ancho de la imagen
+     * @param int      $height      Altura de la imagen
+     * @param array    $greenCoords Coordenadas de la caja verde para acotar búsqueda en X
+     * @return array|null ['y_min' => int, 'y_max' => int] o null si no encontró
+     */
+    private function findRedBox($image, $width, $height, $greenCoords)
+    {
+        $targetReds = [
+            ['r' => 244, 'g' => 204, 'b' => 204],  // Rosa claro
+            ['r' => 234, 'g' => 153, 'b' => 153],  // Rosa medio
+            ['r' => 255, 'g' => 182, 'b' => 182],  // Rosa salmón
+            ['r' => 239, 'g' => 154, 'b' => 154],  // Rosa
+            ['r' => 255, 'g' => 168, 'b' => 168],  // Rojo claro
+            ['r' => 213, 'g' => 134, 'b' => 134],  // Rojo apagado
+            ['r' => 250, 'g' => 200, 'b' => 200],  // Rosa muy claro
+            ['r' => 220, 'g' => 160, 'b' => 160],  // Rosa oscuro
+        ];
+        $tolerance = 25;
+        $minRedPixelsPerRow = 10;  // Mínimo de píxeles rojos en una fila para contar
+
+        // Escanear en el mismo rango X que la caja verde (con margen)
+        $scanX1 = max(0, $greenCoords['x1'] - 20);
+        $scanX2 = min($width - 1, $greenCoords['x2'] + 20);
+
+        $redYMin = null;
+        $redYMax = null;
+
+        for ($y = 100; $y < $height - 150; $y++) {
+            // Saltar el rango Y de la caja verde (buscar fuera de ella)
+            if ($y >= $greenCoords['y_min'] - 5 && $y <= $greenCoords['y_max'] + 5) {
+                continue;
+            }
+
+            $redCount = 0;
+            for ($x = $scanX1; $x <= $scanX2; $x += 3) {  // Saltar de 3 en 3 para velocidad
+                $rgb = imagecolorat($image, $x, $y);
+                $r = ($rgb >> 16) & 0xFF;
+                $g = ($rgb >> 8) & 0xFF;
+                $b = $rgb & 0xFF;
+
+                if ($this->isRedColor($r, $g, $b, $targetReds, $tolerance)) {
+                    $redCount++;
+                }
+            }
+
+            if ($redCount >= $minRedPixelsPerRow) {
+                if ($redYMin === null) {
+                    $redYMin = $y;
+                }
+                $redYMax = $y;
+            }
+        }
+
+        if ($redYMin !== null && $redYMax !== null) {
+            return [
+                'y_min' => $redYMin,
+                'y_max' => $redYMax
+            ];
+        }
+
+        return null;
+    }
+
+    /**
+     * Verifica si un color RGB coincide con los colores rojos/rosa objetivo
+     */
+    private function isRedColor($r, $g, $b, $targetReds, $tolerance)
+    {
+        foreach ($targetReds as $target) {
+            if (
+                abs($r - $target['r']) <= $tolerance &&
+                abs($g - $target['g']) <= $tolerance &&
+                abs($b - $target['b']) <= $tolerance
+            ) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private function findBoxRange($image, $startX, $y, $targetGreens, $tolerance, $gapThreshold = 20)
