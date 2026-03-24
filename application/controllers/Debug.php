@@ -608,6 +608,10 @@ class Debug extends CI_Controller
             // 2. POST to real webhook endpoint
             $webhook_url = base_url('tradereader/run') . '?ai_provider=' . $ai_provider;
 
+            // DEBUG: Log URL construction
+            error_log('[Debug] base_url result: ' . base_url());
+            error_log('[Debug] Full webhook URL: ' . $webhook_url);
+
             $ch = curl_init($webhook_url);
             $json_payload = json_encode($telegram_payload);
             error_log('[Debug] cURL URL: ' . $webhook_url);
