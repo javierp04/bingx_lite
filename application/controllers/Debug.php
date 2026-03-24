@@ -560,28 +560,48 @@ class Debug extends CI_Controller
     {
         $message_text = $this->input->post('message');
         $ai_provider = $this->input->post('ai_provider', true) ?: 'claude';
+        $ai_mode = $this->input->post('ai_mode', true) ?: 'single';
 
         if (!$message_text) {
             $this->_send_json_response(false, 'No message provided');
             return;
         }
 
-        // Validate AI provider
-        if (!in_array($ai_provider, ['openai', 'claude'])) {
+        // Validate AI mode
+        if (!in_array($ai_mode, ['single', 'dual'])) {
+            $ai_mode = 'single';
+        }
+
+        // Validate AI provider (for single mode)
+        if ($ai_mode === 'single' && !in_array($ai_provider, ['openai', 'claude'])) {
             $ai_provider = 'claude';
         }
 
-        // Validate API key is configured
-        $validation = $this->_validate_ai_provider($ai_provider);
-        if (!$validation['valid']) {
-            $this->_send_json_response(false, $validation['error']);
-            return;
+        // Validate API keys
+        if ($ai_mode === 'dual') {
+            $val_openai = $this->_validate_ai_provider('openai');
+            $val_claude = $this->_validate_ai_provider('claude');
+            if (!$val_openai['valid'] || !$val_claude['valid']) {
+                $errors = [];
+                if (!$val_openai['valid']) $errors[] = 'OpenAI: ' . $val_openai['error'];
+                if (!$val_claude['valid']) $errors[] = 'Claude: ' . $val_claude['error'];
+                $this->_send_json_response(false, 'Dual mode requires both API keys. ' . implode('. ', $errors));
+                return;
+            }
+        } else {
+            $validation = $this->_validate_ai_provider($ai_provider);
+            if (!$validation['valid']) {
+                $this->_send_json_response(false, $validation['error']);
+                return;
+            }
         }
 
         try {
-            // IMPORTANT: Temporarily override AI provider configuration
+            // IMPORTANT: Temporarily override AI provider and mode configuration
             $original_provider = $this->config->item('ai_provider');
+            $original_mode = $this->config->item('ai_mode');
             $this->config->set_item('ai_provider', $ai_provider);
+            $this->config->set_item('ai_mode', $ai_mode);
 
             // 1. Build fake Telegram webhook payload
             $telegram_payload = [
@@ -606,7 +626,7 @@ class Debug extends CI_Controller
             ];
 
             // 2. POST to real webhook endpoint
-            $webhook_url = base_url('tradereader/run') . '?ai_provider=' . $ai_provider;
+            $webhook_url = base_url('tradereader/run') . '?ai_provider=' . $ai_provider . '&ai_mode=' . $ai_mode;
 
             // DEBUG: Log URL construction
             error_log('[Debug] base_url result: ' . base_url());

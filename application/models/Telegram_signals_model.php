@@ -514,6 +514,25 @@ class Telegram_signals_model extends CI_Model
         ]);
     }
 
+    public function complete_signal_dual($signal_id, $analysis_data, $openai_data, $claude_data, $validated)
+    {
+        $analysis_json = json_decode($analysis_data, true);
+        $op_type = isset($analysis_json['op_type']) ? $analysis_json['op_type'] : null;
+
+        $update_data = [
+            'status' => $validated ? 'completed' : 'pending_review',
+            'analysis_data' => $analysis_data,
+            'analysis_openai' => $openai_data,
+            'analysis_claude' => $claude_data,
+            'ai_validated' => $validated ? 1 : 0,
+            'op_type' => $op_type,
+            'updated_at' => date('Y-m-d H:i:s')
+        ];
+
+        $this->db->where('id', $signal_id);
+        return $this->db->update('telegram_signals', $update_data);
+    }
+
     /**
      * Obtener señal por ID
      */

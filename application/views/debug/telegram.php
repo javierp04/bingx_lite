@@ -106,16 +106,23 @@
                     <div class="card-body">
                         <form id="webhookForm">
                             <div class="row g-2 mb-3">
-                                <div class="col-md-8">
+                                <div class="col-md-6">
                                     <label class="form-label small mb-1">ATVIP Message</label>
                                     <input type="text" class="form-control form-control-sm" id="telegram_message" name="telegram_message"
                                            placeholder="Sentimiento #ES https://www.tradingview.com/x/abc123" required>
                                 </div>
-                                <div class="col-md-4">
+                                <div class="col-md-3">
                                     <label class="form-label small mb-1"><i class="fas fa-robot me-1"></i>AI Provider</label>
                                     <select class="form-select form-select-sm" id="webhook_ai_provider" name="ai_provider">
-                                        <option value="openai">OpenAI (GPT-4o-mini)</option>
+                                        <option value="openai">OpenAI (GPT-4o)</option>
                                         <option value="claude" selected>Claude (Sonnet 4.5)</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label small mb-1"><i class="fas fa-balance-scale me-1"></i>AI Mode</label>
+                                    <select class="form-select form-select-sm" id="webhook_ai_mode" name="ai_mode" onchange="toggleProviderSelect()">
+                                        <option value="single">Single</option>
+                                        <option value="dual">Dual (Validar)</option>
                                     </select>
                                 </div>
                             </div>
@@ -317,10 +324,23 @@ function generateSignal() {
     });
 }
 
+// Toggle AI Provider select based on mode
+function toggleProviderSelect() {
+    const mode = document.getElementById('webhook_ai_mode').value;
+    const providerSelect = document.getElementById('webhook_ai_provider');
+    providerSelect.disabled = (mode === 'dual');
+    if (mode === 'dual') {
+        providerSelect.style.opacity = '0.5';
+    } else {
+        providerSelect.style.opacity = '1';
+    }
+}
+
 // Simulate webhook
 function simulateWebhook() {
     const msg = document.getElementById('telegram_message').value.trim();
     const aiProvider = document.getElementById('webhook_ai_provider').value;
+    const aiMode = document.getElementById('webhook_ai_mode').value;
     const btn = document.querySelector('#webhookForm button[type="submit"]');
 
     if (!msg) {
@@ -328,12 +348,14 @@ function simulateWebhook() {
         return;
     }
 
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Processing...';
+    const labelText = aiMode === 'dual' ? 'Dual AI Validating...' : 'Processing...';
+    btn.innerHTML = `<i class="fas fa-spinner fa-spin me-1"></i>${labelText}`;
     btn.disabled = true;
 
     const formData = new FormData();
     formData.append('message', msg);
     formData.append('ai_provider', aiProvider);
+    formData.append('ai_mode', aiMode);
 
     fetch(`${BASE_URL}debug/telegram/simulate`, {
         method: 'POST',
@@ -342,16 +364,22 @@ function simulateWebhook() {
     .then(r => r.json())
     .then(data => {
         if (data.success) {
-            const aiProviderName = data.data.ai_provider === 'claude' ? 'Claude Sonnet 4.5' : 'OpenAI GPT-4o-mini';
-            const aiProviderBadge = data.data.ai_provider === 'claude'
-                ? '<span class="badge bg-primary">Claude</span>'
-                : '<span class="badge bg-success">OpenAI</span>';
+            let validationBadge = '';
+            if (data.data.ai_mode === 'dual') {
+                validationBadge = data.data.ai_validated
+                    ? '<span class="badge bg-success"><i class="fas fa-check me-1"></i>Dual Validated</span>'
+                    : '<span class="badge bg-danger"><i class="fas fa-times me-1"></i>Mismatch</span>';
+            } else {
+                const aiProviderBadge = data.data.ai_provider === 'claude'
+                    ? '<span class="badge bg-primary">Claude</span>'
+                    : '<span class="badge bg-success">OpenAI</span>';
+                validationBadge = aiProviderBadge;
+            }
 
             document.getElementById('webhook-results').innerHTML = `
                 <div class="alert alert-success mt-3">
-                    <strong><i class="fas fa-check me-1"></i>Success!</strong> ${aiProviderBadge}
+                    <strong><i class="fas fa-check me-1"></i>Success!</strong> ${validationBadge}
                     <p class="mb-2 small">${data.message}</p>
-                    <p class="mb-2 small"><strong>AI Provider:</strong> ${aiProviderName}</p>
                     <a href="${BASE_URL}telegram_signals/view/${data.data.signal_id}" target="_blank" class="btn btn-sm btn-primary">
                         <i class="fas fa-eye me-1"></i>View Signal #${data.data.signal_id}
                     </a>

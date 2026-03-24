@@ -194,17 +194,52 @@ class TradeReader extends CI_Controller
                 return;
             }
 
-            // PASO 5: Guardar análisis y marcar como completado
-            $this->Telegram_signals_model->complete_signal($signal_id, json_encode($analysis_result));
+            // PASO 5: Guardar análisis según modo (single o dual)
+            $is_dual = isset($analysis_result['dual_mode']) && $analysis_result['dual_mode'];
 
-            // ✨ PASO 6: AGREGAR ESTA LÍNEA - Crear user_signals automáticamente
-            $users_count = $this->Telegram_signals_model->create_user_signals_for_ticker($signal_id, $ticker_symbol);
+            if ($is_dual) {
+                $final_analysis = $analysis_result['analysis'];
+                $ai_validated = $analysis_result['ai_validated'];
 
-            $this->Log_model->add_log([
-                'user_id' => null,
-                'action' => 'telegram_pipeline_completed',
-                'description' => 'Signal pipeline completed for ID: ' . $signal_id . '. Analysis: ' . json_encode($analysis_result) . '. Distributed to ' . $users_count . ' users.'
-            ]);
+                $this->Telegram_signals_model->complete_signal_dual(
+                    $signal_id,
+                    $final_analysis ? json_encode($final_analysis) : null,
+                    $analysis_result['analysis_openai'],
+                    $analysis_result['analysis_claude'],
+                    $ai_validated
+                );
+
+                if (!$ai_validated) {
+                    // No coinciden: NO distribuir, logear discrepancia
+                    $this->Log_model->add_log([
+                        'user_id' => null,
+                        'action' => 'dual_ai_mismatch',
+                        'description' => 'Signal ID: ' . $signal_id . ' - IAs no coinciden: ' . $analysis_result['discrepancy']
+                    ]);
+                    return;
+                }
+
+                // Coinciden: proceder a distribuir
+                $users_count = $this->Telegram_signals_model->create_user_signals_for_ticker($signal_id, $ticker_symbol);
+
+                $this->Log_model->add_log([
+                    'user_id' => null,
+                    'action' => 'telegram_pipeline_completed',
+                    'description' => 'Signal pipeline completed (DUAL validated) for ID: ' . $signal_id .
+                        '. Analysis: ' . json_encode($final_analysis) . '. Distributed to ' . $users_count . ' users.'
+                ]);
+            } else {
+                // Modo single: comportamiento original
+                $this->Telegram_signals_model->complete_signal($signal_id, json_encode($analysis_result));
+
+                $users_count = $this->Telegram_signals_model->create_user_signals_for_ticker($signal_id, $ticker_symbol);
+
+                $this->Log_model->add_log([
+                    'user_id' => null,
+                    'action' => 'telegram_pipeline_completed',
+                    'description' => 'Signal pipeline completed for ID: ' . $signal_id . '. Analysis: ' . json_encode($analysis_result) . '. Distributed to ' . $users_count . ' users.'
+                ]);
+            }
         } catch (Exception $e) {
             // Error general del pipeline
             $this->Telegram_signals_model->update_signal_status($signal_id, 'failed_analysis');
@@ -286,24 +321,145 @@ class TradeReader extends CI_Controller
             return null;
         }
 
-        // 1. Detectar tipo de operación ANTES de llamar a la IA
-        $op_type = $this->detectOperationType($cajaCoords, $imageHeight, $redCoords);
+        // 1. Detectar tipo de operación visual (fallback)
+        $visual_op_type = $this->detectOperationType($cajaCoords, $imageHeight, $redCoords);
 
         // 2. Preparar datos comunes
         $image_base64 = base64_encode(file_get_contents($in_path));
         $prompt = $this->build_prompt2();
 
-        // 3. Detectar provider desde configuración
+        // 3. Detectar modo: single o dual
+        $ai_mode = $this->input->get('ai_mode') ?: $this->config->item('ai_mode') ?: 'single';
+
+        if ($ai_mode === 'dual') {
+            return $this->createTradeAnalysisDual($image_base64, $prompt, $visual_op_type, $cropped_filename);
+        } else {
+            return $this->createTradeAnalysisSingle($image_base64, $prompt, $visual_op_type, $cropped_filename);
+        }
+    }
+
+    private function createTradeAnalysisSingle($image_base64, $prompt, $visual_op_type, $cropped_filename)
+    {
         $provider = $this->input->get('ai_provider') ?: $this->config->item('ai_provider') ?: 'openai';
 
-        // 4. Llamar API según provider
+        $raw_json = $this->analyzeWithProvider($image_base64, $prompt, $provider);
+        if ($raw_json === null) {
+            return null;
+        }
+
+        // Determinar op_type: primero de la IA (leyendas), luego fallback visual
+        $op_type_final = $this->resolveOpType($raw_json, $visual_op_type, $cropped_filename);
+        $raw_json['op_type'] = $op_type_final;
+
+        $transformed_json = $this->transformAnalysisData($raw_json);
+        if ($transformed_json === null) {
+            return null;
+        }
+
+        return $transformed_json;
+    }
+
+    private function createTradeAnalysisDual($image_base64, $prompt, $visual_op_type, $cropped_filename)
+    {
+        // Llamar a ambas IAs
+        $raw_openai = $this->analyzeWithProvider($image_base64, $prompt, 'openai');
+        $raw_claude = $this->analyzeWithProvider($image_base64, $prompt, 'claude');
+
+        // Si alguna falló completamente
+        if ($raw_openai === null && $raw_claude === null) {
+            $this->Log_model->add_log([
+                'user_id' => null,
+                'action' => 'dual_ai_both_failed',
+                'description' => "Ambas IAs fallaron para imagen: {$cropped_filename}"
+            ]);
+            return null;
+        }
+
+        // Si solo una falló, retornar la que funcionó pero como no validada
+        if ($raw_openai === null || $raw_claude === null) {
+            $working_provider = $raw_openai !== null ? 'openai' : 'claude';
+            $working_raw = $raw_openai !== null ? $raw_openai : $raw_claude;
+
+            $this->Log_model->add_log([
+                'user_id' => null,
+                'action' => 'dual_ai_one_failed',
+                'description' => "Solo {$working_provider} respondió para imagen: {$cropped_filename}"
+            ]);
+
+            $op_type_final = $this->resolveOpType($working_raw, $visual_op_type, $cropped_filename);
+            $working_raw['op_type'] = $op_type_final;
+            $transformed = $this->transformAnalysisData($working_raw);
+
+            if ($transformed === null) {
+                return null;
+            }
+
+            return [
+                'analysis' => $transformed,
+                'ai_validated' => false,
+                'analysis_openai' => $raw_openai !== null ? json_encode($raw_openai) : null,
+                'analysis_claude' => $raw_claude !== null ? json_encode($raw_claude) : null,
+                'discrepancy' => "Solo {$working_provider} respondió correctamente",
+                'dual_mode' => true
+            ];
+        }
+
+        // Ambas respondieron: resolver op_type de cada una
+        $op_openai = $this->resolveOpType($raw_openai, $visual_op_type, $cropped_filename . '_openai');
+        $op_claude = $this->resolveOpType($raw_claude, $visual_op_type, $cropped_filename . '_claude');
+
+        $raw_openai['op_type'] = $op_openai;
+        $raw_claude['op_type'] = $op_claude;
+
+        // Comparar resultados
+        $comparison = $this->compareAnalysisResults($raw_openai, $raw_claude);
+
+        $this->Log_model->add_log([
+            'user_id' => null,
+            'action' => 'dual_ai_comparison',
+            'description' => "Match: " . ($comparison['match'] ? 'SI' : 'NO') .
+                " | Detalle: " . $comparison['detail'] .
+                " | Imagen: {$cropped_filename}"
+        ]);
+
+        if ($comparison['match']) {
+            // Coinciden: usar cualquiera (usamos OpenAI)
+            $transformed = $this->transformAnalysisData($raw_openai);
+            if ($transformed === null) {
+                return null;
+            }
+
+            return [
+                'analysis' => $transformed,
+                'ai_validated' => true,
+                'analysis_openai' => json_encode($raw_openai),
+                'analysis_claude' => json_encode($raw_claude),
+                'discrepancy' => null,
+                'dual_mode' => true
+            ];
+        } else {
+            // No coinciden: transformar OpenAI para tener datos de referencia
+            $transformed_openai = $this->transformAnalysisData($raw_openai);
+
+            return [
+                'analysis' => $transformed_openai,
+                'ai_validated' => false,
+                'analysis_openai' => json_encode($raw_openai),
+                'analysis_claude' => json_encode($raw_claude),
+                'discrepancy' => $comparison['detail'],
+                'dual_mode' => true
+            ];
+        }
+    }
+
+    private function analyzeWithProvider($image_base64, $prompt, $provider)
+    {
         if ($provider === 'claude') {
             $response = $this->call_claude_api($image_base64, $prompt);
         } else {
             $response = $this->call_openai_api($image_base64, $prompt);
         }
 
-        // 5. Verificar errores
         if (isset($response['error'])) {
             $this->Log_model->add_log([
                 'user_id' => null,
@@ -313,14 +469,11 @@ class TradeReader extends CI_Controller
             return null;
         }
 
-        // 6. Extraer texto de la respuesta (normalizado para ambas APIs)
         $text = $this->extract_ai_response($response, $provider);
-
         if (!$text) {
             return null;
         }
 
-        // 7. Validar JSON inicial de la IA
         $raw_json = json_decode($text, true);
         if ($raw_json === null) {
             $json_candidate = $this->extract_json($text);
@@ -331,42 +484,72 @@ class TradeReader extends CI_Controller
             }
         }
 
-        // 8. Verificar que no sea JSON vacío
         if (empty($raw_json) || (count($raw_json) == 0)) {
             return null;
         }
 
-        // 9. Determinar op_type: primero de la IA (basado en leyendas), luego fallback a detección visual
+        return $raw_json;
+    }
+
+    private function resolveOpType($raw_json, $visual_op_type, $context)
+    {
         if (isset($raw_json['op_type']) && in_array(strtoupper($raw_json['op_type']), ['LONG', 'SHORT'])) {
-            // La IA detectó el tipo basándose en las leyendas "zona a superar" o "zona a perforar"
             $op_type_final = strtoupper($raw_json['op_type']);
             $detection_method = 'IA (leyendas)';
-            error_log('[TradeReader] op_type detectado por IA (leyendas): ' . $op_type_final);
+            error_log('[TradeReader] op_type detectado por IA (leyendas): ' . $op_type_final . ' [' . $context . ']');
         } else {
-            // Fallback: detección visual por posición de cajas verde/roja
-            $op_type_final = $op_type;
+            $op_type_final = $visual_op_type;
             $detection_method = 'Visual (cajas)';
-            error_log('[TradeReader] op_type por fallback visual (cajas): ' . $op_type_final);
+            error_log('[TradeReader] op_type por fallback visual (cajas): ' . $op_type_final . ' [' . $context . ']');
         }
 
-        // Log en base de datos
         $this->Log_model->add_log([
             'user_id' => null,
             'action' => 'op_type_detection',
-            'description' => "Método: {$detection_method} | Resultado: {$op_type_final} | Imagen: {$cropped_filename}"
+            'description' => "Método: {$detection_method} | Resultado: {$op_type_final} | Contexto: {$context}"
         ]);
 
-        $raw_json['op_type'] = $op_type_final;
+        return $op_type_final;
+    }
 
-        // 10. Transformar JSON al formato final
-        $transformed_json = $this->transformAnalysisData($raw_json);
+    private function compareAnalysisResults($raw_openai, $raw_claude)
+    {
+        // Comparar op_type
+        $op_openai = isset($raw_openai['op_type']) ? strtoupper($raw_openai['op_type']) : 'UNKNOWN';
+        $op_claude = isset($raw_claude['op_type']) ? strtoupper($raw_claude['op_type']) : 'UNKNOWN';
 
-        // Si la transformación falla (menos de 8 precios), retornar null
-        if ($transformed_json === null) {
-            return null;
+        if ($op_openai !== $op_claude) {
+            return [
+                'match' => false,
+                'detail' => "op_type mismatch: OpenAI={$op_openai} vs Claude={$op_claude}"
+            ];
         }
 
-        return $transformed_json;
+        // Comparar cantidad de precios
+        $prices_openai = isset($raw_openai['label_prices']) ? $raw_openai['label_prices'] : [];
+        $prices_claude = isset($raw_claude['label_prices']) ? $raw_claude['label_prices'] : [];
+
+        if (count($prices_openai) !== count($prices_claude)) {
+            return [
+                'match' => false,
+                'detail' => "Cantidad de precios distinta: OpenAI=" . count($prices_openai) . " vs Claude=" . count($prices_claude)
+            ];
+        }
+
+        // Comparar cada precio exacto
+        for ($i = 0; $i < count($prices_openai); $i++) {
+            if ((float)$prices_openai[$i] !== (float)$prices_claude[$i]) {
+                return [
+                    'match' => false,
+                    'detail' => "Precio #{$i} distinto: OpenAI={$prices_openai[$i]} vs Claude={$prices_claude[$i]}"
+                ];
+            }
+        }
+
+        return [
+            'match' => true,
+            'detail' => "Coincidencia exacta: op_type={$op_openai}, precios=" . count($prices_openai)
+        ];
     }
 
     /**
