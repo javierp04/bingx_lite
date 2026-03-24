@@ -533,6 +533,31 @@ class Telegram_signals_model extends CI_Model
         return $this->db->update('telegram_signals', $update_data);
     }
 
+    public function resolve_signal($signal_id, $raw_ai_data, $ticker_symbol)
+    {
+        $raw_json = json_decode($raw_ai_data, true);
+        if (!$raw_json) {
+            return false;
+        }
+
+        $op_type = isset($raw_json['op_type']) ? $raw_json['op_type'] : null;
+
+        $this->db->where('id', $signal_id);
+        $updated = $this->db->update('telegram_signals', [
+            'status' => 'completed',
+            'analysis_data' => $raw_ai_data,
+            'op_type' => $op_type,
+            'ai_validated' => 1,
+            'updated_at' => date('Y-m-d H:i:s')
+        ]);
+
+        if (!$updated) {
+            return false;
+        }
+
+        return $this->create_user_signals_for_ticker($signal_id, $ticker_symbol);
+    }
+
     /**
      * Obtener señal por ID
      */

@@ -39,15 +39,23 @@
                                 'cropping' => 'bg-info',
                                 'analyzing' => 'bg-primary',
                                 'completed' => 'bg-success',
+                                'pending_review' => 'bg-orange',
                                 'failed_crop' => 'bg-danger',
                                 'failed_analysis' => 'bg-danger',
                                 'failed_download' => 'bg-danger'
                             ];
                             $class = isset($status_classes[$signal->status]) ? $status_classes[$signal->status] : 'bg-secondary';
                             ?>
-                            <span class="badge <?= $class ?>">
+                            <span class="badge <?= $class ?>" <?= $signal->status === 'pending_review' ? 'style="background-color: #fd7e14 !important;"' : '' ?>>
                                 <?= ucfirst(str_replace('_', ' ', $signal->status)) ?>
                             </span>
+                            <?php if (isset($signal->ai_validated) && $signal->ai_validated !== null): ?>
+                                <?php if ($signal->ai_validated): ?>
+                                    <span class="badge bg-success"><i class="fas fa-check-double me-1"></i>Dual Validated</span>
+                                <?php else: ?>
+                                    <span class="badge bg-danger"><i class="fas fa-exclamation-triangle me-1"></i>AI Mismatch</span>
+                                <?php endif; ?>
+                            <?php endif; ?>
                         </td>
                     </tr>
                     <tr>
@@ -72,11 +80,130 @@
             </div>
         </div>
 
+        <!-- Dual AI Comparison (when available) -->
+        <?php if (!empty($signal->analysis_openai) || !empty($signal->analysis_claude)): ?>
+        <div class="card mb-4 <?= ($signal->status === 'pending_review') ? 'border-warning' : 'border-success' ?>">
+            <div class="card-header" 
+                 style="<?= ($signal->status === 'pending_review') ? 'background-color: #fd7e14; color: white;' : '' ?>">
+                <h5 class="mb-0">
+                    <?php if ($signal->status === 'pending_review'): ?>
+                        <i class="fas fa-exclamation-triangle me-1"></i>Dual AI Comparison &mdash; MISMATCH
+                    <?php else: ?>
+                        <i class="fas fa-check-double me-1"></i>Dual AI Comparison &mdash; MATCH
+                    <?php endif; ?>
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <!-- OpenAI Result -->
+                    <div class="col-md-6">
+                        <h6 class="text-center mb-2">
+                            <span class="badge bg-success"><i class="fas fa-robot me-1"></i>OpenAI (GPT-4o)</span>
+                        </h6>
+                        <?php if ($signal->analysis_openai): ?>
+                            <?php $openai_data = json_decode($signal->analysis_openai, true); ?>
+                            <div class="mb-2">
+                                <strong>op_type:</strong>
+                                <?php $ot = isset($openai_data['op_type']) ? strtoupper($openai_data['op_type']) : '—'; ?>
+                                <span class="badge <?= $ot === 'LONG' ? 'bg-success' : ($ot === 'SHORT' ? 'bg-danger' : 'bg-secondary') ?>">
+                                    <?= $ot ?>
+                                </span>
+                            </div>
+                            <div class="mb-2">
+                                <strong>Precios:</strong>
+                                <?php if (isset($openai_data['label_prices'])): ?>
+                                    <ol class="mb-0 ps-3 small">
+                                        <?php foreach ($openai_data['label_prices'] as $price): ?>
+                                            <li><?= $price ?></li>
+                                        <?php endforeach; ?>
+                                    </ol>
+                                <?php else: ?>
+                                    <span class="text-muted">—</span>
+                                <?php endif; ?>
+                            </div>
+                            <details class="mt-2">
+                                <summary class="small text-muted">Raw JSON</summary>
+                                <pre class="bg-light p-2 rounded small mt-1 mb-0"><?= json_encode($openai_data, JSON_PRETTY_PRINT) ?></pre>
+                            </details>
+                        <?php else: ?>
+                            <div class="alert alert-warning py-2 small"><i class="fas fa-times me-1"></i>No response</div>
+                        <?php endif; ?>
+                    </div>
+                    <!-- Claude Result -->
+                    <div class="col-md-6">
+                        <h6 class="text-center mb-2">
+                            <span class="badge bg-primary"><i class="fas fa-robot me-1"></i>Claude (Sonnet 4.5)</span>
+                        </h6>
+                        <?php if ($signal->analysis_claude): ?>
+                            <?php $claude_data = json_decode($signal->analysis_claude, true); ?>
+                            <div class="mb-2">
+                                <strong>op_type:</strong>
+                                <?php $ot = isset($claude_data['op_type']) ? strtoupper($claude_data['op_type']) : '—'; ?>
+                                <span class="badge <?= $ot === 'LONG' ? 'bg-success' : ($ot === 'SHORT' ? 'bg-danger' : 'bg-secondary') ?>">
+                                    <?= $ot ?>
+                                </span>
+                            </div>
+                            <div class="mb-2">
+                                <strong>Precios:</strong>
+                                <?php if (isset($claude_data['label_prices'])): ?>
+                                    <ol class="mb-0 ps-3 small">
+                                        <?php foreach ($claude_data['label_prices'] as $price): ?>
+                                            <li><?= $price ?></li>
+                                        <?php endforeach; ?>
+                                    </ol>
+                                <?php else: ?>
+                                    <span class="text-muted">—</span>
+                                <?php endif; ?>
+                            </div>
+                            <details class="mt-2">
+                                <summary class="small text-muted">Raw JSON</summary>
+                                <pre class="bg-light p-2 rounded small mt-1 mb-0"><?= json_encode($claude_data, JSON_PRETTY_PRINT) ?></pre>
+                            </details>
+                        <?php else: ?>
+                            <div class="alert alert-warning py-2 small"><i class="fas fa-times me-1"></i>No response</div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+
+                <?php if ($signal->status === 'pending_review'): ?>
+                <hr>
+                <div class="text-center">
+                    <p class="small text-muted mb-2">Seleccionar resultado para aprobar esta señal:</p>
+                    <div class="d-flex justify-content-center gap-2">
+                        <?php if ($signal->analysis_openai): ?>
+                        <form action="<?= base_url('telegram_signals/resolve/' . $signal->id) ?>" method="post">
+                            <input type="hidden" name="provider" value="openai">
+                            <button type="submit" class="btn btn-success btn-sm" onclick="return confirm('Aprobar con resultado de OpenAI?')">
+                                <i class="fas fa-check me-1"></i>Usar OpenAI
+                            </button>
+                        </form>
+                        <?php endif; ?>
+                        <?php if ($signal->analysis_claude): ?>
+                        <form action="<?= base_url('telegram_signals/resolve/' . $signal->id) ?>" method="post">
+                            <input type="hidden" name="provider" value="claude">
+                            <button type="submit" class="btn btn-primary btn-sm" onclick="return confirm('Aprobar con resultado de Claude?')">
+                                <i class="fas fa-check me-1"></i>Usar Claude
+                            </button>
+                        </form>
+                        <?php endif; ?>
+                        <form action="<?= base_url('telegram_signals/resolve/' . $signal->id) ?>" method="post">
+                            <input type="hidden" name="provider" value="discard">
+                            <button type="submit" class="btn btn-outline-danger btn-sm" onclick="return confirm('Descartar esta señal?')">
+                                <i class="fas fa-trash me-1"></i>Descartar
+                            </button>
+                        </form>
+                    </div>
+                </div>
+                <?php endif; ?>
+            </div>
+        </div>
+        <?php endif; ?>
+
         <!-- AI Analysis -->
-        <?php if ($signal->status === 'completed' && $signal->analysis_data): ?>
+        <?php if (in_array($signal->status, ['completed', 'pending_review']) && $signal->analysis_data): ?>
         <div class="card mb-4">
             <div class="card-header">
-                <h5 class="mb-0">AI Analysis Result</h5>
+                <h5 class="mb-0">AI Analysis Result (Final)</h5>
             </div>
             <div class="card-body">
                 <pre class="bg-light p-3 rounded mb-0"><?= json_encode(json_decode($signal->analysis_data), JSON_PRETTY_PRINT) ?></pre>
@@ -255,13 +382,14 @@
                                 'cropping' => 'bg-info',
                                 'analyzing' => 'bg-primary',
                                 'completed' => 'bg-success',
+                                'pending_review' => 'bg-secondary',
                                 'failed_crop' => 'bg-danger',
                                 'failed_analysis' => 'bg-danger',
                                 'failed_download' => 'bg-danger'
                             ];
                             $class = isset($status_classes[$recent->status]) ? $status_classes[$recent->status] : 'bg-secondary';
                             ?>
-                            <span class="badge <?= $class ?> badge-sm">
+                            <span class="badge <?= $class ?> badge-sm" <?= $recent->status === 'pending_review' ? 'style="background-color: #fd7e14 !important;"' : '' ?>>
                                 <?= ucfirst(str_replace('_', ' ', $recent->status)) ?>
                             </span>
                         </div>

@@ -114,6 +114,69 @@ class Telegram_signals extends CI_Controller
         redirect('telegram_signals');
     }
 
+    public function resolve($id)
+    {
+        $signal = $this->Telegram_signals_model->get_signal_by_id($id);
+
+        if (!$signal) {
+            $this->session->set_flashdata('error', 'Signal not found');
+            redirect('telegram_signals');
+        }
+
+        if ($signal->status !== 'pending_review') {
+            $this->session->set_flashdata('error', 'Signal is not pending review');
+            redirect('telegram_signals/view/' . $id);
+        }
+
+        $provider = $this->input->post('provider');
+
+        if ($provider === 'discard') {
+            $this->Telegram_signals_model->update_signal_status($id, 'failed_analysis');
+            $this->Log_model->add_log([
+                'user_id' => $this->session->userdata('user_id'),
+                'action' => 'dual_ai_discard',
+                'description' => "Signal #{$id} discarded by admin after dual AI mismatch"
+            ]);
+            $this->session->set_flashdata('success', 'Signal discarded');
+            redirect('telegram_signals');
+            return;
+        }
+
+        if (!in_array($provider, ['openai', 'claude'])) {
+            $this->session->set_flashdata('error', 'Invalid provider');
+            redirect('telegram_signals/view/' . $id);
+            return;
+        }
+
+        $raw_data = ($provider === 'openai') ? $signal->analysis_openai : $signal->analysis_claude;
+
+        if (!$raw_data) {
+            $this->session->set_flashdata('error', 'No analysis data for selected provider');
+            redirect('telegram_signals/view/' . $id);
+            return;
+        }
+
+        $result = $this->Telegram_signals_model->resolve_signal($id, $raw_data, $signal->ticker_symbol);
+
+        if ($result) {
+            $this->Log_model->add_log([
+                'user_id' => $this->session->userdata('user_id'),
+                'action' => 'dual_ai_resolved',
+                'description' => "Signal #{$id} approved using {$provider}. Distributed to {$result} users."
+            ]);
+            $this->session->set_flashdata('success', "Signal approved with {$provider} result. Distributed to {$result} users.");
+        } else {
+            $this->Log_model->add_log([
+                'user_id' => $this->session->userdata('user_id'),
+                'action' => 'dual_ai_resolve_failed',
+                'description' => "Failed to resolve signal #{$id} with {$provider}"
+            ]);
+            $this->session->set_flashdata('error', 'Failed to resolve signal');
+        }
+
+        redirect('telegram_signals/view/' . $id);
+    }
+
     public function cleanup()
     {
         // Already admin-only due to constructor check

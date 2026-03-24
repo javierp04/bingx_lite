@@ -78,6 +78,7 @@
                 <option value="cropping" <?= $filters['status'] === 'cropping' ? 'selected' : '' ?>>Cropping</option>
                 <option value="analyzing" <?= $filters['status'] === 'analyzing' ? 'selected' : '' ?>>Analyzing</option>
                 <option value="completed" <?= $filters['status'] === 'completed' ? 'selected' : '' ?>>Completed</option>
+                <option value="pending_review" <?= $filters['status'] === 'pending_review' ? 'selected' : '' ?>>Pending Review</option>
                 <option value="failed_crop" <?= $filters['status'] === 'failed_crop' ? 'selected' : '' ?>>Failed Crop</option>
                 <option value="failed_analysis" <?= $filters['status'] === 'failed_analysis' ? 'selected' : '' ?>>Failed Analysis</option>
                 <option value="failed_download" <?= $filters['status'] === 'failed_download' ? 'selected' : '' ?>>Failed Download</option>
@@ -156,15 +157,19 @@
                                         'cropping' => 'bg-info',
                                         'analyzing' => 'bg-primary',
                                         'completed' => 'bg-success',
+                                        'pending_review' => 'bg-secondary',
                                         'failed_crop' => 'bg-danger',
                                         'failed_analysis' => 'bg-danger',
                                         'failed_download' => 'bg-danger'
                                     ];
                                     $class = isset($status_classes[$signal->status]) ? $status_classes[$signal->status] : 'bg-secondary';
                                     ?>
-                                    <span class="badge <?= $class ?>">
+                                    <span class="badge <?= $class ?>" <?= $signal->status === 'pending_review' ? 'style="background-color: #fd7e14 !important;"' : '' ?>>
                                         <?= ucfirst(str_replace('_', ' ', $signal->status)) ?>
                                     </span>
+                                    <?php if (isset($signal->ai_validated) && $signal->ai_validated !== null && !$signal->ai_validated): ?>
+                                        <span class="badge bg-danger badge-sm"><i class="fas fa-exclamation-triangle"></i></span>
+                                    <?php endif; ?>
                                 </td>
                                 <td>
                                     <?php if ($signal->status === 'completed' && !empty($signal->op_type)): ?>
