@@ -2,22 +2,22 @@
 defined('BASEPATH') OR exit('No direct script access allowed');
 
 // Default route
-$route['default_controller'] = 'auth';
+$route['default_controller'] = 'Auth';
 $route['404_override'] = '';
 $route['translate_uri_dashes'] = FALSE;
 
 // Auth routes
-$route['login'] = 'auth/login';
-$route['logout'] = 'auth/logout';
+$route['login'] = 'Auth/login';
+$route['logout'] = 'Auth/logout';
 
 // Dashboard routes
-$route['dashboard'] = 'dashboard';
+$route['dashboard'] = 'Dashboard';
 
 // User management routes
-$route['users'] = 'users';
-$route['users/add'] = 'users/add';
-$route['users/edit/(:num)'] = 'users/edit/$1';
-$route['users/delete/(:num)'] = 'users/delete/$1';
+$route['users'] = 'Users';
+$route['users/add'] = 'Users/add';
+$route['users/edit/(:num)'] = 'Users/edit/$1';
+$route['users/delete/(:num)'] = 'Users/delete/$1';
 
 // API Keys routes
 $route['apikeys'] = 'ApiKeys';
