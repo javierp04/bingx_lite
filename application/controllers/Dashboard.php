@@ -14,7 +14,7 @@ class Dashboard extends CI_Controller
         }
 
         // Load BingX API library
-        $this->load->library('BingXApi');
+        $this->load->library('BingxApi');
     }
 
     public function index()
