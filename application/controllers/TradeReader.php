@@ -336,8 +336,27 @@ class TradeReader extends CI_Controller
             return null;
         }
 
-        // 9. NUEVO: Agregar op_type detectado automáticamente
-        $raw_json['op_type'] = $op_type;
+        // 9. Determinar op_type: primero de la IA (basado en leyendas), luego fallback a detección visual
+        if (isset($raw_json['op_type']) && in_array(strtoupper($raw_json['op_type']), ['LONG', 'SHORT'])) {
+            // La IA detectó el tipo basándose en las leyendas "zona a superar" o "zona a perforar"
+            $op_type_final = strtoupper($raw_json['op_type']);
+            $detection_method = 'IA (leyendas)';
+            error_log('[TradeReader] op_type detectado por IA (leyendas): ' . $op_type_final);
+        } else {
+            // Fallback: detección visual por posición de cajas verde/roja
+            $op_type_final = $op_type;
+            $detection_method = 'Visual (cajas)';
+            error_log('[TradeReader] op_type por fallback visual (cajas): ' . $op_type_final);
+        }
+
+        // Log en base de datos
+        $this->Log_model->add_log([
+            'user_id' => null,
+            'action' => 'op_type_detection',
+            'description' => "Método: {$detection_method} | Resultado: {$op_type_final} | Imagen: {$cropped_filename}"
+        ]);
+
+        $raw_json['op_type'] = $op_type_final;
 
         // 10. Transformar JSON al formato final
         $transformed_json = $this->transformAnalysisData($raw_json);
@@ -508,7 +527,7 @@ class TradeReader extends CI_Controller
         return <<<'PROMPT'
 La imagen es un gráfico de TradingView con un plan de operación. El plan tiene una caja coloreada (zona de operación) con etiquetas de precio alineadas verticalmente a su derecha.
 
-Extrae los precios de esas etiquetas.
+Extrae los precios de esas etiquetas Y determina el tipo de operación.
 
 REGLAS:
 1. Solo las etiquetas del plan de operación: están alineadas verticalmente a la derecha de la caja coloreada
@@ -517,42 +536,19 @@ REGLAS:
 4. Orden: de ARRIBA hacia ABAJO visualmente
 5. Formato europeo (1.234,56) → convertir a estándar (1234.56)
 
+TIPO DE OPERACIÓN:
+- Si encuentras al menos UNA leyenda/etiqueta que diga "zona a superar" → op_type = "LONG"
+- Si encuentras al menos UNA leyenda/etiqueta que diga "zona a perforar" → op_type = "SHORT"
+- Si no encuentras ninguna de estas leyendas → NO incluyas el campo op_type en la respuesta
+
 SALIDA:
-{"label_prices": [precio1, precio2, ...]}
+{"label_prices": [precio1, precio2, ...], "op_type": "LONG" o "SHORT"}
 
 Si hay menos de 8 etiquetas, devuelve {}. Solo el JSON, sin texto adicional.
 PROMPT;
     }
 
-    private function build_prompt()
-    {
-        return <<<'PROMPT'
-Analiza esta imagen de TradingView y extrae ÚNICAMENTE los precios de las etiquetas que aparecen a la derecha de la caja de operación.
-
-INSTRUCCIONES:
-1. Extrae SOLO los números de las etiquetas inmediatamente a la derecha de la caja coloreada
-2. IGNORA cualquier etiqueta que esté en la parte superior o inferior de la imagen
-3. Los números usan formato europeo: separador de miles (.) y decimal (,)
-4. Convierte al formato estándar: sin separador de miles y punto decimal
-   Ejemplo: 1.234,56 → 1234.56
-
-ORDEN DE EXTRACCIÓN:
-- Extrae los precios en orden visual DE ARRIBA HACIA ABAJO
-- El primer precio debe ser el que está visualmente más arriba
-- El último precio debe ser el que está visualmente más abajo
-
-FORMATO DE SALIDA:
-Devuelve un JSON con un array de precios ordenados de arriba hacia abajo:
-{"label_prices": [precio1, precio2, precio3, ...]}
-
-IMPORTANTE:
-- Devuelve al menos 8 precios (si hay menos de 8, devuelve {})
-- Solo números en formato estándar (punto decimal)
-- Sin texto adicional, solo el JSON
-- Mantén el orden visual estricto: de arriba hacia abajo
-PROMPT;
-    }
-
+   
     private function openai_post_json($url, $apiKey, $payload)
     {
         $ch = curl_init($url);
