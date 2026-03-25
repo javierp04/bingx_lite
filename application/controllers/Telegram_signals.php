@@ -148,12 +148,20 @@ class Telegram_signals extends CI_Controller
             return;
         }
 
-        $raw_data = ($provider === 'openai') ? $signal->analysis_openai : $signal->analysis_claude;
+        $raw_field = ($provider === 'openai') ? $signal->analysis_openai : $signal->analysis_claude;
 
-        if (!$raw_data) {
+        if (!$raw_field) {
             $this->session->set_flashdata('error', 'No analysis data for selected provider');
             redirect('telegram_signals/view/' . $id);
             return;
+        }
+
+        // Puede ser array de respuestas (retry) o respuesta única — usar la primera
+        $decoded = json_decode($raw_field, true);
+        if (isset($decoded[0]) && is_array($decoded[0])) {
+            $raw_data = json_encode($decoded[0]);
+        } else {
+            $raw_data = $raw_field;
         }
 
         $result = $this->Telegram_signals_model->resolve_signal($id, $raw_data, $signal->ticker_symbol);

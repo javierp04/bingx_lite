@@ -95,35 +95,59 @@
             </div>
             <div class="card-body">
                 <div class="row">
+                    <?php
+                    // Normalizar datos: puede ser objeto único o array de objetos (retry)
+                    $openai_raw = $signal->analysis_openai ? json_decode($signal->analysis_openai, true) : null;
+                    $claude_raw = $signal->analysis_claude ? json_decode($signal->analysis_claude, true) : null;
+
+                    // Detectar si es array de respuestas o respuesta única
+                    $openai_responses = [];
+                    if ($openai_raw !== null) {
+                        $openai_responses = (isset($openai_raw[0]) && is_array($openai_raw[0])) ? $openai_raw : [$openai_raw];
+                    }
+                    $claude_responses = [];
+                    if ($claude_raw !== null) {
+                        $claude_responses = (isset($claude_raw[0]) && is_array($claude_raw[0])) ? $claude_raw : [$claude_raw];
+                    }
+                    $has_retry = count($openai_responses) > 1 || count($claude_responses) > 1;
+                    ?>
                     <!-- OpenAI Result -->
                     <div class="col-md-6">
                         <h6 class="text-center mb-2">
                             <span class="badge bg-success"><i class="fas fa-robot me-1"></i>OpenAI (GPT-4o)</span>
+                            <?php if (count($openai_responses) > 1): ?>
+                                <span class="badge bg-secondary"><?= count($openai_responses) ?> llamadas</span>
+                            <?php endif; ?>
                         </h6>
-                        <?php if ($signal->analysis_openai): ?>
-                            <?php $openai_data = json_decode($signal->analysis_openai, true); ?>
-                            <div class="mb-2">
-                                <strong>op_type:</strong>
-                                <?php $ot = isset($openai_data['op_type']) ? strtoupper($openai_data['op_type']) : '—'; ?>
-                                <span class="badge <?= $ot === 'LONG' ? 'bg-success' : ($ot === 'SHORT' ? 'bg-danger' : 'bg-secondary') ?>">
-                                    <?= $ot ?>
-                                </span>
-                            </div>
-                            <div class="mb-2">
-                                <strong>Precios:</strong>
-                                <?php if (isset($openai_data['label_prices'])): ?>
-                                    <ol class="mb-0 ps-3 small">
-                                        <?php foreach ($openai_data['label_prices'] as $price): ?>
-                                            <li><?= $price ?></li>
-                                        <?php endforeach; ?>
-                                    </ol>
-                                <?php else: ?>
-                                    <span class="text-muted">—</span>
+                        <?php if (!empty($openai_responses)): ?>
+                            <?php foreach ($openai_responses as $r_idx => $oai): ?>
+                                <?php if (count($openai_responses) > 1): ?>
+                                    <div class="small text-muted mb-1"><strong>Ronda <?= $r_idx + 1 ?>:</strong></div>
                                 <?php endif; ?>
-                            </div>
+                                <div class="mb-2">
+                                    <strong>op_type:</strong>
+                                    <?php $ot = isset($oai['op_type']) ? strtoupper($oai['op_type']) : '—'; ?>
+                                    <span class="badge <?= $ot === 'LONG' ? 'bg-success' : ($ot === 'SHORT' ? 'bg-danger' : 'bg-secondary') ?>"><?= $ot ?></span>
+                                </div>
+                                <div class="mb-2">
+                                    <strong>Precios (<?= isset($oai['label_prices']) ? count($oai['label_prices']) : 0 ?>):</strong>
+                                    <?php if (isset($oai['label_prices'])): ?>
+                                        <ol class="mb-0 ps-3 small">
+                                            <?php foreach ($oai['label_prices'] as $price): ?>
+                                                <li><?= $price ?></li>
+                                            <?php endforeach; ?>
+                                        </ol>
+                                    <?php else: ?>
+                                        <span class="text-muted">—</span>
+                                    <?php endif; ?>
+                                </div>
+                                <?php if (count($openai_responses) > 1 && $r_idx < count($openai_responses) - 1): ?>
+                                    <hr class="my-2">
+                                <?php endif; ?>
+                            <?php endforeach; ?>
                             <details class="mt-2">
                                 <summary class="small text-muted">Raw JSON</summary>
-                                <pre class="bg-light p-2 rounded small mt-1 mb-0"><?= json_encode($openai_data, JSON_PRETTY_PRINT) ?></pre>
+                                <pre class="bg-light p-2 rounded small mt-1 mb-0"><?= json_encode($openai_raw, JSON_PRETTY_PRINT) ?></pre>
                             </details>
                         <?php else: ?>
                             <div class="alert alert-warning py-2 small"><i class="fas fa-times me-1"></i>No response</div>
@@ -133,31 +157,39 @@
                     <div class="col-md-6">
                         <h6 class="text-center mb-2">
                             <span class="badge bg-primary"><i class="fas fa-robot me-1"></i>Claude (Sonnet 4.5)</span>
+                            <?php if (count($claude_responses) > 1): ?>
+                                <span class="badge bg-secondary"><?= count($claude_responses) ?> llamadas</span>
+                            <?php endif; ?>
                         </h6>
-                        <?php if ($signal->analysis_claude): ?>
-                            <?php $claude_data = json_decode($signal->analysis_claude, true); ?>
-                            <div class="mb-2">
-                                <strong>op_type:</strong>
-                                <?php $ot = isset($claude_data['op_type']) ? strtoupper($claude_data['op_type']) : '—'; ?>
-                                <span class="badge <?= $ot === 'LONG' ? 'bg-success' : ($ot === 'SHORT' ? 'bg-danger' : 'bg-secondary') ?>">
-                                    <?= $ot ?>
-                                </span>
-                            </div>
-                            <div class="mb-2">
-                                <strong>Precios:</strong>
-                                <?php if (isset($claude_data['label_prices'])): ?>
-                                    <ol class="mb-0 ps-3 small">
-                                        <?php foreach ($claude_data['label_prices'] as $price): ?>
-                                            <li><?= $price ?></li>
-                                        <?php endforeach; ?>
-                                    </ol>
-                                <?php else: ?>
-                                    <span class="text-muted">—</span>
+                        <?php if (!empty($claude_responses)): ?>
+                            <?php foreach ($claude_responses as $r_idx => $cld): ?>
+                                <?php if (count($claude_responses) > 1): ?>
+                                    <div class="small text-muted mb-1"><strong>Ronda <?= $r_idx + 1 ?>:</strong></div>
                                 <?php endif; ?>
-                            </div>
+                                <div class="mb-2">
+                                    <strong>op_type:</strong>
+                                    <?php $ot = isset($cld['op_type']) ? strtoupper($cld['op_type']) : '—'; ?>
+                                    <span class="badge <?= $ot === 'LONG' ? 'bg-success' : ($ot === 'SHORT' ? 'bg-danger' : 'bg-secondary') ?>"><?= $ot ?></span>
+                                </div>
+                                <div class="mb-2">
+                                    <strong>Precios (<?= isset($cld['label_prices']) ? count($cld['label_prices']) : 0 ?>):</strong>
+                                    <?php if (isset($cld['label_prices'])): ?>
+                                        <ol class="mb-0 ps-3 small">
+                                            <?php foreach ($cld['label_prices'] as $price): ?>
+                                                <li><?= $price ?></li>
+                                            <?php endforeach; ?>
+                                        </ol>
+                                    <?php else: ?>
+                                        <span class="text-muted">—</span>
+                                    <?php endif; ?>
+                                </div>
+                                <?php if (count($claude_responses) > 1 && $r_idx < count($claude_responses) - 1): ?>
+                                    <hr class="my-2">
+                                <?php endif; ?>
+                            <?php endforeach; ?>
                             <details class="mt-2">
                                 <summary class="small text-muted">Raw JSON</summary>
-                                <pre class="bg-light p-2 rounded small mt-1 mb-0"><?= json_encode($claude_data, JSON_PRETTY_PRINT) ?></pre>
+                                <pre class="bg-light p-2 rounded small mt-1 mb-0"><?= json_encode($claude_raw, JSON_PRETTY_PRINT) ?></pre>
                             </details>
                         <?php else: ?>
                             <div class="alert alert-warning py-2 small"><i class="fas fa-times me-1"></i>No response</div>

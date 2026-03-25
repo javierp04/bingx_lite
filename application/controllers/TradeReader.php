@@ -262,8 +262,8 @@ class TradeReader extends CI_Controller
         $op_type = strtoupper(trim($raw_json['op_type']));
         $n = count($prices);
 
-        // Validar mínimo 8 precios (2 SL + 1 Entry + 5+ TPs)
-        if (!is_array($prices) || $n < 8) {
+        // Validar mínimo 7 precios (2 SL + 1 Entry + 4+ TPs)
+        if (!is_array($prices) || $n < 7) {
             return null;
         }
 
@@ -361,12 +361,12 @@ class TradeReader extends CI_Controller
 
     private function createTradeAnalysisDual($image_base64, $prompt, $visual_op_type, $cropped_filename)
     {
-        // Llamar a ambas IAs
-        $raw_openai = $this->analyzeWithProvider($image_base64, $prompt, 'openai');
-        $raw_claude = $this->analyzeWithProvider($image_base64, $prompt, 'claude');
+        // === RONDA 1 ===
+        $o1 = $this->analyzeWithProvider($image_base64, $prompt, 'openai');
+        $c1 = $this->analyzeWithProvider($image_base64, $prompt, 'claude');
 
-        // Si alguna falló completamente
-        if ($raw_openai === null && $raw_claude === null) {
+        // Si ambas fallaron completamente
+        if ($o1 === null && $c1 === null) {
             $this->Log_model->add_log([
                 'user_id' => null,
                 'action' => 'dual_ai_both_failed',
@@ -375,10 +375,10 @@ class TradeReader extends CI_Controller
             return null;
         }
 
-        // Si solo una falló, retornar la que funcionó pero como no validada
-        if ($raw_openai === null || $raw_claude === null) {
-            $working_provider = $raw_openai !== null ? 'openai' : 'claude';
-            $working_raw = $raw_openai !== null ? $raw_openai : $raw_claude;
+        // Si solo una respondió: no validada, sin retry
+        if ($o1 === null || $c1 === null) {
+            $working_provider = $o1 !== null ? 'openai' : 'claude';
+            $working_raw = $o1 !== null ? $o1 : $c1;
 
             $this->Log_model->add_log([
                 'user_id' => null,
@@ -386,70 +386,122 @@ class TradeReader extends CI_Controller
                 'description' => "Solo {$working_provider} respondió para imagen: {$cropped_filename}"
             ]);
 
-            $op_type_final = $this->resolveOpType($working_raw, $visual_op_type, $cropped_filename);
-            $working_raw['op_type'] = $op_type_final;
-            $transformed = $this->transformAnalysisData($working_raw);
-
-            if ($transformed === null) {
-                return null;
-            }
-
-            return [
-                'analysis' => $transformed,
-                'ai_validated' => false,
-                'analysis_openai' => $raw_openai !== null ? json_encode($raw_openai) : null,
-                'analysis_claude' => $raw_claude !== null ? json_encode($raw_claude) : null,
-                'discrepancy' => "Solo {$working_provider} respondió correctamente",
-                'dual_mode' => true
-            ];
+            return $this->buildDualResult($working_raw, $visual_op_type, $cropped_filename, $o1, $c1, false, "Solo {$working_provider} respondió");
         }
 
-        // Ambas respondieron: resolver op_type de cada una
-        $op_openai = $this->resolveOpType($raw_openai, $visual_op_type, $cropped_filename . '_openai');
-        $op_claude = $this->resolveOpType($raw_claude, $visual_op_type, $cropped_filename . '_claude');
+        // Resolver op_type de ambas
+        $this->prepareRawWithOpType($o1, $visual_op_type, $cropped_filename . '_O1');
+        $this->prepareRawWithOpType($c1, $visual_op_type, $cropped_filename . '_C1');
 
-        $raw_openai['op_type'] = $op_openai;
-        $raw_claude['op_type'] = $op_claude;
+        // Ronda 1: comparar O1 vs C1
+        $match = $this->findMatchingPair([[$o1, $c1]], $cropped_filename, 'R1');
 
-        // Comparar resultados
-        $comparison = $this->compareAnalysisResults($raw_openai, $raw_claude);
+        if ($match) {
+            return $this->buildDualResult($match['winner'], $visual_op_type, $cropped_filename, $o1, $c1, true, $match['detail'], $match['matched_prices']);
+        }
 
+        // === RONDA 2: retry ===
         $this->Log_model->add_log([
             'user_id' => null,
-            'action' => 'dual_ai_comparison',
-            'description' => "Match: " . ($comparison['match'] ? 'SI' : 'NO') .
-                " | Detalle: " . $comparison['detail'] .
-                " | Imagen: {$cropped_filename}"
+            'action' => 'dual_ai_retry',
+            'description' => "Ronda 1 mismatch, ejecutando retry para imagen: {$cropped_filename}"
         ]);
 
-        if ($comparison['match']) {
-            // Coinciden: usar cualquiera (usamos OpenAI)
-            $transformed = $this->transformAnalysisData($raw_openai);
-            if ($transformed === null) {
-                return null;
-            }
+        $o2 = $this->analyzeWithProvider($image_base64, $prompt, 'openai');
+        $c2 = $this->analyzeWithProvider($image_base64, $prompt, 'claude');
 
-            return [
-                'analysis' => $transformed,
-                'ai_validated' => true,
-                'analysis_openai' => json_encode($raw_openai),
-                'analysis_claude' => json_encode($raw_claude),
-                'discrepancy' => null,
-                'dual_mode' => true
-            ];
-        } else {
-            // No coinciden: transformar OpenAI para tener datos de referencia
-            $transformed_openai = $this->transformAnalysisData($raw_openai);
-
-            return [
-                'analysis' => $transformed_openai,
-                'ai_validated' => false,
-                'analysis_openai' => json_encode($raw_openai),
-                'analysis_claude' => json_encode($raw_claude),
-                'discrepancy' => $comparison['detail'],
-                'dual_mode' => true
-            ];
+        // Resolver op_type de las nuevas respuestas (si existen)
+        if ($o2 !== null) {
+            $this->prepareRawWithOpType($o2, $visual_op_type, $cropped_filename . '_O2');
         }
+        if ($c2 !== null) {
+            $this->prepareRawWithOpType($c2, $visual_op_type, $cropped_filename . '_C2');
+        }
+
+        // Armar pares cruzados para comparar (solo los que tienen ambas respuestas)
+        $cross_pairs = [];
+        if ($o1 !== null && $c2 !== null) $cross_pairs[] = [$o1, $c2];
+        if ($o2 !== null && $c1 !== null) $cross_pairs[] = [$o2, $c1];
+        if ($o2 !== null && $c2 !== null) $cross_pairs[] = [$o2, $c2];
+
+        $match = $this->findMatchingPair($cross_pairs, $cropped_filename, 'R2');
+
+        // Consolidar todas las respuestas para guardar en DB
+        $all_openai = array_values(array_filter([$o1, $o2]));
+        $all_claude = array_values(array_filter([$c1, $c2]));
+
+        if ($match) {
+            return $this->buildDualResult($match['winner'], $visual_op_type, $cropped_filename, $all_openai, $all_claude, true, $match['detail'] . ' (retry)', $match['matched_prices']);
+        }
+
+        // Ningún par coincidió → pending_review
+        $this->Log_model->add_log([
+            'user_id' => null,
+            'action' => 'dual_ai_all_mismatch',
+            'description' => "Ningún par coincidió después de retry para imagen: {$cropped_filename}"
+        ]);
+
+        return $this->buildDualResult($o1, $visual_op_type, $cropped_filename, $all_openai, $all_claude, false, 'Ningún par coincidió después de 2 rondas');
+    }
+
+    private function prepareRawWithOpType(&$raw, $visual_op_type, $context)
+    {
+        $raw['op_type'] = $this->resolveOpType($raw, $visual_op_type, $context);
+    }
+
+    private function findMatchingPair($pairs, $cropped_filename, $round_label)
+    {
+        foreach ($pairs as $idx => $pair) {
+            list($rawA, $rawB) = $pair;
+            $comparison = $this->compareAnalysisResults($rawA, $rawB);
+
+            $pair_label = "{$round_label}_par{$idx}";
+            $this->Log_model->add_log([
+                'user_id' => null,
+                'action' => 'dual_ai_comparison',
+                'description' => "{$pair_label}: " . ($comparison['match'] ? 'MATCH' : 'NO') .
+                    " | {$comparison['detail']} | Imagen: {$cropped_filename}"
+            ]);
+
+            if ($comparison['match']) {
+                // Usar rawA como ganador, con precios truncados al subset validado si aplica
+                $winner = $rawA;
+                if (isset($comparison['matched_prices'])) {
+                    $winner['label_prices'] = $comparison['matched_prices'];
+                }
+                return [
+                    'winner' => $winner,
+                    'detail' => $comparison['detail'],
+                    'matched_prices' => isset($comparison['matched_prices']) ? $comparison['matched_prices'] : $rawA['label_prices']
+                ];
+            }
+        }
+        return null;
+    }
+
+    private function buildDualResult($raw_winner, $visual_op_type, $cropped_filename, $openai_data, $claude_data, $validated, $detail, $matched_prices = null)
+    {
+        // Si matched_prices fue proporcionado, usarlo en el winner para la transformación
+        if ($matched_prices !== null && $raw_winner !== null) {
+            $raw_winner['label_prices'] = $matched_prices;
+        }
+
+        $transformed = null;
+        if ($raw_winner !== null) {
+            if (!isset($raw_winner['op_type'])) {
+                $raw_winner['op_type'] = $this->resolveOpType($raw_winner, $visual_op_type, $cropped_filename);
+            }
+            $transformed = $this->transformAnalysisData($raw_winner);
+        }
+
+        return [
+            'analysis' => $transformed,
+            'ai_validated' => $validated,
+            'analysis_openai' => json_encode($openai_data),
+            'analysis_claude' => json_encode($claude_data),
+            'discrepancy' => $validated ? null : $detail,
+            'dual_mode' => true
+        ];
     }
 
     private function analyzeWithProvider($image_base64, $prompt, $provider)
@@ -512,54 +564,81 @@ class TradeReader extends CI_Controller
         return $op_type_final;
     }
 
-    private function compareAnalysisResults($raw_openai, $raw_claude)
+    private function compareAnalysisResults($rawA, $rawB)
     {
-        // Comparar op_type
-        $op_openai = isset($raw_openai['op_type']) ? strtoupper($raw_openai['op_type']) : 'UNKNOWN';
-        $op_claude = isset($raw_claude['op_type']) ? strtoupper($raw_claude['op_type']) : 'UNKNOWN';
+        $op_a = isset($rawA['op_type']) ? strtoupper($rawA['op_type']) : 'UNKNOWN';
+        $op_b = isset($rawB['op_type']) ? strtoupper($rawB['op_type']) : 'UNKNOWN';
 
-        if ($op_openai !== $op_claude) {
+        if ($op_a !== $op_b) {
             return [
                 'match' => false,
-                'detail' => "op_type mismatch: OpenAI={$op_openai} vs Claude={$op_claude}"
+                'detail' => "op_type mismatch: A={$op_a} vs B={$op_b}"
             ];
         }
 
-        // Comparar precios: usar min(count) para comparar solo la intersección
-        $prices_openai = isset($raw_openai['label_prices']) ? $raw_openai['label_prices'] : [];
-        $prices_claude = isset($raw_claude['label_prices']) ? $raw_claude['label_prices'] : [];
+        $prices_a = isset($rawA['label_prices']) ? array_map('floatval', $rawA['label_prices']) : [];
+        $prices_b = isset($rawB['label_prices']) ? array_map('floatval', $rawB['label_prices']) : [];
+        $count_a = count($prices_a);
+        $count_b = count($prices_b);
 
-        $count_openai = count($prices_openai);
-        $count_claude = count($prices_claude);
-        $max_count = max($count_openai, $count_claude);
-        $min_count = min($count_openai, $count_claude);
-
-        // Si la diferencia de cantidad es >30% del mayor, es mismatch grave
-        if ($max_count > 0 && (($max_count - $min_count) / $max_count) > 0.30) {
+        if ($count_a < 7 || $count_b < 7) {
             return [
                 'match' => false,
-                'detail' => "Diferencia de precios excesiva: OpenAI={$count_openai} vs Claude={$count_claude} (>{30}%)"
+                'detail' => "Insuficientes precios para comparar: A={$count_a}, B={$count_b} (mín 7)"
             ];
         }
 
-        // Comparar los primeros N precios (N = min de ambos)
-        for ($i = 0; $i < $min_count; $i++) {
-            if ((float)$prices_openai[$i] !== (float)$prices_claude[$i]) {
-                return [
-                    'match' => false,
-                    'detail' => "Precio #" . ($i + 1) . " distinto: OpenAI={$prices_openai[$i]} vs Claude={$prices_claude[$i]}"
-                ];
+        $required = 7;
+
+        if ($op_a === 'LONG') {
+            // LONG: comparar las últimas 7 (entry + stops + TPs cercanos)
+            $tail_a = array_slice($prices_a, -$required);
+            $tail_b = array_slice($prices_b, -$required);
+
+            for ($i = 0; $i < $required; $i++) {
+                if ($tail_a[$i] !== $tail_b[$i]) {
+                    $pos_a = $count_a - $required + $i + 1;
+                    $pos_b = $count_b - $required + $i + 1;
+                    return [
+                        'match' => false,
+                        'detail' => "LONG tail#{$i}: A[{$pos_a}]={$tail_a[$i]} vs B[{$pos_b}]={$tail_b[$i]}"
+                    ];
+                }
             }
+
+            // Match: usar las últimas 7 como precios validados
+            // Tomar el set más largo truncado a lo que coincide desde el final
+            $matched = $tail_a;
+
+            return [
+                'match' => true,
+                'detail' => "LONG match: últimas {$required} coinciden (A={$count_a}, B={$count_b})",
+                'matched_prices' => $matched
+            ];
+
+        } else {
+            // SHORT: comparar las primeras 7 (SL1, SL2, entry + TPs cercanos)
+            $head_a = array_slice($prices_a, 0, $required);
+            $head_b = array_slice($prices_b, 0, $required);
+
+            for ($i = 0; $i < $required; $i++) {
+                if ($head_a[$i] !== $head_b[$i]) {
+                    $pos = $i + 1;
+                    return [
+                        'match' => false,
+                        'detail' => "SHORT head#{$pos}: A={$head_a[$i]} vs B={$head_b[$i]}"
+                    ];
+                }
+            }
+
+            $matched = $head_a;
+
+            return [
+                'match' => true,
+                'detail' => "SHORT match: primeras {$required} coinciden (A={$count_a}, B={$count_b})",
+                'matched_prices' => $matched
+            ];
         }
-
-        $count_note = ($count_openai !== $count_claude)
-            ? " (OpenAI={$count_openai}, Claude={$count_claude}, comparados={$min_count})"
-            : "";
-
-        return [
-            'match' => true,
-            'detail' => "Coincidencia: op_type={$op_openai}, precios={$min_count}{$count_note}"
-        ];
     }
 
     /**
