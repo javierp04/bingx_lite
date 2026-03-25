@@ -96,11 +96,9 @@
             <div class="card-body">
                 <div class="row">
                     <?php
-                    // Normalizar datos: puede ser objeto único o array de objetos (retry)
                     $openai_raw = $signal->analysis_openai ? json_decode($signal->analysis_openai, true) : null;
                     $claude_raw = $signal->analysis_claude ? json_decode($signal->analysis_claude, true) : null;
 
-                    // Detectar si es array de respuestas o respuesta única
                     $openai_responses = [];
                     if ($openai_raw !== null) {
                         $openai_responses = (isset($openai_raw[0]) && is_array($openai_raw[0])) ? $openai_raw : [$openai_raw];
@@ -109,129 +107,120 @@
                     if ($claude_raw !== null) {
                         $claude_responses = (isset($claude_raw[0]) && is_array($claude_raw[0])) ? $claude_raw : [$claude_raw];
                     }
-                    $has_retry = count($openai_responses) > 1 || count($claude_responses) > 1;
+                    $total_rounds = max(count($openai_responses), count($claude_responses));
                     ?>
-                    <!-- OpenAI Result -->
-                    <div class="col-md-6">
-                        <h6 class="text-center mb-2">
-                            <span class="badge bg-success"><i class="fas fa-robot me-1"></i>OpenAI (GPT-4o)</span>
-                            <?php if (count($openai_responses) > 1): ?>
-                                <span class="badge bg-secondary"><?= count($openai_responses) ?> llamadas</span>
-                            <?php endif; ?>
-                        </h6>
-                        <?php if (!empty($openai_responses)): ?>
-                            <?php foreach ($openai_responses as $r_idx => $oai): ?>
-                                <?php if (count($openai_responses) > 1): ?>
-                                    <div class="small text-muted mb-1"><strong>Ronda <?= $r_idx + 1 ?>:</strong></div>
+
+                    <?php for ($round = 0; $round < $total_rounds; $round++): ?>
+                        <?php
+                        $oai = isset($openai_responses[$round]) ? $openai_responses[$round] : null;
+                        $cld = isset($claude_responses[$round]) ? $claude_responses[$round] : null;
+                        $oai_prices = ($oai && isset($oai['label_prices'])) ? $oai['label_prices'] : [];
+                        $cld_prices = ($cld && isset($cld['label_prices'])) ? $cld['label_prices'] : [];
+                        $max_prices = max(count($oai_prices), count($cld_prices));
+                        $oai_ot = $oai && isset($oai['op_type']) ? strtoupper($oai['op_type']) : '—';
+                        $cld_ot = $cld && isset($cld['op_type']) ? strtoupper($cld['op_type']) : '—';
+                        $ot_match = ($oai_ot === $cld_ot);
+                        ?>
+
+                        <?php if ($total_rounds > 1): ?>
+                            <div class="small fw-bold text-muted mb-2 <?= $round > 0 ? 'mt-3 pt-2 border-top' : '' ?>">
+                                <i class="fas fa-sync-alt me-1"></i>Ronda <?= $round + 1 ?>
+                            </div>
+                        <?php endif; ?>
+
+                        <div class="row mb-1">
+                            <div class="col-6 text-center">
+                                <span class="badge bg-success"><i class="fas fa-robot me-1"></i>OpenAI</span>
+                                <strong class="small ms-1">op_type:</strong>
+                                <span class="badge <?= $oai_ot === 'LONG' ? 'bg-success' : ($oai_ot === 'SHORT' ? 'bg-danger' : 'bg-secondary') ?> <?= !$ot_match ? 'border border-danger border-2' : '' ?>"><?= $oai_ot ?></span>
+                                <span class="text-muted small">(<?= count($oai_prices) ?>)</span>
+                            </div>
+                            <div class="col-6 text-center">
+                                <span class="badge bg-primary"><i class="fas fa-robot me-1"></i>Claude</span>
+                                <strong class="small ms-1">op_type:</strong>
+                                <span class="badge <?= $cld_ot === 'LONG' ? 'bg-success' : ($cld_ot === 'SHORT' ? 'bg-danger' : 'bg-secondary') ?> <?= !$ot_match ? 'border border-danger border-2' : '' ?>"><?= $cld_ot ?></span>
+                                <span class="text-muted small">(<?= count($cld_prices) ?>)</span>
+                            </div>
+                        </div>
+
+                        <?php for ($i = 0; $i < $max_prices; $i++):
+                            $p_oai = isset($oai_prices[$i]) ? $oai_prices[$i] : null;
+                            $p_cld = isset($cld_prices[$i]) ? $cld_prices[$i] : null;
+                            $is_diff = ($p_oai !== null && $p_cld !== null && (float)$p_oai !== (float)$p_cld)
+                                    || ($p_oai === null && $p_cld !== null)
+                                    || ($p_oai !== null && $p_cld === null);
+                        ?>
+                        <div class="row small" style="margin: 0; <?= $is_diff ? 'background: #f8d7da; border-left: 3px solid #dc3545;' : '' ?>">
+                            <div class="col-6 py-0 ps-4">
+                                <?= ($i + 1) ?>.
+                                <?php if ($p_oai !== null): ?>
+                                    <span class="<?= $is_diff ? 'text-danger fw-bold' : '' ?>"><?= $p_oai ?></span>
+                                <?php else: ?>
+                                    <span class="text-muted">—</span>
                                 <?php endif; ?>
-                                <div class="mb-2">
-                                    <strong>op_type:</strong>
-                                    <?php $ot = isset($oai['op_type']) ? strtoupper($oai['op_type']) : '—'; ?>
-                                    <span class="badge <?= $ot === 'LONG' ? 'bg-success' : ($ot === 'SHORT' ? 'bg-danger' : 'bg-secondary') ?>"><?= $ot ?></span>
-                                </div>
-                                <div class="mb-2">
-                                    <strong>Precios (<?= isset($oai['label_prices']) ? count($oai['label_prices']) : 0 ?>):</strong>
-                                    <?php if (isset($oai['label_prices'])): ?>
-                                        <ol class="mb-0 ps-3 small">
-                                            <?php foreach ($oai['label_prices'] as $price): ?>
-                                                <li><?= $price ?></li>
-                                            <?php endforeach; ?>
-                                        </ol>
-                                    <?php else: ?>
-                                        <span class="text-muted">—</span>
-                                    <?php endif; ?>
-                                </div>
-                                <?php if (count($openai_responses) > 1 && $r_idx < count($openai_responses) - 1): ?>
-                                    <hr class="my-2">
+                            </div>
+                            <div class="col-6 py-0 ps-4">
+                                <?= ($i + 1) ?>.
+                                <?php if ($p_cld !== null): ?>
+                                    <span class="<?= $is_diff ? 'text-danger fw-bold' : '' ?>"><?= $p_cld ?></span>
+                                <?php else: ?>
+                                    <span class="text-muted">—</span>
                                 <?php endif; ?>
-                            <?php endforeach; ?>
-                            <details class="mt-2">
-                                <summary class="small text-muted">Raw JSON</summary>
+                            </div>
+                        </div>
+                        <?php endfor; ?>
+                    <?php endfor; ?>
+
+                    <div class="row mt-3">
+                        <div class="col-6">
+                            <details>
+                                <summary class="small text-muted">Raw OpenAI JSON</summary>
                                 <pre class="bg-light p-2 rounded small mt-1 mb-0"><?= json_encode($openai_raw, JSON_PRETTY_PRINT) ?></pre>
                             </details>
-                        <?php else: ?>
-                            <div class="alert alert-warning py-2 small"><i class="fas fa-times me-1"></i>No response</div>
-                        <?php endif; ?>
-                    </div>
-                    <!-- Claude Result -->
-                    <div class="col-md-6">
-                        <h6 class="text-center mb-2">
-                            <span class="badge bg-primary"><i class="fas fa-robot me-1"></i>Claude (Sonnet 4.5)</span>
-                            <?php if (count($claude_responses) > 1): ?>
-                                <span class="badge bg-secondary"><?= count($claude_responses) ?> llamadas</span>
-                            <?php endif; ?>
-                        </h6>
-                        <?php if (!empty($claude_responses)): ?>
-                            <?php foreach ($claude_responses as $r_idx => $cld): ?>
-                                <?php if (count($claude_responses) > 1): ?>
-                                    <div class="small text-muted mb-1"><strong>Ronda <?= $r_idx + 1 ?>:</strong></div>
-                                <?php endif; ?>
-                                <div class="mb-2">
-                                    <strong>op_type:</strong>
-                                    <?php $ot = isset($cld['op_type']) ? strtoupper($cld['op_type']) : '—'; ?>
-                                    <span class="badge <?= $ot === 'LONG' ? 'bg-success' : ($ot === 'SHORT' ? 'bg-danger' : 'bg-secondary') ?>"><?= $ot ?></span>
-                                </div>
-                                <div class="mb-2">
-                                    <strong>Precios (<?= isset($cld['label_prices']) ? count($cld['label_prices']) : 0 ?>):</strong>
-                                    <?php if (isset($cld['label_prices'])): ?>
-                                        <ol class="mb-0 ps-3 small">
-                                            <?php foreach ($cld['label_prices'] as $price): ?>
-                                                <li><?= $price ?></li>
-                                            <?php endforeach; ?>
-                                        </ol>
-                                    <?php else: ?>
-                                        <span class="text-muted">—</span>
-                                    <?php endif; ?>
-                                </div>
-                                <?php if (count($claude_responses) > 1 && $r_idx < count($claude_responses) - 1): ?>
-                                    <hr class="my-2">
-                                <?php endif; ?>
-                            <?php endforeach; ?>
-                            <details class="mt-2">
-                                <summary class="small text-muted">Raw JSON</summary>
+                        </div>
+                        <div class="col-6">
+                            <details>
+                                <summary class="small text-muted">Raw Claude JSON</summary>
                                 <pre class="bg-light p-2 rounded small mt-1 mb-0"><?= json_encode($claude_raw, JSON_PRETTY_PRINT) ?></pre>
                             </details>
-                        <?php else: ?>
-                            <div class="alert alert-warning py-2 small"><i class="fas fa-times me-1"></i>No response</div>
-                        <?php endif; ?>
+                        </div>
                     </div>
-                </div>
 
-                <?php if ($signal->status === 'pending_review'): ?>
-                <hr>
-                <div class="text-center">
-                    <p class="small text-muted mb-2">Seleccionar resultado para aprobar esta señal:</p>
-                    <div class="d-flex justify-content-center gap-2">
-                        <?php if ($signal->analysis_openai): ?>
-                        <form action="<?= base_url('telegram_signals/resolve/' . $signal->id) ?>" method="post">
-                            <input type="hidden" name="provider" value="openai">
-                            <button type="submit" class="btn btn-success btn-sm" onclick="return confirm('Aprobar con resultado de OpenAI?')">
-                                <i class="fas fa-check me-1"></i>Usar OpenAI
-                            </button>
-                        </form>
-                        <?php endif; ?>
-                        <?php if ($signal->analysis_claude): ?>
-                        <form action="<?= base_url('telegram_signals/resolve/' . $signal->id) ?>" method="post">
-                            <input type="hidden" name="provider" value="claude">
-                            <button type="submit" class="btn btn-primary btn-sm" onclick="return confirm('Aprobar con resultado de Claude?')">
-                                <i class="fas fa-check me-1"></i>Usar Claude
-                            </button>
-                        </form>
-                        <?php endif; ?>
-                        <form action="<?= base_url('telegram_signals/resolve/' . $signal->id) ?>" method="post">
-                            <input type="hidden" name="provider" value="discard">
-                            <button type="submit" class="btn btn-outline-danger btn-sm" onclick="return confirm('Descartar esta señal?')">
-                                <i class="fas fa-trash me-1"></i>Descartar
-                            </button>
-                        </form>
+                    <?php if ($signal->status === 'pending_review'): ?>
+                    <hr>
+                    <div class="text-center">
+                        <p class="small text-muted mb-2">Seleccionar resultado para aprobar esta señal:</p>
+                        <div class="d-flex justify-content-center gap-2">
+                            <?php if ($signal->analysis_openai): ?>
+                            <form action="<?= base_url('telegram_signals/resolve/' . $signal->id) ?>" method="post">
+                                <input type="hidden" name="provider" value="openai">
+                                <button type="submit" class="btn btn-success btn-sm" onclick="return confirm('Aprobar con resultado de OpenAI?')">
+                                    <i class="fas fa-check me-1"></i>Usar OpenAI
+                                </button>
+                            </form>
+                            <?php endif; ?>
+                            <?php if ($signal->analysis_claude): ?>
+                            <form action="<?= base_url('telegram_signals/resolve/' . $signal->id) ?>" method="post">
+                                <input type="hidden" name="provider" value="claude">
+                                <button type="submit" class="btn btn-primary btn-sm" onclick="return confirm('Aprobar con resultado de Claude?')">
+                                    <i class="fas fa-check me-1"></i>Usar Claude
+                                </button>
+                            </form>
+                            <?php endif; ?>
+                            <form action="<?= base_url('telegram_signals/resolve/' . $signal->id) ?>" method="post">
+                                <input type="hidden" name="provider" value="discard">
+                                <button type="submit" class="btn btn-outline-danger btn-sm" onclick="return confirm('Descartar esta señal?')">
+                                    <i class="fas fa-trash me-1"></i>Descartar
+                                </button>
+                            </form>
+                        </div>
                     </div>
+                    <?php endif; ?>
                 </div>
-                <?php endif; ?>
             </div>
         </div>
         <?php endif; ?>
 
-        <!-- AI Analysis -->
         <?php if (in_array($signal->status, ['completed', 'pending_review']) && $signal->analysis_data): ?>
         <div class="card mb-4">
             <div class="card-header">
