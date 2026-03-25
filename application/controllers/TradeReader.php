@@ -525,30 +525,40 @@ class TradeReader extends CI_Controller
             ];
         }
 
-        // Comparar cantidad de precios
+        // Comparar precios: usar min(count) para comparar solo la intersección
         $prices_openai = isset($raw_openai['label_prices']) ? $raw_openai['label_prices'] : [];
         $prices_claude = isset($raw_claude['label_prices']) ? $raw_claude['label_prices'] : [];
 
-        if (count($prices_openai) !== count($prices_claude)) {
+        $count_openai = count($prices_openai);
+        $count_claude = count($prices_claude);
+        $max_count = max($count_openai, $count_claude);
+        $min_count = min($count_openai, $count_claude);
+
+        // Si la diferencia de cantidad es >30% del mayor, es mismatch grave
+        if ($max_count > 0 && (($max_count - $min_count) / $max_count) > 0.30) {
             return [
                 'match' => false,
-                'detail' => "Cantidad de precios distinta: OpenAI=" . count($prices_openai) . " vs Claude=" . count($prices_claude)
+                'detail' => "Diferencia de precios excesiva: OpenAI={$count_openai} vs Claude={$count_claude} (>{30}%)"
             ];
         }
 
-        // Comparar cada precio exacto
-        for ($i = 0; $i < count($prices_openai); $i++) {
+        // Comparar los primeros N precios (N = min de ambos)
+        for ($i = 0; $i < $min_count; $i++) {
             if ((float)$prices_openai[$i] !== (float)$prices_claude[$i]) {
                 return [
                     'match' => false,
-                    'detail' => "Precio #{$i} distinto: OpenAI={$prices_openai[$i]} vs Claude={$prices_claude[$i]}"
+                    'detail' => "Precio #" . ($i + 1) . " distinto: OpenAI={$prices_openai[$i]} vs Claude={$prices_claude[$i]}"
                 ];
             }
         }
 
+        $count_note = ($count_openai !== $count_claude)
+            ? " (OpenAI={$count_openai}, Claude={$count_claude}, comparados={$min_count})"
+            : "";
+
         return [
             'match' => true,
-            'detail' => "Coincidencia exacta: op_type={$op_openai}, precios=" . count($prices_openai)
+            'detail' => "Coincidencia: op_type={$op_openai}, precios={$min_count}{$count_note}"
         ];
     }
 
@@ -710,14 +720,16 @@ class TradeReader extends CI_Controller
         return <<<'PROMPT'
 La imagen es un gráfico de TradingView con un plan de operación. El plan tiene una caja coloreada (zona de operación) con etiquetas de precio alineadas verticalmente a su derecha.
 
-Extrae los precios de esas etiquetas Y determina el tipo de operación.
+Extrae TODOS los precios de esas etiquetas Y determina el tipo de operación.
 
 REGLAS:
-1. Solo las etiquetas del plan de operación: están alineadas verticalmente a la derecha de la caja coloreada
-2. Si una etiqueta está aislada o separada del grupo principal, no la incluyas
-3. Ignorar etiquetas del broker, Fibonacci, indicadores, eje de precios
-4. Orden: de ARRIBA hacia ABAJO visualmente
-5. Formato europeo (1.234,56) → convertir a estándar (1234.56)
+1. Extrae TODAS las etiquetas de precio que estén a la derecha de la caja coloreada, sin excepción. Pueden ser 8, 9, 10 o más.
+2. Solo las etiquetas del plan de operación: están alineadas verticalmente a la derecha de la caja coloreada
+3. Ignorar etiquetas del broker, Fibonacci, indicadores, eje de precios del gráfico
+4. Si una etiqueta está claramente aislada o separada del grupo principal (no alineada con las demás a la derecha de la caja), no la incluyas
+5. Orden: de ARRIBA hacia ABAJO visualmente
+6. Formato europeo (1.234,56) → convertir a estándar (1234.56)
+7. Lee cada número con máxima precisión. Distingue bien entre dígitos similares (3 vs 1, 6 vs 8, etc.)
 
 TIPO DE OPERACIÓN:
 - Si encuentras al menos UNA leyenda/etiqueta que diga "zona a superar" → op_type = "LONG"

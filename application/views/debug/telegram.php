@@ -376,11 +376,16 @@ function simulateWebhook() {
                 validationBadge = aiProviderBadge;
             }
 
+            const isMismatch = data.data.ai_mode === 'dual' && !data.data.ai_validated;
+            const alertClass = isMismatch ? 'alert-warning' : 'alert-success';
+            const alertIcon = isMismatch ? 'fas fa-exclamation-triangle' : 'fas fa-check';
+            const alertTitle = isMismatch ? 'Pending Review' : 'Success!';
+
             document.getElementById('webhook-results').innerHTML = `
-                <div class="alert alert-success mt-3">
-                    <strong><i class="fas fa-check me-1"></i>Success!</strong> ${validationBadge}
+                <div class="alert ${alertClass} mt-3">
+                    <strong><i class="${alertIcon} me-1"></i>${alertTitle}</strong> ${validationBadge}
                     <p class="mb-2 small">${data.message}</p>
-                    <a href="${BASE_URL}telegram_signals/view/${data.data.signal_id}" target="_blank" class="btn btn-sm btn-primary">
+                    <a href="${BASE_URL}telegram_signals/view/${data.data.signal_id}" target="_blank" class="btn btn-sm ${isMismatch ? 'btn-warning' : 'btn-primary'}">
                         <i class="fas fa-eye me-1"></i>View Signal #${data.data.signal_id}
                     </a>
                 </div>
