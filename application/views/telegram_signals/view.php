@@ -290,6 +290,15 @@
     </div>
 
     <div class="col-md-4">
+        <!-- Cropped Image Preview (full width, no card) -->
+        <?php if ($cropped_image_exists): ?>
+            <div class="mb-4">
+                <img src="<?= base_url('telegram_signals/view_cropped_image/' . $signal->id) ?>" 
+                     style="width: 100%; cursor: pointer;"
+                     onclick="window.open('<?= base_url('telegram_signals/view_cropped_image/' . $signal->id) ?>', '_blank')">
+            </div>
+        <?php endif; ?>
+
         <!-- Original Image Preview -->
         <?php if (file_exists($signal->image_path)): ?>
             <div class="card mb-4">
@@ -320,41 +329,6 @@
                         <i class="fas fa-image fa-3x mb-2"></i>
                         <p>Original image not found</p>
                         <small>Path: <?= $signal->image_path ?></small>
-                    </div>
-                </div>
-            </div>
-        <?php endif; ?>
-
-        <!-- Cropped Image Preview -->
-        <?php if ($cropped_image_exists): ?>
-            <div class="card mb-4">
-                <div class="card-header">
-                    <h6 class="mb-0">
-                        <i class="fas fa-crop me-1"></i>Cropped Chart Image
-                    </h6>
-                </div>
-                <div class="card-body text-center">
-                    <img src="<?= base_url('telegram_signals/view_cropped_image/' . $signal->id) ?>" 
-                         class="img-fluid rounded" 
-                         style="max-height: 250px; cursor: pointer;"
-                         onclick="window.open('<?= base_url('telegram_signals/view_cropped_image/' . $signal->id) ?>', '_blank')">
-                    <div class="mt-2">
-                        <small class="text-muted">Click to view full size</small>
-                    </div>
-                </div>
-            </div>
-        <?php else: ?>
-            <div class="card mb-4">
-                <div class="card-header">
-                    <h6 class="mb-0">
-                        <i class="fas fa-crop me-1"></i>Cropped Chart Image
-                    </h6>
-                </div>
-                <div class="card-body text-center">
-                    <div class="text-muted py-4">
-                        <i class="fas fa-crop fa-3x mb-2"></i>
-                        <p>Cropped image not available</p>
-                        <small>Not processed yet or crop failed</small>
                     </div>
                 </div>
             </div>
