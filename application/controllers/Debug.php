@@ -680,7 +680,10 @@ class Debug extends CI_Controller
                         'image_path' => $final_signal->image_path ?? null,
                         'analysis_data' => json_decode($final_signal->analysis_data, true),
                         'users_distributed' => $this->db->where('telegram_signal_id', $signal_id)->count_all_results('user_telegram_signals'),
-                        'ai_provider' => $ai_provider
+                        'ai_provider' => $ai_provider,
+                        'ai_mode' => $ai_mode,
+                        'ai_validated' => isset($final_signal->ai_validated) ? (bool)$final_signal->ai_validated : null,
+                        'signal_status' => $final_signal->status
                     ]
                 );
             } else {
