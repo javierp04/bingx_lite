@@ -290,12 +290,19 @@
     </div>
 
     <div class="col-md-4">
-        <!-- Cropped Image Preview (full width, no card) -->
+        <!-- Cropped Image Preview -->
         <?php if ($cropped_image_exists): ?>
-            <div class="mb-4">
-                <img src="<?= base_url('telegram_signals/view_cropped_image/' . $signal->id) ?>" 
-                     style="width: 100%; cursor: pointer;"
-                     onclick="window.open('<?= base_url('telegram_signals/view_cropped_image/' . $signal->id) ?>', '_blank')">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h6 class="mb-0">
+                        <i class="fas fa-crop me-1"></i>Cropped Chart Image
+                    </h6>
+                </div>
+                <div class="card-body p-2">
+                    <img src="<?= base_url('telegram_signals/view_cropped_image/' . $signal->id) ?>" 
+                         style="width: 100%; cursor: pointer;"
+                         onclick="window.open('<?= base_url('telegram_signals/view_cropped_image/' . $signal->id) ?>', '_blank')">
+                </div>
             </div>
         <?php endif; ?>
 
