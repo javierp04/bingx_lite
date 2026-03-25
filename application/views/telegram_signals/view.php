@@ -85,12 +85,24 @@
         <div class="card mb-4 <?= ($signal->status === 'pending_review') ? 'border-warning' : 'border-success' ?>">
             <div class="card-header" 
                  style="<?= ($signal->status === 'pending_review') ? 'background-color: #fd7e14; color: white;' : '' ?>">
-                <h5 class="mb-0">
+                <?php
+                $tmp_oai = $signal->analysis_openai ? json_decode($signal->analysis_openai, true) : null;
+                $num_rounds = 1;
+                if ($tmp_oai !== null && isset($tmp_oai[0]) && is_array($tmp_oai[0])) {
+                    $num_rounds = count($tmp_oai);
+                }
+                ?>
+                <h5 class="mb-0 d-flex align-items-center justify-content-between">
+                    <span>
                     <?php if ($signal->status === 'pending_review'): ?>
                         <i class="fas fa-exclamation-triangle me-1"></i>Dual AI Comparison &mdash; MISMATCH
                     <?php else: ?>
                         <i class="fas fa-check-double me-1"></i>Dual AI Comparison &mdash; MATCH
                     <?php endif; ?>
+                    </span>
+                    <span class="badge <?= $num_rounds > 1 ? 'bg-warning text-dark' : 'bg-info' ?>" style="font-size: 0.75rem;">
+                        <i class="fas fa-<?= $num_rounds > 1 ? 'redo' : 'check' ?> me-1"></i><?= $num_rounds ?> ronda<?= $num_rounds > 1 ? 's' : '' ?>
+                    </span>
                 </h5>
             </div>
             <div class="card-body">

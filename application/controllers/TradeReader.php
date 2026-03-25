@@ -181,7 +181,7 @@ class TradeReader extends CI_Controller
             $cajaCoords = $crop_result['box_coords'];
             $redCoords = $crop_result['red_coords'];
             $imageHeight = $crop_result['image_height'];
-            $analysis_result = $this->createTradeAnalysis($cropped_filename, $cajaCoords, $imageHeight, $redCoords);
+            $analysis_result = $this->createTradeAnalysis($cropped_filename, $cajaCoords, $imageHeight, $redCoords, $ticker_symbol);
 
             if (!$analysis_result) {
                 // Análisis falló o devolvió JSON vacío
@@ -313,7 +313,7 @@ class TradeReader extends CI_Controller
      * @param int        $imageHeight      Altura de la imagen original
      * @param array|null $redCoords        Coordenadas de la caja roja (o null)
      */
-    private function createTradeAnalysis($cropped_filename, $cajaCoords, $imageHeight, $redCoords = null)
+    private function createTradeAnalysis($cropped_filename, $cajaCoords, $imageHeight, $redCoords = null, $ticker_symbol = '')
     {
         $in_path = "uploads/trades/" . $cropped_filename . ".png";
 
@@ -337,7 +337,7 @@ class TradeReader extends CI_Controller
         $image_base64 = base64_encode(ob_get_clean());
         imagedestroy($dst);
 
-        $prompt = $this->build_prompt2();
+        $prompt = $this->build_prompt2($ticker_symbol);
 
         // 3. Detectar modo: single o dual
         $ai_mode = $this->input->get('ai_mode') ?: $this->config->item('ai_mode') ?: 'single';
@@ -805,11 +805,16 @@ class TradeReader extends CI_Controller
             return ['error' => 'No se pudo guardar la imagen croppada'];
         }
     }
-    private function build_prompt2()
+    private function build_prompt2($ticker_symbol = '')
     {
-        return <<<'PROMPT'
-La imagen es un gráfico de TradingView con un plan de operación. El plan tiene una caja coloreada (zona de operación) con etiquetas de precio alineadas verticalmente a su derecha.
+        $ticker_line = '';
+        if (!empty($ticker_symbol)) {
+            $ticker_line = "\nCONTEXTO: El activo es {$ticker_symbol}. Usa esto para interpretar correctamente el rango de precios y el formato numérico.\n";
+        }
 
+        return <<<PROMPT
+La imagen es un gráfico de TradingView con un plan de operación. El plan tiene una caja coloreada (zona de operación) con etiquetas de precio alineadas verticalmente a su derecha.
+{$ticker_line}
 Extrae TODOS los precios de esas etiquetas Y determina el tipo de operación.
 
 REGLAS:
@@ -818,7 +823,13 @@ REGLAS:
 3. Ignorar etiquetas del broker, Fibonacci, indicadores, eje de precios del gráfico
 4. Si una etiqueta está claramente aislada o separada del grupo principal (no alineada con las demás a la derecha de la caja), no la incluyas
 5. Orden: de ARRIBA hacia ABAJO visualmente
-6. Formato europeo (1.234,56) → convertir a estándar (1234.56)
+6. FORMATOS DE PRECIO — convertir TODOS a número decimal estándar con punto:
+   - Punto como separador de MILES (ej: 77.170 → 77170, 1.234 → 1234): cuando hay exactamente 3 dígitos después del punto. Común en activos con precios altos (BTC, índices, etc.)
+   - Formato europeo con coma decimal: 1.234,56 → 1234.56
+   - Apóstrofe como separador decimal (futuros): 1174'6 → 1174.6, 1050'4 → 1050.4
+   - Guión como separador decimal (futuros): 1174-6 → 1174.6
+   - Punto decimal normal (ej: 1.2345, 0.6780): respetar tal cual
+   - En caso de ambigüedad, usa el contexto del activo para determinar el rango razonable
 7. Lee cada número con máxima precisión. Distingue bien entre dígitos similares (3 vs 1, 6 vs 8, etc.)
 
 TIPO DE OPERACIÓN:
