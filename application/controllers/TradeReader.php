@@ -324,8 +324,19 @@ class TradeReader extends CI_Controller
         // 1. Detectar tipo de operación visual (fallback)
         $visual_op_type = $this->detectOperationType($cajaCoords, $imageHeight, $redCoords);
 
-        // 2. Preparar datos comunes
-        $image_base64 = base64_encode(file_get_contents($in_path));
+        // 2. Preparar imagen: upscale 2x para mejorar lectura de dígitos por la IA
+        $src = imagecreatefrompng($in_path);
+        $w = imagesx($src);
+        $h = imagesy($src);
+        $dst = imagecreatetruecolor($w * 2, $h * 2);
+        imagecopyresampled($dst, $src, 0, 0, 0, 0, $w * 2, $h * 2, $w, $h);
+        imagedestroy($src);
+
+        ob_start();
+        imagepng($dst);
+        $image_base64 = base64_encode(ob_get_clean());
+        imagedestroy($dst);
+
         $prompt = $this->build_prompt2();
 
         // 3. Detectar modo: single o dual
