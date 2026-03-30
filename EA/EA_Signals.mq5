@@ -52,6 +52,9 @@ input group "=== Stop Loss Management ==="
 input bool      ENABLE_CODE_STOP = false;
 input double    SAFETY_FACTOR = 1.5;
 
+input group "=== Logging ==="
+input LogLevel  MIN_LOG_LEVEL = INFO_LVL;   // DEBUG_LVL = ver todo, INFO_LVL = normal
+
 // ESTRUCTURAS SIMPLIFICADAS
 struct SymbolSpecs {
     double point, tickSize, tickValue, contractSize;
@@ -209,8 +212,9 @@ public:
 };
 
 // LOGGING SIMPLIFICADO
-void Log(LogLevel level, string category, string message) {    
-    
+void Log(LogLevel level, string category, string message) {
+    if(level < MIN_LOG_LEVEL) return;
+
     string prefix = "";
     switch(level) {
         case ERROR_LVL: prefix = "[ERROR]"; break;
@@ -392,7 +396,7 @@ APIResponse SendAPIRequest(string method, string url, string jsonData = "", bool
 
     response.httpCode = httpCode;
     response.data = CharArrayToString(result);
-    //Log(INFO_LVL, "API", StringFormat("HTTP %d", httpCode));
+    Log(DEBUG_LVL, "API", StringFormat("HTTP %d | Body: %s", httpCode, StringSubstr(response.data, 0, 500)));
 
     if(httpCode == 200) {
         response.result = API_SUCCESS;
@@ -400,6 +404,7 @@ APIResponse SendAPIRequest(string method, string url, string jsonData = "", bool
     } else {
         response.result = API_HTTP_ERROR;
         response.message = "HTTP " + IntegerToString(httpCode);
+        Log(ERROR_LVL, "API", StringFormat("HTTP %d error — Response: %s", httpCode, StringSubstr(response.data, 0, 1000)));
     }
 
     return response;
@@ -444,6 +449,9 @@ void ReportOpen(int userSignalId, bool isMarketOrder, ENUM_ORDER_TYPE orderType,
     APIResponse response = SendAPIRequest("POST", url, json);
     if(response.result == API_SUCCESS) {
         Log(INFO_LVL, "REPORT", "Open reportado exitosamente");
+        Log(DEBUG_LVL, "REPORT", "Open response: " + StringSubstr(response.data, 0, 500));
+    } else {
+        Log(ERROR_LVL, "REPORT", StringFormat("Open FALLÓ: %s (HTTP %d) — Response: %s", response.message, response.httpCode, StringSubstr(response.data, 0, 500)));
     }
 }
 
@@ -478,6 +486,9 @@ void ReportProgress(int userSignalId, int level, double volumeClosedPercent,
     APIResponse response = SendAPIRequest("POST", url, json);
     if(response.result == API_SUCCESS) {
         Log(INFO_LVL, "REPORT", "Progress reportado: " + message);
+        Log(DEBUG_LVL, "REPORT", "Progress response: " + StringSubstr(response.data, 0, 500));
+    } else {
+        Log(ERROR_LVL, "REPORT", StringFormat("Progress FALLÓ: %s (HTTP %d) — Response: %s", response.message, response.httpCode, StringSubstr(response.data, 0, 500)));
     }
 }
 
@@ -499,6 +510,9 @@ void ReportClose(int userSignalId, int exitLevel, string closeReason,
     APIResponse response = SendAPIRequest("POST", url, json);
     if(response.result == API_SUCCESS) {
         Log(INFO_LVL, "REPORT", "Close reportado: " + closeReason);
+        Log(DEBUG_LVL, "REPORT", "Close response: " + StringSubstr(response.data, 0, 500));
+    } else {
+        Log(ERROR_LVL, "REPORT", StringFormat("Close FALLÓ: %s (HTTP %d) — Response: %s", response.message, response.httpCode, StringSubstr(response.data, 0, 500)));
     }
 }
 
@@ -1054,26 +1068,38 @@ void CheckPendingOrderExecution() {
 void CheckForSignals() {
 
     string url = BuildAPIUrl("get_signals", 0, TICKER_SYMBOL);
+    Log(DEBUG_LVL, "POLL", StringFormat("Polling señales: %s", url));
     APIResponse response = SendAPIRequest("GET", url, "", true);
 
     if(response.result != API_SUCCESS) {
-        Log(WARNING_LVL, "SIGNALS", "Error consultando señales");
+        Log(WARNING_LVL, "SIGNALS", StringFormat("Error consultando señales: %s (HTTP %d)", response.message, response.httpCode));
+        Log(DEBUG_LVL, "SIGNALS", "Response body: " + StringSubstr(response.data, 0, 500));
         return;
     }
 
+    Log(DEBUG_LVL, "POLL", "Polling OK, procesando respuesta...");
     ProcessSignalResponse(response.data);
 }
 
 void ProcessSignalResponse(string jsonResponse) {
-    if(StringFind(jsonResponse, "\"signal\":null") > -1) return;
-    if(StringFind(jsonResponse, "\"success\":true") == -1) return;
+    if(StringFind(jsonResponse, "\"signal\":null") > -1) {
+        Log(DEBUG_LVL, "POLL", "Sin señales pendientes (signal:null)");
+        return;
+    }
+    if(StringFind(jsonResponse, "\"success\":true") == -1) {
+        Log(DEBUG_LVL, "POLL", "Respuesta sin success:true — Body: " + StringSubstr(jsonResponse, 0, 500));
+        return;
+    }
 
     Log(INFO_LVL, "JSON_DEBUG", "JSON recibido (500 chars): " + StringSubstr(jsonResponse, 0, 500));
 
     SimpleJSONParser parser(jsonResponse);
 
     int userSignalId = parser.GetInt("user_signal_id");
-    if(userSignalId <= 0) return;
+    if(userSignalId <= 0) {
+        Log(DEBUG_LVL, "POLL", "user_signal_id inválido o ausente en respuesta");
+        return;
+    }
     
     string opType = parser.GetString("op_type");
     double entry = parser.GetDouble("entry");
@@ -1124,7 +1150,11 @@ bool ExecuteTrade(int userSignalId, string opType, double entryPrice, double sto
                   double tp1, double tp2, double tp3, double tp4, double tp5,
                   double sl2 = 0) {
 
-    if(currentTP.isActive) return false;
+    if(currentTP.isActive) {
+        Log(WARNING_LVL, "TRADE", StringFormat("Señal IGNORADA (posición activa): nueva señal ID=%d, posición actual ID=%d ticket=%d",
+            userSignalId, currentTP.signalId, currentTP.ticket));
+        return false;
+    }
 
     // NUEVO: Guardar precios originales de la señal (pre-corrección)
     double originalEntry = entryPrice;
@@ -1180,6 +1210,11 @@ bool ExecuteTrade(int userSignalId, string opType, double entryPrice, double sto
     // Calcular volumen
     double calculatedVolume = CalculateVolumeOptimized(entryPrice, stopLoss);
     if(calculatedVolume <= 0) {
+        SymbolSpecs volSpecs = GetSymbolSpecs();
+        double balance = AccountInfoDouble(ACCOUNT_BALANCE);
+        double slDist = MathAbs(entryPrice - stopLoss);
+        Log(ERROR_LVL, "VOLUME", StringFormat("Volumen=0: Balance=%.2f, Risk%%=%.1f, Entry=%.5f, SL=%.5f, SLdist=%.5f, SpecsValid=%s, MinVol=%.2f",
+            balance, RISK_PERCENT, entryPrice, stopLoss, slDist, (volSpecs.isValid ? "YES" : "NO"), volSpecs.minVolume));
         ReportClose(userSignalId, -999, "VOLUME_ERROR", 0, 0);
         return false;
     }
@@ -1297,6 +1332,10 @@ bool ExecuteTrade(int userSignalId, string opType, double entryPrice, double sto
                    originalTP1, originalTP2, originalTP3, originalTP4, originalTP5);
         return true;
     } else {
+        uint retcode = trade.ResultRetcode();
+        string retdesc = trade.ResultRetcodeDescription();
+        Log(ERROR_LVL, "TRADE", StringFormat("Orden falló: Retcode=%d (%s), Tipo=%s, Vol=%.2f, Entry=%.5f, SL=%.5f, Symbol=%s",
+            retcode, retdesc, EnumToString(orderType), calculatedVolume, entryPrice, orderStopLoss, currentSymbol));
         ReportClose(userSignalId, -999, "EXECUTION_FAILED", 0, 0);
         return false;
     }

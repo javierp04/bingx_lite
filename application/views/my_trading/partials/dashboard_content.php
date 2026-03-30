@@ -55,7 +55,11 @@
                             $is_breakeven = ($signal->real_stop_loss == $signal->real_entry_price);
 
                             // Row class for active vs closed
-                            $row_class = in_array($signal->status, ['pending', 'claimed', 'open']) ? '' : 'table-secondary';
+                            // Row class: activas = normal, closed con ejecución real = blanco, closed sin ejecución (error pre-trade) = gris
+                            $row_class = '';
+                            if ($signal->status === 'closed') {
+                                $row_class = $signal->real_entry_price ? '' : 'table-secondary';
+                            }
                             ?>
                             <tr data-signal-id="<?= $signal->id ?>" class="signal-row <?= $row_class ?>" data-status="<?= $signal->status ?>">
                                 <td>
@@ -118,12 +122,26 @@
                                                         break;
                                                     case 'CLOSED_STOPLOSS':
                                                     case 'CLOSED_CODE_STOP':
+                                                    case 'CLOSED_SAFETY_STOP':
                                                         $status_class = 'bg-danger';
                                                         $status_text = 'Stop Loss';
                                                         break;
                                                     case 'CLOSED_EXTERNAL':
                                                         $status_class = 'bg-warning text-dark';
                                                         $status_text = 'Manual Close';
+                                                        break;
+                                                    case 'ORDER_CANCELLED':
+                                                        $status_class = 'bg-warning text-dark';
+                                                        $status_text = 'Order Cancelled';
+                                                        break;
+                                                    case 'INVALID_TPS':
+                                                    case 'INVALID_STOPLOSS':
+                                                    case 'PRICE_CORRECTION_ERROR':
+                                                    case 'SPREAD_TOO_HIGH':
+                                                    case 'VOLUME_ERROR':
+                                                    case 'EXECUTION_FAILED':
+                                                        $status_class = 'bg-dark';
+                                                        $status_text = 'Error';
                                                         break;
                                                     default:
                                                         $status_class = 'bg-secondary';
@@ -167,8 +185,10 @@
                                                 <small class="text-muted">Final: <?= number_format($signal->last_price, $decimals) ?></small>
                                             </div>
                                         <?php endif; ?>
+                                    <?php elseif ($signal->status === 'closed'): ?>
+                                        <span class="text-danger"><i class="fas fa-times-circle me-1"></i>Not Executed</span>
                                     <?php else: ?>
-                                        <span class="text-muted">Waiting...</span>
+                                        <span class="text-muted"><i class="fas fa-clock me-1"></i>Waiting...</span>
                                     <?php endif; ?>
                                 </td>
                                 <td>
