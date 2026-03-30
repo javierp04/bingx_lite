@@ -617,13 +617,12 @@ class TradeReader extends CI_Controller
                 }
             }
 
-            // Match: usar las últimas 7 como precios validados
-            // Tomar el set más largo truncado a lo que coincide desde el final
-            $matched = $tail_a;
+            // Match: usar el set completo del proveedor con más precios
+            $matched = $count_a >= $count_b ? $prices_a : $prices_b;
 
             return [
                 'match' => true,
-                'detail' => "LONG match: últimas {$required} coinciden (A={$count_a}, B={$count_b})",
+                'detail' => "LONG match: últimas {$required} coinciden (A={$count_a}, B={$count_b}), usando set completo de " . count($matched),
                 'matched_prices' => $matched
             ];
 
@@ -642,11 +641,12 @@ class TradeReader extends CI_Controller
                 }
             }
 
-            $matched = $head_a;
+            // Match: usar el set completo del proveedor con más precios
+            $matched = $count_a >= $count_b ? $prices_a : $prices_b;
 
             return [
                 'match' => true,
-                'detail' => "SHORT match: primeras {$required} coinciden (A={$count_a}, B={$count_b})",
+                'detail' => "SHORT match: primeras {$required} coinciden (A={$count_a}, B={$count_b}), usando set completo de " . count($matched),
                 'matched_prices' => $matched
             ];
         }
