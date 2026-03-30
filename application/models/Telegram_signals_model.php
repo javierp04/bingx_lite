@@ -101,10 +101,38 @@ class Telegram_signals_model extends CI_Model
         $this->db->where('user_id', $user_id);
         $this->db->where('status', 'available');
 
-        return $this->db->update('user_telegram_signals', [
+        $result = $this->db->update('user_telegram_signals', [
             'status' => 'claimed',
             'updated_at' => date('Y-m-d H:i:s')
         ]);
+
+        if ($result) {
+            $this->append_event($user_signal_id, 'claimed');
+        }
+
+        return $result;
+    }
+
+    /**
+     * Append an event to the event_log JSON array
+     */
+    private function append_event($user_signal_id, $event_type, $extra = [], $utc_time = null)
+    {
+        $this->db->select('event_log');
+        $this->db->where('id', $user_signal_id);
+        $row = $this->db->get('user_telegram_signals')->row();
+
+        $log = ($row && !empty($row->event_log)) ? (json_decode($row->event_log, true) ?: []) : [];
+
+        $event = ['event' => $event_type];
+        $event['at'] = $utc_time ? $this->convert_utc_to_local($utc_time) : date('Y-m-d H:i:s');
+        if (!empty($extra)) {
+            $event = array_merge($event, $extra);
+        }
+        $log[] = $event;
+
+        $this->db->where('id', $user_signal_id);
+        $this->db->update('user_telegram_signals', ['event_log' => json_encode($log)]);
     }
 
     /**
@@ -180,7 +208,25 @@ class Telegram_signals_model extends CI_Model
         }
 
         $this->db->where('id', $user_signal_id);
-        return $this->db->update('user_telegram_signals', $update_data);
+        $result = $this->db->update('user_telegram_signals', $update_data);
+
+        if ($result) {
+            $is_market = isset($open_data['order_type']) && in_array($open_data['order_type'], ['ORDER_TYPE_BUY', 'ORDER_TYPE_SELL']);
+            $event_extra = ['order_type' => $open_data['order_type'] ?? null];
+            if ($is_market) {
+                $event_extra['entry'] = $open_data['real_entry_price'] ?? null;
+                $event_extra['volume'] = $open_data['real_volume'] ?? null;
+                $event_extra['stop_loss'] = $open_data['real_stop_loss'] ?? null;
+            }
+            $this->append_event(
+                $user_signal_id,
+                $is_market ? 'open' : 'pending_order',
+                $event_extra,
+                $open_data['execution_time'] ?? null
+            );
+        }
+
+        return $result;
     }
 
     /**
@@ -237,7 +283,39 @@ class Telegram_signals_model extends CI_Model
         $update_data['execution_data'] = json_encode($progress_data);
 
         $this->db->where('id', $user_signal_id);
-        return $this->db->update('user_telegram_signals', $update_data);
+        $result = $this->db->update('user_telegram_signals', $update_data);
+
+        if ($result) {
+            $utc_time = $progress_data['execution_time'] ?? null;
+
+            // Pending order filled
+            if (isset($progress_data['now_open']) && $progress_data['now_open']) {
+                $this->append_event($user_signal_id, 'filled', [
+                    'entry' => $progress_data['real_entry_price'] ?? null,
+                ], $utc_time);
+            }
+
+            // TP hit (level >= 1, has PNL — excludes breakeven-only reports)
+            $level = $progress_data['current_level'] ?? 0;
+            $pnl = $progress_data['gross_pnl'] ?? 0;
+            if ($level >= 1 && $pnl != 0) {
+                $this->append_event($user_signal_id, 'tp', [
+                    'level' => $level,
+                    'price' => $progress_data['last_price'] ?? null,
+                    'pnl' => $pnl,
+                    'closed_pct' => $progress_data['volume_closed_percent'] ?? null,
+                ], $utc_time);
+            }
+
+            // Breakeven
+            if (isset($progress_data['new_stop_loss']) && $progress_data['new_stop_loss'] > 0) {
+                $this->append_event($user_signal_id, 'breakeven', [
+                    'new_sl' => $progress_data['new_stop_loss'],
+                ], $utc_time);
+            }
+        }
+
+        return $result;
     }
 
     /**
@@ -283,8 +361,14 @@ class Telegram_signals_model extends CI_Model
         $this->db->where('id', $user_signal_id);
         $result = $this->db->update('user_telegram_signals', $update_data);
 
-        // Insertar en tabla trades para unificar Trade History
         if ($result) {
+            $this->append_event($user_signal_id, 'closed', [
+                'reason' => $close_data['close_reason'] ?? null,
+                'exit_level' => $close_data['exit_level'] ?? null,
+                'pnl' => $update_data['gross_pnl'] ?? null,
+                'price' => $close_data['last_price'] ?? null,
+            ], $close_data['execution_time'] ?? null);
+
             $this->insert_closed_trade_to_trades($user_signal_id, $close_data, $update_data['gross_pnl']);
         }
 

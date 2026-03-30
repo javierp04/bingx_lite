@@ -169,122 +169,137 @@
             </div>
             <div class="card-body">
                 <?php
-                // Determinar contexto para el timeline
-                $is_market_order = in_array($signal->order_type, ['ORDER_TYPE_BUY', 'ORDER_TYPE_SELL']);
-                $is_pending_order = in_array($signal->order_type, ['ORDER_TYPE_BUY_LIMIT', 'ORDER_TYPE_SELL_LIMIT', 'ORDER_TYPE_BUY_STOP', 'ORDER_TYPE_SELL_STOP']);
-                $had_execution = !empty($signal->real_entry_price);
-                $error_reasons = ['INVALID_TPS', 'INVALID_STOPLOSS', 'PRICE_CORRECTION_ERROR', 'SPREAD_TOO_HIGH', 'VOLUME_ERROR', 'EXECUTION_FAILED'];
-                $is_error_close = in_array($signal->close_reason, $error_reasons);
+                $events = !empty($signal->event_log) ? json_decode($signal->event_log, true) : [];
 
-                // Formato legible del order_type
-                $order_type_labels = [
-                    'ORDER_TYPE_BUY' => 'Market Buy',
-                    'ORDER_TYPE_SELL' => 'Market Sell',
-                    'ORDER_TYPE_BUY_LIMIT' => 'Buy Limit',
+                $order_labels = [
+                    'ORDER_TYPE_BUY'        => 'Market Buy',
+                    'ORDER_TYPE_SELL'       => 'Market Sell',
+                    'ORDER_TYPE_BUY_LIMIT'  => 'Buy Limit',
                     'ORDER_TYPE_SELL_LIMIT' => 'Sell Limit',
-                    'ORDER_TYPE_BUY_STOP' => 'Buy Stop',
-                    'ORDER_TYPE_SELL_STOP' => 'Sell Stop',
+                    'ORDER_TYPE_BUY_STOP'   => 'Buy Stop',
+                    'ORDER_TYPE_SELL_STOP'  => 'Sell Stop',
                 ];
-                $order_label = isset($order_type_labels[$signal->order_type]) ? $order_type_labels[$signal->order_type] : $signal->order_type;
 
-                // Close reason config: [badge_class, close_label, close_marker_class]
-                $close_config = [
-                    'CLOSED_COMPLETE'          => ['bg-success', 'All TPs Reached', 'bg-success'],
-                    'CLOSED_STOPLOSS'          => ['bg-danger', 'Stop Loss Hit', 'bg-danger'],
-                    'CLOSED_CODE_STOP'         => ['bg-danger', 'Code Stop Loss', 'bg-danger'],
-                    'CLOSED_SAFETY_STOP'       => ['bg-danger', 'Safety Stop', 'bg-danger'],
-                    'CLOSED_EXTERNAL'          => ['bg-warning text-dark', 'Manual Close (MT5)', 'bg-warning'],
-                    'ORDER_CANCELLED'          => ['bg-warning text-dark', 'Order Cancelled (MT5)', 'bg-warning'],
-                    'INVALID_TPS'              => ['bg-dark', 'Invalid Take Profits', 'bg-dark'],
-                    'INVALID_STOPLOSS'         => ['bg-dark', 'Invalid Stop Loss', 'bg-dark'],
-                    'PRICE_CORRECTION_ERROR'   => ['bg-dark', 'Price Correction Failed', 'bg-dark'],
-                    'SPREAD_TOO_HIGH'          => ['bg-dark', 'Spread Too High', 'bg-dark'],
-                    'VOLUME_ERROR'             => ['bg-dark', 'Volume Calculation Error', 'bg-dark'],
-                    'EXECUTION_FAILED'         => ['bg-dark', 'Broker Rejected Order', 'bg-dark'],
+                $close_reasons = [
+                    'CLOSED_COMPLETE'        => ['bg-success',           'All TPs Reached'],
+                    'CLOSED_STOPLOSS'        => ['bg-danger',            'Stop Loss Hit'],
+                    'CLOSED_CODE_STOP'       => ['bg-danger',            'Code Stop Loss'],
+                    'CLOSED_SAFETY_STOP'     => ['bg-danger',            'Safety Stop'],
+                    'CLOSED_EXTERNAL'        => ['bg-warning text-dark', 'Manual Close (MT5)'],
+                    'ORDER_CANCELLED'        => ['bg-warning text-dark', 'Order Cancelled (MT5)'],
+                    'INVALID_TPS'            => ['bg-dark',              'Invalid Take Profits'],
+                    'INVALID_STOPLOSS'       => ['bg-dark',              'Invalid Stop Loss'],
+                    'PRICE_CORRECTION_ERROR' => ['bg-dark',              'Price Correction Failed'],
+                    'SPREAD_TOO_HIGH'        => ['bg-dark',              'Spread Too High'],
+                    'VOLUME_ERROR'           => ['bg-dark',              'Volume Calculation Error'],
+                    'EXECUTION_FAILED'       => ['bg-dark',              'Broker Rejected Order'],
                 ];
-                $cr = $signal->close_reason;
-                $close_badge_class = isset($close_config[$cr]) ? $close_config[$cr][0] : 'bg-secondary';
-                $close_label = isset($close_config[$cr]) ? $close_config[$cr][1] : ($cr ?: 'Closed');
-                $close_marker_class = isset($close_config[$cr]) ? $close_config[$cr][2] : 'bg-secondary';
                 ?>
                 <div class="timeline">
-                    <!-- 1. Received (siempre) -->
+                    <!-- Signal received (always first) -->
                     <div class="timeline-item">
                         <div class="timeline-marker bg-info"></div>
                         <div class="timeline-content">
-                            <h6>Signal Received</h6>
+                            <h6><i class="fas fa-satellite-dish me-1"></i>Signal Received</h6>
                             <small><?= date('M j, Y H:i:s', strtotime($signal->created_at)) ?></small>
                         </div>
                     </div>
 
-                    <!-- 2. Claimed (si pasó de available) -->
-                    <?php if (in_array($signal->status, ['claimed', 'pending', 'open', 'closed'])): ?>
+                    <?php foreach ($events as $ev):
+                        $type = $ev['event'] ?? 'unknown';
+                        $time = isset($ev['at']) ? date('M j, Y H:i:s', strtotime($ev['at'])) : '-';
+                    ?>
                     <div class="timeline-item">
-                        <div class="timeline-marker bg-warning"></div>
-                        <div class="timeline-content">
-                            <h6>Claimed by EA</h6>
-                            <small><?= $signal->updated_at ? date('M j, Y H:i:s', strtotime($signal->updated_at)) : '-' ?></small>
-                        </div>
-                    </div>
-                    <?php endif; ?>
+                        <?php if ($type === 'claimed'): ?>
+                            <div class="timeline-marker bg-warning"></div>
+                            <div class="timeline-content">
+                                <h6><i class="fas fa-hand-pointer me-1"></i>Claimed by EA</h6>
+                                <small><?= $time ?></small>
+                            </div>
 
-                    <!-- 3. Error pre-ejecución: claimed → closed directo (sin report_open) -->
-                    <?php if ($signal->status === 'closed' && $is_error_close && !$had_execution): ?>
-                    <div class="timeline-item">
-                        <div class="timeline-marker <?= $close_marker_class ?>"></div>
-                        <div class="timeline-content">
-                            <h6><i class="fas fa-exclamation-triangle me-1"></i>Rejected</h6>
-                            <small><?= $signal->updated_at ? date('M j, Y H:i:s', strtotime($signal->updated_at)) : '-' ?></small>
-                            <br><span class="badge <?= $close_badge_class ?>"><?= $close_label ?></span>
-                        </div>
-                    </div>
+                        <?php elseif ($type === 'open'): ?>
+                            <?php $ol = isset($ev['order_type'], $order_labels[$ev['order_type']]) ? $order_labels[$ev['order_type']] : 'Market Order'; ?>
+                            <div class="timeline-marker bg-success"></div>
+                            <div class="timeline-content">
+                                <h6><i class="fas fa-bolt me-1"></i><?= $ol ?> Executed</h6>
+                                <small><?= $time ?></small>
+                                <?php if (isset($ev['entry'])): ?>
+                                    <br><small class="text-muted">Entry: <?= number_format($ev['entry'], $decimals) ?><?php if (isset($ev['volume'])): ?> | Vol: <?= number_format($ev['volume'], 2) ?><?php endif; ?></small>
+                                <?php endif; ?>
+                            </div>
 
-                    <!-- 4a. Market order: se ejecutó directo -->
-                    <?php elseif ($is_market_order && in_array($signal->status, ['open', 'closed'])): ?>
-                    <div class="timeline-item">
-                        <div class="timeline-marker bg-success"></div>
-                        <div class="timeline-content">
-                            <h6><i class="fas fa-bolt me-1"></i><?= $order_label ?> Executed</h6>
-                            <small><?= $signal->updated_at ? date('M j, Y H:i:s', strtotime($signal->updated_at)) : '-' ?></small>
-                            <?php if ($signal->real_entry_price): ?>
-                                <br><small class="text-muted">Entry: <?= number_format($signal->real_entry_price, $decimals) ?> | Vol: <?= number_format($signal->real_volume, 2) ?></small>
-                            <?php endif; ?>
-                        </div>
-                    </div>
+                        <?php elseif ($type === 'pending_order'): ?>
+                            <?php $ol = isset($ev['order_type'], $order_labels[$ev['order_type']]) ? $order_labels[$ev['order_type']] : 'Pending Order'; ?>
+                            <div class="timeline-marker bg-info"></div>
+                            <div class="timeline-content">
+                                <h6><i class="fas fa-clock me-1"></i><?= $ol ?> Placed</h6>
+                                <small><?= $time ?></small>
+                            </div>
 
-                    <!-- 4b. Pending order: primero placed, luego filled (si llegó a open) -->
-                    <?php elseif ($is_pending_order): ?>
-                    <div class="timeline-item">
-                        <div class="timeline-marker bg-info"></div>
-                        <div class="timeline-content">
-                            <h6><i class="fas fa-clock me-1"></i><?= $order_label ?> Placed</h6>
-                            <small><?= $signal->updated_at ? date('M j, Y H:i:s', strtotime($signal->updated_at)) : '-' ?></small>
-                        </div>
-                    </div>
-                        <?php if (in_array($signal->status, ['open', 'closed']) && $had_execution): ?>
-                        <div class="timeline-item">
+                        <?php elseif ($type === 'filled'): ?>
                             <div class="timeline-marker bg-success"></div>
                             <div class="timeline-content">
                                 <h6><i class="fas fa-check-circle me-1"></i>Pending Order Filled</h6>
-                                <small><?= $signal->updated_at ? date('M j, Y H:i:s', strtotime($signal->updated_at)) : '-' ?></small>
-                                <?php if ($signal->real_entry_price): ?>
-                                    <br><small class="text-muted">Entry: <?= number_format($signal->real_entry_price, $decimals) ?> | Vol: <?= number_format($signal->real_volume, 2) ?></small>
+                                <small><?= $time ?></small>
+                                <?php if (isset($ev['entry'])): ?>
+                                    <br><small class="text-muted">Entry: <?= number_format($ev['entry'], $decimals) ?></small>
                                 <?php endif; ?>
                             </div>
-                        </div>
-                        <?php endif; ?>
-                    <?php endif; ?>
 
-                    <!-- 5. Closed (solo si status = closed Y no fue error pre-ejecución ya mostrado arriba) -->
-                    <?php if ($signal->status === 'closed' && !($is_error_close && !$had_execution)): ?>
+                        <?php elseif ($type === 'tp'): ?>
+                            <div class="timeline-marker bg-success"></div>
+                            <div class="timeline-content">
+                                <h6><i class="fas fa-bullseye me-1"></i>TP<?= $ev['level'] ?? '?' ?> Reached</h6>
+                                <small><?= $time ?></small>
+                                <br><small class="text-muted">
+                                    Price: <?= isset($ev['price']) ? number_format($ev['price'], $decimals) : '-' ?>
+                                    <?php if (isset($ev['pnl'])): ?> | PNL: $<?= number_format($ev['pnl'], 2) ?><?php endif; ?>
+                                    <?php if (isset($ev['closed_pct'])): ?> | Closed: <?= number_format($ev['closed_pct'], 1) ?>%<?php endif; ?>
+                                </small>
+                            </div>
+
+                        <?php elseif ($type === 'breakeven'): ?>
+                            <div class="timeline-marker bg-primary"></div>
+                            <div class="timeline-content">
+                                <h6><i class="fas fa-shield-alt me-1"></i>Breakeven Activated</h6>
+                                <small><?= $time ?></small>
+                                <?php if (isset($ev['new_sl'])): ?>
+                                    <br><small class="text-muted">SL moved to <?= number_format($ev['new_sl'], $decimals) ?></small>
+                                <?php endif; ?>
+                            </div>
+
+                        <?php elseif ($type === 'closed'): ?>
+                            <?php
+                            $cr = $ev['reason'] ?? '';
+                            $cr_cfg = $close_reasons[$cr] ?? ['bg-secondary', $cr ?: 'Closed'];
+                            ?>
+                            <div class="timeline-marker <?= $cr_cfg[0] ?>"></div>
+                            <div class="timeline-content">
+                                <h6><i class="fas fa-flag-checkered me-1"></i>Closed</h6>
+                                <small><?= $time ?></small>
+                                <br><span class="badge <?= $cr_cfg[0] ?>"><?= $cr_cfg[1] ?></span>
+                                <?php if (isset($ev['pnl']) && $ev['pnl'] != 0): ?>
+                                    <br><small class="<?= $ev['pnl'] >= 0 ? 'text-success' : 'text-danger' ?>">
+                                        Final PNL: <?= $ev['pnl'] >= 0 ? '+' : '-' ?>$<?= number_format(abs($ev['pnl']), 2) ?>
+                                    </small>
+                                <?php endif; ?>
+                            </div>
+
+                        <?php else: ?>
+                            <div class="timeline-marker bg-secondary"></div>
+                            <div class="timeline-content">
+                                <h6><?= ucfirst($type) ?></h6>
+                                <small><?= $time ?></small>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                    <?php endforeach; ?>
+
+                    <?php if (empty($events)): ?>
                     <div class="timeline-item">
-                        <div class="timeline-marker <?= $close_marker_class ?>"></div>
+                        <div class="timeline-marker bg-secondary"></div>
                         <div class="timeline-content">
-                            <h6>Closed</h6>
-                            <small><?= $signal->updated_at ? date('M j, Y H:i:s', strtotime($signal->updated_at)) : '-' ?></small>
-                            <?php if ($signal->close_reason): ?>
-                                <br><span class="badge <?= $close_badge_class ?>"><?= $close_label ?></span>
-                            <?php endif; ?>
+                            <small class="text-muted">No events recorded yet</small>
                         </div>
                     </div>
                     <?php endif; ?>
