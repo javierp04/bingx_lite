@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?= isset($title) ? $title . ' - ' : '' ?>BingX Trading System</title>
+    <title><?= isset($title) ? $title . ' - ' : '' ?>BX Trading System</title>
 
     <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -76,7 +76,7 @@
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark fixed-top">
         <div class="container">
             <a class="navbar-brand" href="<?= base_url('dashboard') ?>">
-                <i class="fas fa-robot me-2"></i>BingX Trading System
+                <i class="fas fa-robot me-2"></i>BX Trading System
             </a>
 
             <?php if ($this->session->userdata('logged_in')) : ?>
@@ -133,29 +133,35 @@
                                     <i class="fas fa-cog me-1"></i>Admin
                                 </a>
                                 <ul class="dropdown-menu">
-                                    <li><a class="dropdown-item" href="<?= base_url('strategies') ?>">
-                                            <i class="fas fa-chess me-2"></i>Strategies
-                                        </a></li>
+                                    <?php if (has_module('bingx') || has_module('metatrader')): ?>
+                                        <li><a class="dropdown-item" href="<?= base_url('strategies') ?>">
+                                                <i class="fas fa-chess me-2"></i>Strategies
+                                            </a></li>
+                                    <?php endif; ?>
                                     <li><a class="dropdown-item" href="<?= base_url('users') ?>">
                                             <i class="fas fa-users me-2"></i>Users
                                         </a></li>
-                                    <li>
-                                        <hr class="dropdown-divider">
-                                    </li>
-                                    <li class="dropdown-header">ATVIP</li>
-                                    <li><a class="dropdown-item" href="<?= base_url('telegram_signals') ?>">
-                                            <i class="fas fa-broadcast-tower me-2"></i>All Signals
-                                        </a></li>
-                                    <li><a class="dropdown-item" href="<?= base_url('available_tickers') ?>">
-                                            <i class="fas fa-tags me-2"></i>Manage Tickers
-                                        </a></li>
-                                    <li>
-                                        <hr class="dropdown-divider">
-                                    </li>
-                                    <li class="dropdown-header">MetaTrader TV</li>
-                                    <li><a class="dropdown-item" href="<?= base_url('signals') ?>">
-                                            <i class="fas fa-signal me-2"></i>MT Signals
-                                        </a></li>
+                                    <?php if (has_module('atvip')): ?>
+                                        <li>
+                                            <hr class="dropdown-divider">
+                                        </li>
+                                        <li class="dropdown-header">ATVIP</li>
+                                        <li><a class="dropdown-item" href="<?= base_url('telegram_signals') ?>">
+                                                <i class="fas fa-broadcast-tower me-2"></i>All Signals
+                                            </a></li>
+                                        <li><a class="dropdown-item" href="<?= base_url('available_tickers') ?>">
+                                                <i class="fas fa-tags me-2"></i>Manage Tickers
+                                            </a></li>
+                                    <?php endif; ?>
+                                    <?php if (has_module('metatrader')): ?>
+                                        <li>
+                                            <hr class="dropdown-divider">
+                                        </li>
+                                        <li class="dropdown-header">MetaTrader TV</li>
+                                        <li><a class="dropdown-item" href="<?= base_url('signals') ?>">
+                                                <i class="fas fa-signal me-2"></i>MT Signals
+                                            </a></li>
+                                    <?php endif; ?>
                                 </ul>
                             </li>
 
@@ -168,15 +174,19 @@
                                     <li><a class="dropdown-item" href="<?= base_url('systemlogs') ?>">
                                             <i class="fas fa-file-alt me-2"></i>System Logs
                                         </a></li>
-                                    <li>
-                                        <hr class="dropdown-divider">
-                                    </li>
-                                    <li><a class="dropdown-item" href="<?= base_url('debug') ?>">
-                                            <i class="fas fa-bug me-2"></i>TradingView Debug
-                                        </a></li>
-                                    <li><a class="dropdown-item" href="<?= base_url('debug/telegram') ?>">
-                                            <i class="fas fa-broadcast-tower me-2"></i>ATVIP Debug
-                                        </a></li>
+                                    <?php if (has_module('bingx') || has_module('metatrader')): ?>
+                                        <li>
+                                            <hr class="dropdown-divider">
+                                        </li>
+                                        <li><a class="dropdown-item" href="<?= base_url('debug') ?>">
+                                                <i class="fas fa-bug me-2"></i>TradingView Debug
+                                            </a></li>
+                                    <?php endif; ?>
+                                    <?php if (has_module('atvip')): ?>
+                                        <li><a class="dropdown-item" href="<?= base_url('debug/telegram') ?>">
+                                                <i class="fas fa-broadcast-tower me-2"></i>ATVIP Debug
+                                            </a></li>
+                                    <?php endif; ?>
                                 </ul>
                             </li>
                         <?php endif; ?>
