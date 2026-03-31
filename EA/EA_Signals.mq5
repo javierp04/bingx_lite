@@ -15,7 +15,7 @@ enum APIResult { API_SUCCESS, API_HTTP_ERROR, API_JSON_ERROR, API_BUSINESS_ERROR
 
 // INPUTS
 input group "=== API Configuration ==="
-input string    API_URL = "http://bxlite.local/api/";
+input string    API_URL = "http://bx-trade.local/api/";
 input int       USER_ID = 1;
 
 input group "=== Trading Settings ==="
