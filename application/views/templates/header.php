@@ -93,35 +93,38 @@
                             </a>
                         </li>
 
-                        <!-- ATVIP Trading Dropdown -->
-                        <li class="nav-item dropdown">
-                            <a class="nav-link dropdown-toggle" href="#" id="atvipDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                                <i class="fas fa-broadcast-tower me-1"></i>ATVIP Trading
+                        <!-- ATVIP Trading Dropdown: shown if has atvip AND has other modules (otherwise Dashboard = My Trading) -->
+                        <?php if (has_module('atvip') && !has_only_module('atvip')): ?>
+                            <li class="nav-item dropdown">
+                                <a class="nav-link dropdown-toggle" href="#" id="atvipDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                    <i class="fas fa-broadcast-tower me-1"></i>ATVIP Trading
+                                </a>
+                                <ul class="dropdown-menu">
+                                    <li><a class="dropdown-item" href="<?= base_url('my_trading/active') ?>">
+                                            <i class="fas fa-chart-line me-2"></i>My Signals
+                                        </a></li>
+                                    <li><a class="dropdown-item" href="<?= base_url('my_trading/tickers') ?>">
+                                            <i class="fas fa-tags me-2"></i>My Tickers
+                                        </a></li>
+                                </ul>
+                            </li>
+                        <?php endif; ?>
+
+                        <!-- Trade History (direct link) -->
+                        <li class="nav-item">
+                            <a class="nav-link" href="<?= base_url('trades') ?>">
+                                <i class="fas fa-history me-1"></i>Trade History
                             </a>
-                            <ul class="dropdown-menu">
-                                <li><a class="dropdown-item" href="<?= base_url('my_trading/active') ?>">
-                                    <i class="fas fa-chart-line me-2"></i>My Signals
-                                </a></li>
-                                <li><a class="dropdown-item" href="<?= base_url('my_trading/tickers') ?>">
-                                    <i class="fas fa-tags me-2"></i>My Tickers
-                                </a></li>
-                            </ul>
                         </li>
 
-                        <!-- Trading Dropdown -->
-                        <li class="nav-item dropdown">
-                            <a class="nav-link dropdown-toggle" href="#" id="tradingDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                                <i class="fas fa-exchange-alt me-1"></i>Trading
-                            </a>
-                            <ul class="dropdown-menu">
-                                <li><a class="dropdown-item" href="<?= base_url('trades') ?>">
-                                    <i class="fas fa-history me-2"></i>Trade History
-                                </a></li>
-                                <li><a class="dropdown-item" href="<?= base_url('apikeys') ?>">
-                                    <i class="fas fa-key me-2"></i>API Keys (BingX)
-                                </a></li>
-                            </ul>
-                        </li>
+                        <?php if (has_module('bingx')): ?>
+                            <!-- API Keys (only BingX users) -->
+                            <li class="nav-item">
+                                <a class="nav-link" href="<?= base_url('apikeys') ?>">
+                                    <i class="fas fa-key me-1"></i>API Keys
+                                </a>
+                            </li>
+                        <?php endif; ?>
 
                         <!-- Admin Dropdown (Solo Admin) -->
                         <?php if ($this->session->userdata('role') == 'admin') : ?>
@@ -131,24 +134,28 @@
                                 </a>
                                 <ul class="dropdown-menu">
                                     <li><a class="dropdown-item" href="<?= base_url('strategies') ?>">
-                                        <i class="fas fa-chess me-2"></i>Strategies
-                                    </a></li>
+                                            <i class="fas fa-chess me-2"></i>Strategies
+                                        </a></li>
                                     <li><a class="dropdown-item" href="<?= base_url('users') ?>">
-                                        <i class="fas fa-users me-2"></i>Users
-                                    </a></li>
-                                    <li><hr class="dropdown-divider"></li>
+                                            <i class="fas fa-users me-2"></i>Users
+                                        </a></li>
+                                    <li>
+                                        <hr class="dropdown-divider">
+                                    </li>
                                     <li class="dropdown-header">ATVIP</li>
                                     <li><a class="dropdown-item" href="<?= base_url('telegram_signals') ?>">
-                                        <i class="fas fa-broadcast-tower me-2"></i>All Signals
-                                    </a></li>
+                                            <i class="fas fa-broadcast-tower me-2"></i>All Signals
+                                        </a></li>
                                     <li><a class="dropdown-item" href="<?= base_url('available_tickers') ?>">
-                                        <i class="fas fa-tags me-2"></i>Manage Tickers
-                                    </a></li>
-                                    <li><hr class="dropdown-divider"></li>
+                                            <i class="fas fa-tags me-2"></i>Manage Tickers
+                                        </a></li>
+                                    <li>
+                                        <hr class="dropdown-divider">
+                                    </li>
                                     <li class="dropdown-header">MetaTrader TV</li>
                                     <li><a class="dropdown-item" href="<?= base_url('signals') ?>">
-                                        <i class="fas fa-signal me-2"></i>MT Signals
-                                    </a></li>
+                                            <i class="fas fa-signal me-2"></i>MT Signals
+                                        </a></li>
                                 </ul>
                             </li>
 
@@ -159,15 +166,17 @@
                                 </a>
                                 <ul class="dropdown-menu">
                                     <li><a class="dropdown-item" href="<?= base_url('systemlogs') ?>">
-                                        <i class="fas fa-file-alt me-2"></i>System Logs
-                                    </a></li>
-                                    <li><hr class="dropdown-divider"></li>
+                                            <i class="fas fa-file-alt me-2"></i>System Logs
+                                        </a></li>
+                                    <li>
+                                        <hr class="dropdown-divider">
+                                    </li>
                                     <li><a class="dropdown-item" href="<?= base_url('debug') ?>">
-                                        <i class="fas fa-bug me-2"></i>TradingView Debug
-                                    </a></li>
+                                            <i class="fas fa-bug me-2"></i>TradingView Debug
+                                        </a></li>
                                     <li><a class="dropdown-item" href="<?= base_url('debug/telegram') ?>">
-                                        <i class="fas fa-broadcast-tower me-2"></i>ATVIP Debug
-                                    </a></li>
+                                            <i class="fas fa-broadcast-tower me-2"></i>ATVIP Debug
+                                        </a></li>
                                 </ul>
                             </li>
                         <?php endif; ?>

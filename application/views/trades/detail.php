@@ -81,9 +81,9 @@
             <div class="card-body">
                 <div class="row">
                     <div class="col-md-6">
-                        <p><strong>Entry Price:</strong> <?= number_format($trade->entry_price, 2) ?> USDT</p>
+                        <p><strong>Entry Price:</strong> <?= number_format($trade->entry_price, 2) ?> USD</p>
                         <?php if ($trade->status == 'closed' && $trade->exit_price): ?>
-                            <p><strong>Exit Price:</strong> <?= number_format($trade->exit_price, 2) ?> USDT</p>
+                            <p><strong>Exit Price:</strong> <?= number_format($trade->exit_price, 2) ?> USD</p>
                         <?php endif; ?>
                         <p><strong>Quantity:</strong> <?= rtrim(rtrim(number_format($trade->quantity, 8), '0'), '.') ?></p>
                     </div>
@@ -91,7 +91,7 @@
                         <p><strong>Leverage:</strong> <?= $trade->leverage ?>x</p>
                         <?php if (isset($trade->pnl)): ?>
                             <?php $pnl_class = $trade->pnl >= 0 ? 'text-profit' : 'text-loss'; ?>
-                            <p><strong>PNL:</strong> <span class="<?= $pnl_class ?>"><?= number_format($trade->pnl, 2) ?> USDT</span></p>
+                            <p><strong>PNL:</strong> <span class="<?= $pnl_class ?>"><?= number_format($trade->pnl, 2) ?> USD</span></p>
 
                             <?php if ($trade->entry_price > 0 && $trade->quantity > 0): ?>
                                 <?php

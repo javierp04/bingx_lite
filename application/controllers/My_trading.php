@@ -12,6 +12,12 @@ class My_trading extends CI_Controller
             redirect('auth');
         }
 
+        // Require ATVIP module
+        if (!has_module('atvip')) {
+            $this->session->set_flashdata('error', 'Access denied. ATVIP module not enabled.');
+            redirect('dashboard');
+        }
+
         $this->load->model('User_tickers_model');
         $this->load->model('Telegram_signals_model');
     }
@@ -228,19 +234,19 @@ class My_trading extends CI_Controller
         $active_signals = array_filter($dashboard_signals, function ($s) {
             return in_array($s->status, ['pending', 'claimed', 'open']);
         });
-        
+
         $closed_signals = array_filter($dashboard_signals, function ($s) {
             return $s->status === 'closed';
         });
-        
+
         $profitable_signals = array_filter($dashboard_signals, function ($s) {
             return $s->gross_pnl > 0;
         });
-        
+
         $total_pnl = array_sum(array_column($dashboard_signals, 'gross_pnl'));
-        
+
         $win_rate = count($closed_signals) > 0 ? (count($profitable_signals) / count($closed_signals)) * 100 : 0;
-        
+
         return [
             'active_count' => count($active_signals),
             'closed_count' => count($closed_signals),

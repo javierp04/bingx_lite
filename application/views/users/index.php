@@ -17,6 +17,7 @@
                         <th>Username</th>
                         <th>Email</th>
                         <th>Role</th>
+                        <th>Modules</th>
                         <th>Created</th>
                         <th>Actions</th>
                     </tr>
@@ -24,7 +25,7 @@
                 <tbody>
                     <?php if (empty($users)): ?>
                         <tr>
-                            <td colspan="6" class="text-center py-3">No users found</td>
+                            <td colspan="7" class="text-center py-3">No users found</td>
                         </tr>
                     <?php else: ?>
                         <?php foreach ($users as $user): ?>
@@ -36,6 +37,17 @@
                                     <span class="badge <?= $user->role == 'admin' ? 'bg-danger' : 'bg-primary' ?>">
                                         <?= ucfirst($user->role) ?>
                                     </span>
+                                </td>
+                                <td>
+                                    <?php if ($user->role == 'admin'): ?>
+                                        <span class="badge bg-secondary">All (Admin)</span>
+                                    <?php else: ?>
+                                        <?php foreach (ALL_MODULES as $mod): ?>
+                                            <?php if (!empty($user->{'module_' . $mod})): ?>
+                                                <span class="badge <?= module_badge_class($mod) ?> me-1"><?= module_label($mod) ?></span>
+                                            <?php endif; ?>
+                                        <?php endforeach; ?>
+                                    <?php endif; ?>
                                 </td>
                                 <td><?= date('Y-m-d', strtotime($user->created_at)) ?></td>
                                 <td>

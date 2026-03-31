@@ -19,17 +19,27 @@ class Dashboard extends CI_Controller
 
     public function index()
     {
+        // ATVIP-only users: Dashboard IS My Trading (no code duplication)
+        if (has_only_module('atvip')) {
+            redirect('my_trading/active');
+            return;
+        }
+
         $data['title'] = 'Dashboard';
         $user_id = $this->session->userdata('user_id');
 
         // Get platform filter
         $platform_filter = $this->input->get('platform');
 
-        // Get all open trades for the user with platform filter
+        // Restrict to allowed sources based on user's modules
+        $allowed_sources = get_allowed_sources();
+
+        // Get all open trades for the user with platform + source filter
         $data['open_trades'] = $this->Trade_model->find_trades([
             'user_id' => $user_id,
             'status' => 'open',
-            'platform' => $platform_filter
+            'platform' => $platform_filter,
+            'source' => $allowed_sources
         ], ['with_relations' => true]);
 
         // Get API key
@@ -63,11 +73,15 @@ class Dashboard extends CI_Controller
         // Get platform filter
         $platform_filter = $this->input->get('platform');
 
-        // Get all open trades with platform filter
+        // Restrict to allowed sources
+        $allowed_sources = get_allowed_sources();
+
+        // Get all open trades with platform + source filter
         $trades = $this->Trade_model->find_trades([
             'user_id' => $user_id,
             'status' => 'open',
-            'platform' => $platform_filter
+            'platform' => $platform_filter,
+            'source' => $allowed_sources
         ], ['with_relations' => true]);
 
         // Get API key for BingX operations

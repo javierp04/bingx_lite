@@ -7,6 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 This is a **BingX Trading Signal Management System** built with CodeIgniter 3. It processes trading signals from TradingView webhooks and Telegram messages, manages trades on BingX exchange (spot & futures), and integrates with MetaTrader Expert Advisors (EA). Users can track trades, manage strategies, and receive AI-analyzed signals from Telegram.
 
 **Tech Stack:**
+
 - Framework: CodeIgniter 3 (PHP)
 - Database: MySQL/MariaDB
 - APIs: BingX Exchange API, OpenAI API (for signal analysis), Yahoo Finance API (for futures prices)
@@ -19,24 +20,28 @@ This is a **XAMPP-based development environment** on Windows.
 ### Key Commands
 
 **Start/Stop Services:**
+
 ```bash
 # Start Apache and MySQL via XAMPP Control Panel
 # No build or compilation steps required - PHP runs directly
 ```
 
 **Database Setup:**
+
 ```bash
 # Import database schema
 mysql -u u_bingx -p bingx_lite < bingx_lite.sql
 ```
 
 **Database Credentials:**
+
 - Host: localhost
 - Database: bingx_lite
 - Username: u_bingx
-- Password: Pelota01*
+- Password: Pelota01\*
 
 **Access Application:**
+
 ```
 http://localhost/bingx_lite/
 ```
@@ -46,6 +51,7 @@ http://localhost/bingx_lite/
 ### MVC Structure (CodeIgniter 3)
 
 **Controllers** (`application/controllers/`):
+
 - `Auth.php` - Login/logout, default route
 - `Dashboard.php` - Main trading dashboard (BingX real-time PNL updates)
 - `My_trading.php` - User trading dashboard with Telegram signals (active/signals/tickers tabs)
@@ -56,12 +62,14 @@ http://localhost/bingx_lite/
 - `Strategies.php`, `Trades.php`, `Users.php`, `ApiKeys.php` - CRUD management
 
 **Models** (`application/models/`):
+
 - `Telegram_signals_model.php` - Central signal lifecycle management (available → claimed → open → closed)
 - `User_tickers_model.php` - User ticker subscriptions with MT symbol mapping
 - `Trade_model.php` - BingX/MT trades
 - `Strategy_model.php`, `Api_key_model.php`, `User_model.php`, `Log_model.php`
 
 **Libraries** (`application/libraries/`):
+
 - `BingXApi.php` - BingX exchange integration (spot/futures, production/sandbox environments)
 - `Webhook_processor.php` - TradingView signal processing
 - `Mt_signal_processor.php` - MetaTrader signal processing
@@ -69,6 +77,7 @@ http://localhost/bingx_lite/
 ### Signal Flow Architecture
 
 **Telegram Signal Lifecycle:**
+
 1. **Inbound**: Telegram → `TradeReader.php` webhook → stores in `telegram_signals` table
 2. **Processing**: Status progression: `pending` → `analyzing` → `completed` (via OpenAI analysis)
 3. **Distribution**: Signal duplicated to `user_signals` table (one per subscribed user)
@@ -76,11 +85,13 @@ http://localhost/bingx_lite/
 5. **Tracking**: EA reports back via `/api/signals/{id}/open|progress|close` endpoints
 
 **TradingView Signal Flow:**
+
 1. TradingView Alert → `Webhook.php` → `Webhook_processor.php`
 2. Executes BingX order via `BingXApi.php`
 3. Records trade in `trades` table
 
 **MetaTrader Integration:**
+
 - EA polls `/api/signals/{user_id}/{ticker_symbol}` for new signals every POLL_INTERVAL seconds
 - System returns oldest `available` signal, marks as `claimed`
 - EA reports trade progress back via `/api/signals/{id}/open|progress|close`
@@ -95,6 +106,7 @@ http://localhost/bingx_lite/
 #### EA Architecture Overview
 
 **Signal Acquisition Flow:**
+
 ```
 OnInit() → EventSetTimer(POLL_INTERVAL)
     ↓
@@ -116,16 +128,19 @@ Position Closed → ReportClose() → POST /api/signals/{id}/close
 #### Key Configuration Parameters
 
 **API Settings:**
+
 - `API_URL` = "http://bxlite.local/api/" - Base API endpoint
 - `USER_ID` - User ID for signal queries
 - `TICKER_SYMBOL` - Symbol to trade (e.g., "EURUSD")
 
 **Trading Settings:**
+
 - `RISK_PERCENT` = 2.0 - Risk per trade as % of balance
 - `POLL_INTERVAL` = 30 - Seconds between signal checks
 - `MAX_SPREAD` = 500.0 - Maximum spread in points
 
 **Take Profit Distribution:**
+
 - `TP1_PERCENT` = 0.0 - % of volume to close at TP1
 - `TP2_PERCENT` = 40.0 - % of volume to close at TP2
 - `TP3_PERCENT` = 30.0 - % of volume to close at TP3
@@ -134,15 +149,18 @@ Position Closed → ReportClose() → POST /api/signals/{id}/close
 - `BE_LEVEL` = 1 - TP level at which to move SL to breakeven (0=never)
 
 **Stop Loss Management:**
+
 - `ENABLE_CODE_STOP` = false - Close by code if price crosses SL (don't wait for broker)
 - `SAFETY_FACTOR` = 1.5 - Emergency stop multiplier
 
 **Price Correction:**
+
 - `ENABLE_PRICE_CORRECTION` = true - Adjust prices using Yahoo Finance futures data
 - `MAX_PRICE_DEVIATION` = 5.0 - Maximum allowed deviation %
 - `MAX_TIMESTAMP_HOURS` = 4 - Maximum age of futures price data
 
 **Debug Mode:**
+
 - `DEBUG_MODE` = false - Use synthetic signals instead of API
 - `DEBUG_USER_SIGNAL_ID` = 999 - Signal ID for debug mode
 - `DEBUG_FIXED_VOLUME` = 0.1 - Fixed volume for debug trades
@@ -150,49 +168,53 @@ Position Closed → ReportClose() → POST /api/signals/{id}/close
 #### EA Reporting Callbacks
 
 **ReportOpen (POST /api/signals/{id}/open):**
+
 ```json
 {
-    "success": true,
-    "trade_id": "12345",
-    "order_type": "ORDER_TYPE_BUY",
-    "real_entry_price": 1.0850,
-    "real_stop_loss": 1.0800,
-    "real_volume": 0.10,
-    "symbol": "EURUSD",
-    "execution_time": "2025-10-03 14:30:00"
+	"success": true,
+	"trade_id": "12345",
+	"order_type": "ORDER_TYPE_BUY",
+	"real_entry_price": 1.085,
+	"real_stop_loss": 1.08,
+	"real_volume": 0.1,
+	"symbol": "EURUSD",
+	"execution_time": "2025-10-03 14:30:00"
 }
 ```
 
 **ReportProgress (POST /api/signals/{id}/progress):**
+
 ```json
 {
-    "success": true,
-    "current_level": 2,
-    "volume_closed_percent": 40.0,
-    "remaining_volume": 0.06,
-    "gross_pnl": 125.50,
-    "last_price": 1.0920,
-    "message": "TP2 reached",
-    "new_stop_loss": 1.0850,
-    "symbol": "EURUSD",
-    "execution_time": "2025-10-03 15:45:00"
+	"success": true,
+	"current_level": 2,
+	"volume_closed_percent": 40.0,
+	"remaining_volume": 0.06,
+	"gross_pnl": 125.5,
+	"last_price": 1.092,
+	"message": "TP2 reached",
+	"new_stop_loss": 1.085,
+	"symbol": "EURUSD",
+	"execution_time": "2025-10-03 15:45:00"
 }
 ```
 
 **ReportClose (POST /api/signals/{id}/close):**
+
 ```json
 {
-    "success": true,
-    "exit_level": 5,
-    "close_reason": "CLOSED_COMPLETE",
-    "gross_pnl": 248.75,
-    "last_price": 1.0985,
-    "symbol": "EURUSD",
-    "execution_time": "2025-10-03 18:22:00"
+	"success": true,
+	"exit_level": 5,
+	"close_reason": "CLOSED_COMPLETE",
+	"gross_pnl": 248.75,
+	"last_price": 1.0985,
+	"symbol": "EURUSD",
+	"execution_time": "2025-10-03 18:22:00"
 }
 ```
 
 **Exit Level Codes:**
+
 - `1-5`: Closed at TP1-TP5
 - `0`: Closed by Stop Loss
 - `-1`: Safety stop triggered
@@ -200,6 +222,7 @@ Position Closed → ReportClose() → POST /api/signals/{id}/close
 - `-999`: Execution/price correction error
 
 **Close Reason Codes:**
+
 - `CLOSED_COMPLETE`: All TPs reached
 - `CLOSED_BY_SL`: Stop loss hit
 - `CLOSED_CODE_STOP`: Code-based stop triggered
@@ -212,12 +235,14 @@ Position Closed → ReportClose() → POST /api/signals/{id}/close
 #### EA State Management
 
 **OptimizedTPState Structure:**
+
 - Tracks single active position (EA handles one trade at a time)
 - Stores: ticket, positionID, direction, volumes, TP levels, prices
 - `levelFlags[6]`: Boolean array tracking which TPs have been hit
 - `slMovedToBE`: Flag indicating breakeven activation
 
 **Position Lifecycle:**
+
 1. Signal received → ExecuteTrade() → Position opened
 2. OnTick() monitors price → ManageTPs() checks each TP level
 3. TP reached → Partial close → ReportProgress()
@@ -227,6 +252,7 @@ Position Closed → ReportClose() → POST /api/signals/{id}/close
 #### Price Correction Mechanism
 
 **Flow:**
+
 1. EA calls `/api/fut_price/{symbol}` (Yahoo Finance proxy)
 2. Gets `last_close` price from futures market
 3. Calculates `correctionFactor = futurePrice / cfdPrice`
@@ -239,26 +265,31 @@ Position Closed → ReportClose() → POST /api/signals/{id}/close
 #### Important EA Behaviors
 
 **Signal Validation:**
+
 - EA validates ALL TPs (TP1-TP5) must be > 0
 - If any TP is missing/invalid → ReportClose(-998, "INVALID_TPS")
 - This prevents partial signal execution
 
 **Volume Management:**
+
 - Volume calculated using risk management: `(Balance * RISK_PERCENT / 100) / StopLossDistance`
 - Each TP closes its configured percentage of ORIGINAL volume
 - TP5 always closes 100% of remaining volume regardless of TP5_PERCENT
 
 **Breakeven Logic:**
+
 - Activated when price reaches TP at BE_LEVEL
 - Moves SL to entry price (zero-risk position)
 - Reports new SL in ReportProgress()
 
 **Historical Position Tracking:**
+
 - If position disappears, EA checks history to determine WHY
 - Distinguishes: SL hit, TP hit, manual close, unknown
 - Prevents duplicate close reports
 
 **Single Position Constraint:**
+
 - EA only handles ONE active trade at a time (`currentTP.isActive` flag)
 - New signals ignored while position is open
 - This simplifies state management and prevents conflicts
@@ -273,6 +304,7 @@ Position Closed → ReportClose() → POST /api/signals/{id}/close
 #### EA Architecture Overview
 
 **Signal Polling Flow:**
+
 ```
 OnInit() → EventSetTimer(CheckInterval)
     ↓
@@ -292,12 +324,14 @@ POST /metatrader/confirm_execution (success or failure)
 #### Key Configuration Parameters
 
 **API Settings:**
+
 - `ServerURL` = "https://2bunnylabs.com" - Base server URL
 - `UserID` - User ID for signal queries
 - `ServerSymbol` = "EURUSD" - Symbol name sent to server (without broker suffix)
 - `CheckInterval` = 5 - Seconds between signal checks (1-300)
 
 **Trading Settings:**
+
 - `DefaultLotSize` = 0.01 - Default lot size if signal doesn't specify
 - `MagicNumber` = 123456 - Magic number to identify orders
 - `MaxSlippage` = 3 - Maximum slippage in points
@@ -305,6 +339,7 @@ POST /metatrader/confirm_execution (success or failure)
 - `UseCurrent Symbol` = true - Use chart symbol instead of ServerSymbol
 
 **Debug & Logging:**
+
 - `EnableLogging` = true - Enable detailed logging
 - `EnableConsoleOutput` = true - Show logs in console
 - `EnableFileLogging` = true - Save logs to file
@@ -313,6 +348,7 @@ POST /metatrader/confirm_execution (success or failure)
 #### Signal Data Structure
 
 **SignalData Struct:**
+
 ```mql5
 struct SignalData {
     long signal_id;           // ID from database
@@ -331,12 +367,14 @@ struct SignalData {
 #### EA Workflow Details
 
 **1. Signal Polling (OnTimer - Every CheckInterval seconds):**
+
 - Calls `GET /metatrader/pending_signals?user_id={ID}&symbol={SYMBOL}`
 - Expects JSON array: `[{signal_data}, {signal_data}, ...]`
 - Empty array `[]` means no pending signals
 - Processes ALL signals in single poll
 
 **2. Signal Processing:**
+
 - **Validation**: Checks ticker matches ServerSymbol (rejects mismatched symbols)
 - **Action Parsing**: Converts "buy"/"sell" to ORDER_TYPE_BUY/ORDER_TYPE_SELL
 - **Lot Normalization**:
@@ -345,6 +383,7 @@ struct SignalData {
   - Formula: `max(min_lot, min(max_lot, round(quantity/lot_step) * lot_step))`
 
 **3. Order Execution:**
+
 - **Market Orders Only** (no pending orders)
 - Uses current Ask/Bid price (ignores signal.price)
 - Applies SL/TP if provided in signal
@@ -353,35 +392,40 @@ struct SignalData {
 **4. Execution Reporting:**
 
 **Success Report (POST /metatrader/confirm_execution):**
+
 ```json
 {
-    "position_id": "unique_id",
-    "status": "success",
-    "execution_price": 1.08503
+	"position_id": "unique_id",
+	"status": "success",
+	"execution_price": 1.08503
 }
 ```
 
 **Failure Report (POST /metatrader/confirm_execution):**
+
 ```json
 {
-    "position_id": "unique_id",
-    "status": "failed",
-    "error_message": "Código: 10006 - No enough money"
+	"position_id": "unique_id",
+	"status": "failed",
+	"error_message": "Código: 10006 - No enough money"
 }
 ```
 
 #### Symbol Mapping
 
 **Key Concept:**
+
 - `ServerSymbol`: Symbol name used in API requests (e.g., "EURUSD")
 - `g_symbol`: Actual broker symbol used for trading (e.g., "EURUSD.m")
 - `BrokerSuffix`: Added to ServerSymbol to get g_symbol
 
 **Modes:**
+
 1. **UseCurrentSymbol = true**: Uses chart symbol (ignores ServerSymbol + BrokerSuffix)
 2. **UseCurrentSymbol = false**: Uses `ServerSymbol + BrokerSuffix`
 
 **Example:**
+
 - ServerSymbol = "EURUSD"
 - BrokerSuffix = ".m"
 - UseCurrent Symbol = false
@@ -390,12 +434,14 @@ struct SignalData {
 #### Logging System
 
 **Log Levels:**
+
 - `0 = ERROR`: Critical errors only
 - `1 = WARNING`: Warnings + errors
 - `2 = INFO`: General information + warnings + errors
 - `3 = DEBUG`: All messages including verbose debug
 
 **Log File:**
+
 - Name: `TradingView_EA_{UserID}_{ServerSymbol}.log`
 - Location: `MQL5/Files/`
 - Format: Timestamped entries with level prefix
@@ -403,93 +449,151 @@ struct SignalData {
 #### Error Handling
 
 **HTTP Errors:**
+
 - Returns -1: Network/permission error (check GetLastError())
 - Returns ≠ 200: Server error (logs HTTP code)
 
 **Trade Errors:**
+
 - Captures `trade.ResultRetcode()` and `trade.ResultRetcodeDescription()`
 - Reports back to server via failure callback
 - Common codes: 10006 (no money), 10016 (invalid stops), etc.
 
 **Connection Resilience:**
+
 - If initial connection fails at OnInit, continues retrying every CheckInterval
 - Does not stop EA if server temporarily unavailable
 
 #### Important EA Behaviors
 
 **Multiple Signals:**
+
 - EA can process MULTIPLE signals per poll cycle
 - No single-position constraint (unlike EA_Signals.mq5)
 - Executes all pending signals sequentially in one timer event
 
 **No Position Management:**
+
 - EA only OPENS positions (no TP management, no trailing stop, no breakeven)
 - Relies on MT broker to handle SL/TP if set
 - No OnTick() position monitoring (stateless after execution)
 
 **Simple JSON Parser:**
+
 - Custom lightweight parser (no external libraries)
 - Handles nested `signal_data` object extraction
 - Functions: `GetJSONStringValue()`, `GetJSONDoubleValue()`, `GetJSONLongValue()`
 
 **Broker Compatibility:**
+
 - Uses `ORDER_FILLING_FOK` (Fill-Or-Kill)
 - Falls back to other filling modes may be needed for some brokers
 - Validates symbol exists via `symbolInfo.Name()` at startup
 
+### Module Access Control System
+
+The system supports three trading modules with per-user access control:
+
+- **BingX** (`module_bingx`) - BingX exchange trading via TradingView webhooks
+- **MetaTrader TV** (`module_metatrader`) - MetaTrader signals from TradingView
+- **AT VIP Trading** (`module_atvip`) - Telegram signal trading via MetaTrader EA
+
+**Key Files:**
+
+- `application/helpers/modules_helper.php` - Central helper with `has_module()`, `user_modules()`, `has_only_module()`, `get_allowed_sources()`, etc.
+- `application/views/users/_module_checkboxes.php` - Reusable partial for user add/edit forms
+
+**Database:** `users` table has `module_bingx`, `module_metatrader`, `module_atvip` TINYINT(1) columns.
+
+**Session:** Module flags stored on login. Admins auto-grant all modules.
+
+**UI Behavior:**
+
+- Navigation menus conditionally shown based on `has_module()` checks
+- ATVIP-only users: Dashboard redirects to `my_trading/active` (no code duplication)
+- ATVIP + other modules: ATVIP Trading menu visible in header
+- API Keys menu only shown if user has BingX module
+- Dashboard platform filter hidden when user has only 1 module
+- Trade History uses `source`-based tabs (bingx, metatrader_tv, atvip) instead of platform
+- ATVIP tab in Trade History has no Strategy dropdown (single strategy: ATVIP_SIGNALS)
+
+**Controller Guards:**
+
+- `ApiKeys` requires `bingx` module
+- `My_trading` requires `atvip` module
+- `Users`, `Strategies`, admin routes require admin role
+
+**Trade Source Values** (`trades.source` column):
+
+- `bingx` - BingX exchange trades
+- `metatrader_tv` - MetaTrader TradingView signal trades
+- `atvip` - AT VIP Telegram signal trades
+
 ### Database Schema Key Points
 
 **Core Tables:**
+
 - `telegram_signals` - Master signals from Telegram
 - `user_signals` - Per-user signal instances (linked to `telegram_signals.id`)
-- `trades` - Executed trades (BingX or MetaTrader)
+- `trades` - Executed trades (BingX or MetaTrader), with `source` column for origin tracking
 - `user_tickers` - User ticker subscriptions with MT symbol mapping
 - `strategies` - Trading strategies (can be BingX or MetaTrader platform)
 - `api_keys` - User BingX API credentials
+- `users` - User accounts with module access flags (`module_bingx`, `module_metatrader`, `module_atvip`)
 
 **Important Relationships:**
+
 - Telegram signals are duplicated to multiple users via `user_signals` table
 - Each `user_signal` tracks its own status independently
-- `trades.platform` distinguishes BingX vs MetaTrader trades
+- `trades.source` distinguishes trade origin (bingx, metatrader_tv, atvip)
+- `strategies.platform` distinguishes BingX vs MetaTrader strategies (ATVIP uses platform='metatrader' with strategy_id='ATVIP_SIGNALS')
 
 ## Configuration
 
 **Environment:**
+
 - Set in `index.php` line 56: `define('ENVIRONMENT', 'development')`
 - Controls error reporting and logging
 
 **BingX API Environments:**
+
 - Configured in `application/config/constants.php`
 - Production: `https://open-api.bingx.com`
 - Sandbox (futures only): `https://open-api-vst.bingx.com`
 - Environment set per-strategy in database
 
 **OpenAI API Key:**
+
 - Hardcoded in `application/config/config.php` line 7
 - Used for Telegram signal analysis
 
 ## Important Implementation Notes
 
 ### BingX API Integration
+
 - Symbol formatting: BingX uses hyphenated format (e.g., `BTC-USDT`) for spot
 - Environment switching: Call `BingxApi::set_environment('production'|'sandbox')` before API calls
 - Price caching: Dashboard uses batch price fetching to minimize API calls
 
 ### Route Configuration
+
 - Routes defined in `application/config/routes.php`
 - Order matters: specific routes MUST come before generic ones (e.g., `my_trading/add_ticker` before `my_trading/(:any)`)
 - API routes for MetaTrader are grouped at bottom with specific POST routes before generic GET
 
 ### AJAX Refresh Patterns
+
 - Dashboard PNL updates: `Dashboard::refresh_trades()` - updates only BingX trades (MT trades don't have real-time prices)
 - My Trading dashboard: `My_trading::refresh_dashboard_ajax()` - full dashboard content refresh with filters
 
 ### MetaTrader EA Communication
+
 - EA uses GET `/api/signals/{user_id}/{ticker}` to poll for new signals
 - Claiming mechanism prevents duplicate signal execution
 - EA reports back execution status (open/progress/close) for PNL tracking
 
 ### Futures Price Data
+
 - Yahoo Finance API used for MetaTrader futures prices (not BingX)
 - Endpoint: `/api/fut_price/{symbol}` (automatically appends `=F` suffix)
 - Returns last closed candle price to avoid incomplete data
@@ -497,22 +601,26 @@ struct SignalData {
 ## Common Workflows
 
 ### Adding New Telegram Signal Processing
+
 1. Modify signal extraction in `TradeReader::generateSignalFromTelegram()`
 2. Update OpenAI prompt in processing logic for analysis
 3. Test with Telegram webhook: POST to `/tradereader/run`
 
 ### Adding New Strategy
+
 1. Create via UI at `/strategies/add`
 2. Platform field determines if BingX or MetaTrader
 3. For MetaTrader: ensure ticker mapping in `user_tickers` table
 
 ### Debugging Signal Issues
+
 1. Check `system_logs` table for processing errors
 2. Verify signal status progression in `telegram_signals` and `user_signals`
 3. For MetaTrader: check EA can access `/api/signals/{user_id}/{ticker}` endpoint
 4. BingX trades: verify API key exists and environment is correct
 
 ### User Ticker Management
+
 - Users subscribe to tickers via `/my_trading/tickers`
 - MT ticker mapping required for MetaTrader strategies (e.g., BTC → BTCUSD)
 - Active status determines if signals are generated for user
@@ -520,6 +628,7 @@ struct SignalData {
 ## Security Notes
 
 **WARNING:** This codebase contains hardcoded credentials:
+
 - Database password in `application/config/database.php`
 - OpenAI API key in `application/config/config.php`
 - These should be moved to environment variables before deployment

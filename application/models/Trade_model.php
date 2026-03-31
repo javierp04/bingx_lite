@@ -42,6 +42,12 @@ class Trade_model extends CI_Model
                 // Handle special field mappings
                 if ($field === 'platform') {
                     $this->db->where('strategies.platform', $value);
+                } elseif ($field === 'source') {
+                    if (is_array($value)) {
+                        $this->db->where_in('trades.source', $value);
+                    } else {
+                        $this->db->where('trades.source', $value);
+                    }
                 } elseif ($field === 'strategy_id') {
                     $this->db->where('trades.strategy_id', $value);
                 } elseif ($field === 'symbol') {
@@ -170,7 +176,7 @@ class Trade_model extends CI_Model
      * @param int $strategy_id Strategy filter (strategy ID or null for all)
      * @return array Statistics
      */
-    public function get_platform_statistics($user_id, $platform = null, $strategy_id = null)
+    public function get_platform_statistics($user_id, $platform = null, $strategy_id = null, $options = [])
     {
         // Always JOIN with strategies to get platform
         $this->db->select('trades.*, strategies.platform');
@@ -187,6 +193,20 @@ class Trade_model extends CI_Model
 
         if ($strategy_id) {
             $this->db->where('trades.strategy_id', $strategy_id);
+        }
+
+        // Support source-based filtering (bingx, metatrader_tv, atvip)
+        if (isset($options['source'])) {
+            if (is_array($options['source'])) {
+                $this->db->where_in('trades.source', $options['source']);
+            } else {
+                $this->db->where('trades.source', $options['source']);
+            }
+        }
+
+        // Support symbol-based filtering (for ATVIP per-symbol grouping)
+        if (isset($options['symbol'])) {
+            $this->db->where('trades.symbol', $options['symbol']);
         }
 
         $trades = $this->db->get()->result();
@@ -265,12 +285,21 @@ class Trade_model extends CI_Model
      * @param int $user_id User ID
      * @return array Array of symbol strings
      */
-    public function get_distinct_symbols($user_id)
+    public function get_distinct_symbols($user_id, $source = null)
     {
         $this->db->select('DISTINCT(symbol) as symbol');
         $this->db->from('trades');
         $this->db->where('user_id', $user_id);
         $this->db->where('symbol IS NOT NULL');
+
+        if ($source !== null) {
+            if (is_array($source)) {
+                $this->db->where_in('source', $source);
+            } else {
+                $this->db->where('source', $source);
+            }
+        }
+
         $this->db->order_by('symbol', 'ASC');
 
         $results = $this->db->get()->result();

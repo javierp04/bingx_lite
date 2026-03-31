@@ -3,38 +3,43 @@
     <h1 class="h3 mb-0">
         <i class="fas fa-tachometer-alt me-2"></i>Trading Dashboard
     </h1>
-    <div class="btc-price-container">
-        <span class="text-muted me-2">BTC Price:</span>
-        <span id="btc-price" class="badge bg-primary">Loading...</span>
-    </div>
+    <?php if (has_module('bingx')): ?>
+        <div class="btc-price-container">
+            <span class="text-muted me-2">BTC Price:</span>
+            <span id="btc-price" class="badge bg-primary">Loading...</span>
+        </div>
+    <?php endif; ?>
 </div>
 
-<!-- Platform Filter -->
-<div class="card mb-4">
-    <div class="card-body py-3">
-        <div class="row align-items-center">
-            <div class="col-md-6">
-                <h6 class="mb-0">Platform Filter</h6>
-            </div>
-            <div class="col-md-6">
-                <div class="btn-group w-100" role="group">
-                    <input type="radio" class="btn-check" name="platform-filter" id="platform-all" value="" <?= empty($current_platform) ? 'checked' : '' ?>>
-                    <label class="btn btn-outline-primary" for="platform-all">All Platforms</label>
-
-                    <input type="radio" class="btn-check" name="platform-filter" id="platform-bingx" value="bingx" <?= $current_platform === 'bingx' ? 'checked' : '' ?>>
-                    <label class="btn btn-outline-primary" for="platform-bingx">
-                        <i class="fas fa-bitcoin me-1"></i>BingX
-                    </label>
-
-                    <input type="radio" class="btn-check" name="platform-filter" id="platform-mt" value="metatrader" <?= $current_platform === 'metatrader' ? 'checked' : '' ?>>
-                    <label class="btn btn-outline-primary" for="platform-mt">
-                        <i class="fas fa-chart-area me-1"></i>MetaTrader
-                    </label>
+<!-- Platform Filter (only shown if user has 2+ modules) -->
+<?php
+$available_platforms = [];
+if (has_module('bingx'))      $available_platforms['bingx']      = ['label' => 'BingX',        'icon' => 'fas fa-bitcoin'];
+if (has_module('metatrader')) $available_platforms['metatrader'] = ['label' => 'MetaTrader TV', 'icon' => 'fas fa-chart-area'];
+?>
+<?php if (count($available_platforms) > 1): ?>
+    <div class="card mb-4">
+        <div class="card-body py-3">
+            <div class="row align-items-center">
+                <div class="col-md-4">
+                    <h6 class="mb-0">Platform Filter</h6>
+                </div>
+                <div class="col-md-8">
+                    <div class="btn-group w-100" role="group">
+                        <input type="radio" class="btn-check" name="platform-filter" id="platform-all" value="" <?= empty($current_platform) ? 'checked' : '' ?>>
+                        <label class="btn btn-outline-primary" for="platform-all">All Platforms</label>
+                        <?php foreach ($available_platforms as $key => $plat): ?>
+                            <input type="radio" class="btn-check" name="platform-filter" id="platform-<?= $key ?>" value="<?= $key ?>" <?= $current_platform === $key ? 'checked' : '' ?>>
+                            <label class="btn btn-outline-primary" for="platform-<?= $key ?>">
+                                <i class="<?= $plat['icon'] ?> me-1"></i><?= $plat['label'] ?>
+                            </label>
+                        <?php endforeach; ?>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
-</div>
+<?php endif; ?>
 
 <!-- Summary Dashboard -->
 <div class="row">
@@ -42,7 +47,7 @@
         <div class="card">
             <div class="card-body">
                 <h5 class="card-title">Active Trades</h5>
-                <h2 class="mb-0"><?= count($open_trades) ?></h2>                
+                <h2 class="mb-0"><?= count($open_trades) ?></h2>
             </div>
         </div>
     </div>
@@ -68,7 +73,7 @@
                 }
                 $pnl_class = $total_pnl >= 0 ? 'text-profit' : 'text-loss';
                 ?>
-                <h2 class="mb-0 <?= $pnl_class ?>" id="total-pnl"><?= number_format($total_pnl, 2) ?> USDT</h2>                
+                <h2 class="mb-0 <?= $pnl_class ?>" id="total-pnl"><?= number_format($total_pnl, 2) ?> USD</h2>
             </div>
         </div>
     </div>
@@ -99,7 +104,7 @@
                         <th>Symbol</th>
                         <th>Strategy</th>
                         <th>Side</th>
-                        <th>Type</th>                        
+                        <th>Type</th>
                         <th>Entry Price</th>
                         <th>Current Price</th>
                         <th>Quantity</th>
@@ -119,16 +124,16 @@
                             <?php
                             $pnl_class = isset($trade->pnl) && $trade->pnl >= 0 ? 'text-profit' : 'text-loss';
                             $side_class = $trade->side == 'BUY' ? 'text-success' : 'text-danger';
-                            
+
                             // Platform-specific badges
                             $platform_badge = $trade->platform === 'metatrader' ? 'bg-dark' : 'bg-info';
-                            
+
                             // Type badges
                             $type_badges = [
                                 'futures' => 'bg-warning text-dark',
                                 'spot' => 'bg-info',
                                 'forex' => 'bg-success',
-                                'indices' => 'bg-primary', 
+                                'indices' => 'bg-primary',
                                 'commodities' => 'bg-danger'
                             ];
                             $type_class = $type_badges[$trade->trade_type] ?? 'bg-secondary';
@@ -146,7 +151,7 @@
                                     <span class="badge <?= $type_class ?>">
                                         <?= ucfirst($trade->trade_type) ?>
                                     </span>
-                                </td>                                
+                                </td>
                                 <td><?= number_format($trade->entry_price, 2) ?></td>
                                 <td class="current-price">
                                     <?php if ($trade->platform === 'bingx'): ?>
@@ -160,7 +165,7 @@
                                 <td><?= $trade->leverage ?>x</td>
                                 <td class="<?= $pnl_class ?>">
                                     <?php if ($trade->platform === 'bingx' && isset($trade->pnl)): ?>
-                                        <?= number_format($trade->pnl, 2) . ' USDT' ?>
+                                        <?= number_format($trade->pnl, 2) . ' USD' ?>
                                     <?php else: ?>
                                         <span class="text-muted">At close</span>
                                     <?php endif; ?>
@@ -225,19 +230,19 @@
     // Setup platform filter
     function setupPlatformFilter() {
         const filterInputs = document.querySelectorAll('input[name="platform-filter"]');
-        
+
         filterInputs.forEach(input => {
             input.addEventListener('change', function() {
                 if (this.checked) {
                     const platform = this.value;
                     const currentUrl = new URL(window.location);
-                    
+
                     if (platform) {
                         currentUrl.searchParams.set('platform', platform);
                     } else {
                         currentUrl.searchParams.delete('platform');
                     }
-                    
+
                     window.location.href = currentUrl.toString();
                 }
             });
@@ -313,7 +318,7 @@
     function refreshTrades() {
         const currentPlatform = document.querySelector('input[name="platform-filter"]:checked')?.value || '';
         const url = '<?= base_url('dashboard/refresh_trades') ?>' + (currentPlatform ? '?platform=' + currentPlatform : '');
-        
+
         fetch(url)
             .then(response => response.json())
             .then(data => {
@@ -333,7 +338,7 @@
                 if (totalPnlElement) {
                     totalPnlElement.classList.remove('text-profit', 'text-loss');
                     totalPnlElement.classList.add(pnlClass);
-                    totalPnlElement.textContent = formatNumber(totalPnl, 2) + ' USDT';
+                    totalPnlElement.textContent = formatNumber(totalPnl, 2) + ' USD';
                 }
             })
             .catch(error => {
@@ -360,10 +365,10 @@
         trades.forEach(function(trade) {
             const pnlClass = (parseFloat(trade.pnl || 0) >= 0) ? 'text-profit' : 'text-loss';
             const sideClass = (trade.side === 'BUY') ? 'text-success' : 'text-danger';
-            
+
             // Platform badge
             const platformBadge = trade.platform === 'metatrader' ? 'bg-dark' : 'bg-info';
-            
+
             // Type badges
             const typeBadges = {
                 'futures': 'bg-warning text-dark',
@@ -376,20 +381,20 @@
 
             // Format quantity - remove trailing zeros
             const quantity = formatQuantity(trade.quantity);
-            
+
             // Usar valores formateados o aplicar formato a los originales
             const entryPrice = trade.entry_price_formatted || formatNumber(trade.entry_price, 2);
-            const currentPrice = trade.platform === 'bingx' ? 
+            const currentPrice = trade.platform === 'bingx' ?
                 (trade.current_price_formatted || (trade.current_price ? formatNumber(trade.current_price, 2) : entryPrice)) :
                 'N/A';
-            
-            const formattedPnl = trade.platform === 'bingx' ? 
-                (trade.pnl_formatted ? trade.pnl_formatted + ' USDT' : 
-                ((trade.pnl !== null) ? formatNumber(trade.pnl, 2) + ' USDT' : 'N/A')) :
+
+            const formattedPnl = trade.platform === 'bingx' ?
+                (trade.pnl_formatted ? trade.pnl_formatted + ' USD' :
+                    ((trade.pnl !== null) ? formatNumber(trade.pnl, 2) + ' USD' : 'N/A')) :
                 'At close';
 
             const formattedDate = new Date(trade.created_at).toLocaleString();
-            
+
             // Display position ID or N/A
             const positionId = trade.position_id || 'N/A';
 
@@ -442,18 +447,18 @@
     // Formatear quantity sin ceros a la derecha
     function formatQuantity(number) {
         if (!number) return "0";
-        
+
         // First format with 8 decimal places
         let formatted = parseFloat(number).toFixed(8);
-        
+
         // Remove trailing zeros
         formatted = formatted.replace(/\.?0+$/, '');
-        
+
         // If we accidentally removed the decimal point too, add it back if needed
         if (formatted.endsWith('.')) {
             formatted = formatted.slice(0, -1);
         }
-        
+
         return formatted;
     }
 

@@ -19,63 +19,128 @@ class Trades extends CI_Controller
         $data['title'] = 'Trade History';
         $user_id = $this->session->userdata('user_id');
 
-        // Get filter params (only closed trades shown here, open trades are on Dashboard)
+        // Get filter params — now uses 'source' (bingx, metatrader_tv, atvip) instead of platform
+        $source = $this->input->get('source');
         $strategy = $this->input->get('strategy');
-        $platform = $this->input->get('platform');
         $symbol = $this->input->get('symbol');
 
         // Convertir strings vacíos a null
+        $source = empty($source) ? null : $source;
         $strategy = empty($strategy) ? null : $strategy;
-        $platform = empty($platform) ? null : $platform;
         $symbol = empty($symbol) ? null : $symbol;
 
-        // Get all strategies for filter dropdown
-        $data['strategies'] = $this->Strategy_model->get_all_strategies($user_id);
+        // Restrict to user's allowed sources when no specific source is selected
+        $allowed_sources = get_allowed_sources();
+        $source_filter = $source ?? $allowed_sources;
 
-        // Get all symbols for filter dropdown
-        $data['symbols'] = $this->Trade_model->get_distinct_symbols($user_id);
+        // Determine if strategy dropdown should be hidden (ATVIP doesn't use strategies)
+        $hide_strategy = ($source === 'atvip') || has_only_module('atvip');
+        $data['hide_strategy'] = $hide_strategy;
 
-        // Get all closed trades with filters
-        $trades = $this->Trade_model->find_trades([
-            'user_id' => $user_id,
-            'status' => 'closed',
-            'platform' => $platform,
-            'strategy_id' => $strategy,
-            'symbol' => $symbol
-        ], ['with_relations' => true]);
+        // Get strategies for filter dropdown (exclude ATVIP_SIGNALS, filter by platform per tab)
+        if (!$hide_strategy) {
+            $all_strategies = $this->Strategy_model->get_all_strategies($user_id);
+            // Map source to platform for strategy filtering
+            $platform_map = ['bingx' => 'bingx', 'metatrader_tv' => 'metatrader'];
+            $filter_platform = isset($platform_map[$source]) ? $platform_map[$source] : null;
 
-        // Group trades by strategy_id
-        $grouped_trades = [];
-        foreach ($trades as $trade) {
-            $sid = $trade->strategy_id ?? 0;
-            if (!isset($grouped_trades[$sid])) {
-                $grouped_trades[$sid] = [
-                    'strategy_id' => $sid,
-                    'strategy_name' => $trade->strategy_name ?? 'Unknown',
-                    'symbol' => $trade->symbol,
-                    'platform' => $trade->platform ?? 'unknown',
-                    'trades' => [],
-                    'stats' => null
-                ];
-            }
-            $grouped_trades[$sid]['trades'][] = $trade;
+            $data['strategies'] = array_filter($all_strategies, function ($s) use ($filter_platform) {
+                // Always exclude ATVIP_SIGNALS
+                if ($s->strategy_id === 'ATVIP_SIGNALS') return false;
+                // If on a specific tab, filter by platform
+                if ($filter_platform !== null) return $s->platform === $filter_platform;
+                return true;
+            });
+        } else {
+            $data['strategies'] = [];
         }
 
-        // Calculate stats for each strategy group
-        foreach ($grouped_trades as $sid => &$group) {
-            $group['stats'] = $this->Trade_model->get_platform_statistics($user_id, null, $sid);
+        // Get symbols filtered by current source tab
+        $data['symbols'] = $this->Trade_model->get_distinct_symbols($user_id, $source_filter);
+
+        // Build filters
+        $filters = [
+            'user_id' => $user_id,
+            'status' => 'closed',
+            'source' => $source_filter,
+            'strategy_id' => $strategy,
+            'symbol' => $symbol
+        ];
+
+        // Get all closed trades with filters
+        $trades = $this->Trade_model->find_trades($filters, ['with_relations' => true]);
+
+        // ATVIP: group by symbol (single strategy, no sense grouping by it)
+        // Others: group by strategy_id (multiple strategies per platform)
+        $is_atvip_view = $hide_strategy;
+        $data['is_atvip_view'] = $is_atvip_view;
+
+        $grouped_trades = [];
+        foreach ($trades as $trade) {
+            if ($is_atvip_view) {
+                // Group by symbol for ATVIP
+                $key = $trade->symbol ?? 'UNKNOWN';
+                if (!isset($grouped_trades[$key])) {
+                    $grouped_trades[$key] = [
+                        'group_key' => $key,
+                        'group_label' => $trade->symbol,
+                        'strategy_id' => $trade->strategy_id ?? 0,
+                        'strategy_name' => $trade->strategy_name ?? 'ATVIP Signals',
+                        'symbol' => $trade->symbol,
+                        'platform' => $trade->platform ?? 'metatrader',
+                        'source' => $trade->source ?? 'atvip',
+                        'trades' => [],
+                        'stats' => null
+                    ];
+                }
+                $grouped_trades[$key]['trades'][] = $trade;
+            } else {
+                // Group by strategy_id for BingX/MetaTrader
+                $sid = $trade->strategy_id ?? 0;
+                if (!isset($grouped_trades[$sid])) {
+                    $grouped_trades[$sid] = [
+                        'group_key' => $sid,
+                        'group_label' => $trade->strategy_name ?? 'Unknown',
+                        'strategy_id' => $sid,
+                        'strategy_name' => $trade->strategy_name ?? 'Unknown',
+                        'symbol' => $trade->symbol,
+                        'platform' => $trade->platform ?? 'unknown',
+                        'source' => $trade->source ?? 'bingx',
+                        'trades' => [],
+                        'stats' => null
+                    ];
+                }
+                $grouped_trades[$sid]['trades'][] = $trade;
+            }
+        }
+
+        // Calculate stats for each group
+        foreach ($grouped_trades as $key => &$group) {
+            if ($is_atvip_view) {
+                // Stats by symbol + source for ATVIP
+                $group['stats'] = $this->Trade_model->get_platform_statistics(
+                    $user_id,
+                    null,
+                    null,
+                    ['source' => 'atvip', 'symbol' => $group['symbol']]
+                );
+            } else {
+                // Stats by strategy_id for others
+                $group['stats'] = $this->Trade_model->get_platform_statistics($user_id, null, $group['strategy_id']);
+            }
         }
         unset($group);
 
         $data['grouped_trades'] = $grouped_trades;
-        $data['trades'] = $trades; // Keep for global stats
+        $data['trades'] = $trades;
 
-        // Calculate global trading statistics
-        $stats = $this->Trade_model->get_platform_statistics($user_id, $platform, $strategy);
+        // Calculate global trading statistics with source filter
+        $stat_options = ['source' => $source_filter];
+        $stats = $this->Trade_model->get_platform_statistics($user_id, null, $strategy, $stat_options);
         $data['stats'] = $stats;
 
         // Pass current filters to view
-        $data['current_platform'] = $platform;
+        $data['current_source'] = $source;
         $data['current_strategy'] = $strategy;
         $data['current_symbol'] = $symbol;
 
