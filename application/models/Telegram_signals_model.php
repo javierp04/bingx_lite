@@ -244,6 +244,10 @@ class Telegram_signals_model extends CI_Model
             if (isset($progress_data['real_entry_price'])) {
                 $update_data['real_entry_price'] = $progress_data['real_entry_price'];
             }
+            // Guardar volumen real cuando pending order se ejecuta
+            if (isset($progress_data['remaining_volume']) && $progress_data['remaining_volume'] > 0) {
+                $update_data['real_volume'] = $progress_data['remaining_volume'];
+            }
         }
 
         // Actualizar nivel actual alcanzado
@@ -320,12 +324,15 @@ class Telegram_signals_model extends CI_Model
 
     /**
      * ACTUALIZADO: Reportar cierre final de posición (con conversión UTC)
-     * También inserta en tabla trades para unificar Trade History
+     * También inserta en tabla trades para unificar Trade History (solo para cierres reales)
      */
     public function report_close($user_signal_id, $close_data)
     {
+        $close_reason = $close_data['close_reason'] ?? '';
+        $is_real_close = !$this->is_failure_reason($close_reason);
+
         $update_data = [
-            'status' => 'closed',
+            'status' => $this->resolve_close_status($close_reason),
             'updated_at' => date('Y-m-d H:i:s')
         ];
 
@@ -341,16 +348,18 @@ class Telegram_signals_model extends CI_Model
             $update_data['last_price'] = $close_data['last_price'];
         }
 
-        // Volumen cerrado al 100%
-        $update_data['volume_closed_percent'] = 100.00;
-        $update_data['remaining_volume'] = 0.00;
+        // Volumen cerrado al 100% solo para cierres reales
+        if ($is_real_close) {
+            $update_data['volume_closed_percent'] = 100.00;
+            $update_data['remaining_volume'] = 0.00;
+        }
 
         // Exit level final
         if (isset($close_data['exit_level'])) {
             $update_data['exit_level'] = $close_data['exit_level'];
         }
 
-        // NUEVO: Convertir execution_time de UTC a local
+        // Convertir execution_time de UTC a local
         if (isset($close_data['execution_time'])) {
             $close_data['execution_time_local'] = $this->convert_utc_to_local($close_data['execution_time']);
         }
@@ -362,17 +371,52 @@ class Telegram_signals_model extends CI_Model
         $result = $this->db->update('user_telegram_signals', $update_data);
 
         if ($result) {
-            $this->append_event($user_signal_id, 'closed', [
+            $event_type = $is_real_close ? 'closed' : 'failed';
+            $this->append_event($user_signal_id, $event_type, [
                 'reason' => $close_data['close_reason'] ?? null,
                 'exit_level' => $close_data['exit_level'] ?? null,
                 'pnl' => $update_data['gross_pnl'] ?? null,
                 'price' => $close_data['last_price'] ?? null,
             ], $close_data['execution_time'] ?? null);
 
-            $this->insert_closed_trade_to_trades($user_signal_id, $close_data, $update_data['gross_pnl']);
+            // Solo insertar en trades si fue un cierre real (la posición operó)
+            if ($is_real_close) {
+                $this->insert_closed_trade_to_trades($user_signal_id, $close_data, $update_data['gross_pnl']);
+            }
         }
 
         return $result;
+    }
+
+    /**
+     * Determina si un close_reason indica un fallo pre-ejecución (nunca operó)
+     */
+    private function is_failure_reason($close_reason)
+    {
+        $failure_reasons = [
+            'ORDER_CANCELLED',
+            'INVALID_TPS',
+            'INVALID_STOPLOSS',
+            'PRICE_CORRECTION_ERROR',
+            'SPREAD_TOO_HIGH',
+            'VOLUME_ERROR',
+            'EXECUTION_FAILED',
+        ];
+        return in_array($close_reason, $failure_reasons);
+    }
+
+    /**
+     * Mapea close_reason al status correcto de user_telegram_signals
+     */
+    private function resolve_close_status($close_reason)
+    {
+        if ($close_reason === 'ORDER_CANCELLED') {
+            return 'cancelled';
+        }
+        if ($this->is_failure_reason($close_reason)) {
+            return 'failed_execution';
+        }
+        return 'closed';
     }
 
     /**

@@ -54,11 +54,12 @@
                             // Detectar breakeven
                             $is_breakeven = ($signal->real_stop_loss == $signal->real_entry_price);
 
-                            // Row class for active vs closed
-                            // Row class: activas = normal, closed con ejecución real = blanco, closed sin ejecución (error pre-trade) = gris
+                            // Row class: activas = normal, closed con ejecución real = blanco, failed/cancelled = gris
                             $row_class = '';
-                            if ($signal->status === 'closed') {
-                                $row_class = $signal->real_entry_price ? '' : 'table-secondary';
+                            if (in_array($signal->status, ['failed_execution', 'cancelled'])) {
+                                $row_class = 'table-secondary';
+                            } elseif ($signal->status === 'closed' && !$signal->real_entry_price) {
+                                $row_class = 'table-secondary';
                             }
                             ?>
                             <tr data-signal-id="<?= $signal->id ?>" class="signal-row <?= $row_class ?>" data-status="<?= $signal->status ?>">
@@ -93,72 +94,12 @@
                                     </span>
                                 </td>
                                 <td>
-                                    <?php
-                                    // Status principal - SIN incluir BE como status
-                                    $status_class = '';
-                                    $status_text = '';
-
-                                    switch ($signal->status) {
-                                        case 'pending':
-                                        case 'claimed':
-                                            $status_class = 'bg-warning text-dark';
-                                            $status_text = 'Pending Order';
-                                            break;
-                                        case 'open':
-                                            if ($signal->current_level >= 1) {
-                                                $status_class = 'bg-success';
-                                                $status_text = 'TP' . $signal->current_level . ' Reached';
-                                            } else {
-                                                $status_class = 'bg-primary';
-                                                $status_text = 'Position Open';
-                                            }
-                                            break;
-                                        case 'closed':
-                                            if ($signal->close_reason) {
-                                                switch ($signal->close_reason) {
-                                                    case 'CLOSED_COMPLETE':
-                                                        $status_class = 'bg-success';
-                                                        $status_text = 'TP Complete';
-                                                        break;
-                                                    case 'CLOSED_STOPLOSS':
-                                                    case 'CLOSED_CODE_STOP':
-                                                    case 'CLOSED_SAFETY_STOP':
-                                                        $status_class = 'bg-danger';
-                                                        $status_text = 'Stop Loss';
-                                                        break;
-                                                    case 'CLOSED_EXTERNAL':
-                                                        $status_class = 'bg-warning text-dark';
-                                                        $status_text = 'Manual Close';
-                                                        break;
-                                                    case 'ORDER_CANCELLED':
-                                                        $status_class = 'bg-warning text-dark';
-                                                        $status_text = 'Order Cancelled';
-                                                        break;
-                                                    case 'INVALID_TPS':
-                                                    case 'INVALID_STOPLOSS':
-                                                    case 'PRICE_CORRECTION_ERROR':
-                                                    case 'SPREAD_TOO_HIGH':
-                                                    case 'VOLUME_ERROR':
-                                                    case 'EXECUTION_FAILED':
-                                                        $status_class = 'bg-dark';
-                                                        $status_text = 'Error';
-                                                        break;
-                                                    default:
-                                                        $status_class = 'bg-secondary';
-                                                        $status_text = 'Closed';
-                                                }
-                                            } else {
-                                                $status_class = 'bg-secondary';
-                                                $status_text = 'Closed';
-                                            }
-                                            break;
-                                        default:
-                                            $status_class = 'bg-secondary';
-                                            $status_text = ucfirst($signal->status);
-                                    }
-                                    ?>
-                                    <span class="badge <?= $status_class ?>">
-                                        <?= $status_text ?>
+                                    <?php $ssd = get_signal_status_display($signal); ?>
+                                    <span class="badge <?= $ssd['class'] ?>">
+                                        <?php if ($ssd['is_failure']): ?>
+                                            <i class="fas fa-exclamation-triangle me-1"></i>
+                                        <?php endif; ?>
+                                        <?= $ssd['text'] ?>
                                     </span>
 
                                     <?php
@@ -185,7 +126,7 @@
                                                 <small class="text-muted">Final: <?= number_format($signal->last_price, $decimals) ?></small>
                                             </div>
                                         <?php endif; ?>
-                                    <?php elseif ($signal->status === 'closed'): ?>
+                                    <?php elseif (in_array($signal->status, ['closed', 'failed_execution', 'cancelled'])): ?>
                                         <span class="text-danger"><i class="fas fa-times-circle me-1"></i>Not Executed</span>
                                     <?php else: ?>
                                         <span class="text-muted"><i class="fas fa-clock me-1"></i>Waiting...</span>

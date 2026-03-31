@@ -31,10 +31,10 @@
                         <strong><?= $signal->ticker_symbol ?></strong>
                     </div>
                     <?php if ($signal->mt_ticker): ?>
-                    <div class="d-flex justify-content-between align-items-center mb-2">
-                        <span class="text-muted">MT Symbol</span>
-                        <code><?= $signal->mt_ticker ?></code>
-                    </div>
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="text-muted">MT Symbol</span>
+                            <code><?= $signal->mt_ticker ?></code>
+                        </div>
                     <?php endif; ?>
                     <div class="d-flex justify-content-between align-items-center mb-2">
                         <span class="text-muted">Type</span>
@@ -49,66 +49,12 @@
                     </div>
                     <div class="d-flex justify-content-between align-items-center mb-2">
                         <span class="text-muted">Status</span>
-                        <?php
-                        $status_class = '';
-                        $status_label = ucfirst($signal->status);
-                        switch ($signal->status) {
-                            case 'pending':
-                            case 'claimed':
-                                $status_class = 'bg-warning text-dark';
-                                $status_label = 'Pending Order';
-                                break;
-                            case 'open':
-                                if ($signal->current_level >= 1) {
-                                    $status_class = 'bg-success';
-                                    $status_label = 'TP' . $signal->current_level . ' Reached';
-                                } else {
-                                    $status_class = 'bg-primary';
-                                    $status_label = 'Position Open';
-                                }
-                                break;
-                            case 'closed':
-                                if ($signal->close_reason) {
-                                    switch ($signal->close_reason) {
-                                        case 'CLOSED_COMPLETE':
-                                            $status_class = 'bg-success';
-                                            $status_label = 'TP Complete';
-                                            break;
-                                        case 'CLOSED_STOPLOSS':
-                                        case 'CLOSED_CODE_STOP':
-                                        case 'CLOSED_SAFETY_STOP':
-                                            $status_class = 'bg-danger';
-                                            $status_label = 'Stop Loss';
-                                            break;
-                                        case 'CLOSED_EXTERNAL':
-                                            $status_class = 'bg-warning text-dark';
-                                            $status_label = 'Manual Close';
-                                            break;
-                                        case 'ORDER_CANCELLED':
-                                            $status_class = 'bg-warning text-dark';
-                                            $status_label = 'Order Cancelled';
-                                            break;
-                                        case 'INVALID_TPS':
-                                        case 'INVALID_STOPLOSS':
-                                        case 'PRICE_CORRECTION_ERROR':
-                                        case 'SPREAD_TOO_HIGH':
-                                        case 'VOLUME_ERROR':
-                                        case 'EXECUTION_FAILED':
-                                            $status_class = 'bg-dark';
-                                            $status_label = 'Error';
-                                            break;
-                                        default:
-                                            $status_class = 'bg-secondary';
-                                            $status_label = 'Closed';
-                                    }
-                                } else {
-                                    $status_class = 'bg-secondary';
-                                }
-                                break;
-                        }
-                        ?>
-                        <span class="badge <?= $status_class ?>">
-                            <?= $status_label ?>
+                        <?php $ssd = get_signal_status_display($signal); ?>
+                        <span class="badge <?= $ssd['class'] ?>">
+                            <?php if ($ssd['is_failure']): ?>
+                                <i class="fas fa-exclamation-triangle me-1"></i>
+                            <?php endif; ?>
+                            <?= $ssd['text'] ?>
                         </span>
                     </div>
                 </div>
@@ -209,99 +155,99 @@
                         $type = $ev['event'] ?? 'unknown';
                         $time = isset($ev['at']) ? date('M j, Y H:i:s', strtotime($ev['at'])) : '-';
                     ?>
-                    <div class="timeline-item">
-                        <?php if ($type === 'claimed'): ?>
-                            <div class="timeline-marker bg-warning"></div>
-                            <div class="timeline-content">
-                                <h6><i class="fas fa-hand-pointer me-1"></i>Claimed by EA</h6>
-                                <small><?= $time ?></small>
-                            </div>
+                        <div class="timeline-item">
+                            <?php if ($type === 'claimed'): ?>
+                                <div class="timeline-marker bg-warning"></div>
+                                <div class="timeline-content">
+                                    <h6><i class="fas fa-hand-pointer me-1"></i>Claimed by EA</h6>
+                                    <small><?= $time ?></small>
+                                </div>
 
-                        <?php elseif ($type === 'open'): ?>
-                            <?php $ol = isset($ev['order_type'], $order_labels[$ev['order_type']]) ? $order_labels[$ev['order_type']] : 'Market Order'; ?>
-                            <div class="timeline-marker bg-success"></div>
-                            <div class="timeline-content">
-                                <h6><i class="fas fa-bolt me-1"></i><?= $ol ?> Executed</h6>
-                                <small><?= $time ?></small>
-                                <?php if (isset($ev['entry'])): ?>
-                                    <br><small class="text-muted">Entry: <?= number_format($ev['entry'], $decimals) ?><?php if (isset($ev['volume'])): ?> | Vol: <?= number_format($ev['volume'], 2) ?><?php endif; ?></small>
-                                <?php endif; ?>
-                            </div>
+                            <?php elseif ($type === 'open'): ?>
+                                <?php $ol = isset($ev['order_type'], $order_labels[$ev['order_type']]) ? $order_labels[$ev['order_type']] : 'Market Order'; ?>
+                                <div class="timeline-marker bg-success"></div>
+                                <div class="timeline-content">
+                                    <h6><i class="fas fa-bolt me-1"></i><?= $ol ?> Executed</h6>
+                                    <small><?= $time ?></small>
+                                    <?php if (isset($ev['entry'])): ?>
+                                        <br><small class="text-muted">Entry: <?= number_format($ev['entry'], $decimals) ?><?php if (isset($ev['volume'])): ?> | Vol: <?= number_format($ev['volume'], 2) ?><?php endif; ?></small>
+                                    <?php endif; ?>
+                                </div>
 
-                        <?php elseif ($type === 'pending_order'): ?>
-                            <?php $ol = isset($ev['order_type'], $order_labels[$ev['order_type']]) ? $order_labels[$ev['order_type']] : 'Pending Order'; ?>
-                            <div class="timeline-marker bg-info"></div>
-                            <div class="timeline-content">
-                                <h6><i class="fas fa-clock me-1"></i><?= $ol ?> Placed</h6>
-                                <small><?= $time ?></small>
-                            </div>
+                            <?php elseif ($type === 'pending_order'): ?>
+                                <?php $ol = isset($ev['order_type'], $order_labels[$ev['order_type']]) ? $order_labels[$ev['order_type']] : 'Pending Order'; ?>
+                                <div class="timeline-marker bg-info"></div>
+                                <div class="timeline-content">
+                                    <h6><i class="fas fa-clock me-1"></i><?= $ol ?> Placed</h6>
+                                    <small><?= $time ?></small>
+                                </div>
 
-                        <?php elseif ($type === 'filled'): ?>
-                            <div class="timeline-marker bg-success"></div>
-                            <div class="timeline-content">
-                                <h6><i class="fas fa-check-circle me-1"></i>Pending Order Filled</h6>
-                                <small><?= $time ?></small>
-                                <?php if (isset($ev['entry'])): ?>
-                                    <br><small class="text-muted">Entry: <?= number_format($ev['entry'], $decimals) ?></small>
-                                <?php endif; ?>
-                            </div>
+                            <?php elseif ($type === 'filled'): ?>
+                                <div class="timeline-marker bg-success"></div>
+                                <div class="timeline-content">
+                                    <h6><i class="fas fa-check-circle me-1"></i>Pending Order Filled</h6>
+                                    <small><?= $time ?></small>
+                                    <?php if (isset($ev['entry'])): ?>
+                                        <br><small class="text-muted">Entry: <?= number_format($ev['entry'], $decimals) ?></small>
+                                    <?php endif; ?>
+                                </div>
 
-                        <?php elseif ($type === 'tp'): ?>
-                            <div class="timeline-marker bg-success"></div>
-                            <div class="timeline-content">
-                                <h6><i class="fas fa-bullseye me-1"></i>TP<?= $ev['level'] ?? '?' ?> Reached</h6>
-                                <small><?= $time ?></small>
-                                <br><small class="text-muted">
-                                    Price: <?= isset($ev['price']) ? number_format($ev['price'], $decimals) : '-' ?>
-                                    <?php if (isset($ev['pnl'])): ?> | PNL: $<?= number_format($ev['pnl'], 2) ?><?php endif; ?>
-                                    <?php if (isset($ev['closed_pct'])): ?> | Closed: <?= number_format($ev['closed_pct'], 1) ?>%<?php endif; ?>
-                                </small>
-                            </div>
-
-                        <?php elseif ($type === 'breakeven'): ?>
-                            <div class="timeline-marker bg-primary"></div>
-                            <div class="timeline-content">
-                                <h6><i class="fas fa-shield-alt me-1"></i>Breakeven Activated</h6>
-                                <small><?= $time ?></small>
-                                <?php if (isset($ev['new_sl'])): ?>
-                                    <br><small class="text-muted">SL moved to <?= number_format($ev['new_sl'], $decimals) ?></small>
-                                <?php endif; ?>
-                            </div>
-
-                        <?php elseif ($type === 'closed'): ?>
-                            <?php
-                            $cr = $ev['reason'] ?? '';
-                            $cr_cfg = $close_reasons[$cr] ?? ['bg-secondary', $cr ?: 'Closed'];
-                            ?>
-                            <div class="timeline-marker <?= $cr_cfg[0] ?>"></div>
-                            <div class="timeline-content">
-                                <h6><i class="fas fa-flag-checkered me-1"></i>Closed</h6>
-                                <small><?= $time ?></small>
-                                <br><span class="badge <?= $cr_cfg[0] ?>"><?= $cr_cfg[1] ?></span>
-                                <?php if (isset($ev['pnl']) && $ev['pnl'] != 0): ?>
-                                    <br><small class="<?= $ev['pnl'] >= 0 ? 'text-success' : 'text-danger' ?>">
-                                        Final PNL: <?= $ev['pnl'] >= 0 ? '+' : '-' ?>$<?= number_format(abs($ev['pnl']), 2) ?>
+                            <?php elseif ($type === 'tp'): ?>
+                                <div class="timeline-marker bg-success"></div>
+                                <div class="timeline-content">
+                                    <h6><i class="fas fa-bullseye me-1"></i>TP<?= $ev['level'] ?? '?' ?> Reached</h6>
+                                    <small><?= $time ?></small>
+                                    <br><small class="text-muted">
+                                        Price: <?= isset($ev['price']) ? number_format($ev['price'], $decimals) : '-' ?>
+                                        <?php if (isset($ev['pnl'])): ?> | PNL: $<?= number_format($ev['pnl'], 2) ?><?php endif; ?>
+                                            <?php if (isset($ev['closed_pct'])): ?> | Closed: <?= number_format($ev['closed_pct'], 1) ?>%<?php endif; ?>
                                     </small>
-                                <?php endif; ?>
-                            </div>
+                                </div>
 
-                        <?php else: ?>
-                            <div class="timeline-marker bg-secondary"></div>
-                            <div class="timeline-content">
-                                <h6><?= ucfirst($type) ?></h6>
-                                <small><?= $time ?></small>
-                            </div>
-                        <?php endif; ?>
-                    </div>
+                            <?php elseif ($type === 'breakeven'): ?>
+                                <div class="timeline-marker bg-primary"></div>
+                                <div class="timeline-content">
+                                    <h6><i class="fas fa-shield-alt me-1"></i>Breakeven Activated</h6>
+                                    <small><?= $time ?></small>
+                                    <?php if (isset($ev['new_sl'])): ?>
+                                        <br><small class="text-muted">SL moved to <?= number_format($ev['new_sl'], $decimals) ?></small>
+                                    <?php endif; ?>
+                                </div>
+
+                            <?php elseif ($type === 'closed'): ?>
+                                <?php
+                                $cr = $ev['reason'] ?? '';
+                                $cr_cfg = $close_reasons[$cr] ?? ['bg-secondary', $cr ?: 'Closed'];
+                                ?>
+                                <div class="timeline-marker <?= $cr_cfg[0] ?>"></div>
+                                <div class="timeline-content">
+                                    <h6><i class="fas fa-flag-checkered me-1"></i>Closed</h6>
+                                    <small><?= $time ?></small>
+                                    <br><span class="badge <?= $cr_cfg[0] ?>"><?= $cr_cfg[1] ?></span>
+                                    <?php if (isset($ev['pnl']) && $ev['pnl'] != 0): ?>
+                                        <br><small class="<?= $ev['pnl'] >= 0 ? 'text-success' : 'text-danger' ?>">
+                                            Final PNL: <?= $ev['pnl'] >= 0 ? '+' : '-' ?>$<?= number_format(abs($ev['pnl']), 2) ?>
+                                        </small>
+                                    <?php endif; ?>
+                                </div>
+
+                            <?php else: ?>
+                                <div class="timeline-marker bg-secondary"></div>
+                                <div class="timeline-content">
+                                    <h6><?= ucfirst($type) ?></h6>
+                                    <small><?= $time ?></small>
+                                </div>
+                            <?php endif; ?>
+                        </div>
                     <?php endforeach; ?>
 
                     <?php if (empty($events)): ?>
-                    <div class="timeline-item">
-                        <div class="timeline-marker bg-secondary"></div>
-                        <div class="timeline-content">
-                            <small class="text-muted">No events recorded yet</small>
+                        <div class="timeline-item">
+                            <div class="timeline-marker bg-secondary"></div>
+                            <div class="timeline-content">
+                                <small class="text-muted">No events recorded yet</small>
+                            </div>
                         </div>
-                    </div>
                     <?php endif; ?>
                 </div>
             </div>
@@ -314,14 +260,14 @@
             </div>
             <div class="card-body">
                 <?php if ($signal->tradingview_url): ?>
-                <a href="<?= $signal->tradingview_url ?>" target="_blank" class="btn btn-outline-primary btn-sm w-100 mb-2">
-                    <i class="fas fa-chart-line me-1"></i>Open TradingView Chart
-                </a>
+                    <a href="<?= $signal->tradingview_url ?>" target="_blank" class="btn btn-outline-primary btn-sm w-100 mb-2">
+                        <i class="fas fa-chart-line me-1"></i>Open TradingView Chart
+                    </a>
                 <?php endif; ?>
                 <?php if (file_exists($signal->image_path)): ?>
-                <a href="<?= base_url('telegram_signals/view_image/' . $signal->telegram_signal_id) ?>" target="_blank" class="btn btn-outline-info btn-sm w-100 mb-2">
-                    <i class="fas fa-image me-1"></i>View Original Image
-                </a>
+                    <a href="<?= base_url('telegram_signals/view_image/' . $signal->telegram_signal_id) ?>" target="_blank" class="btn btn-outline-info btn-sm w-100 mb-2">
+                        <i class="fas fa-image me-1"></i>View Original Image
+                    </a>
                 <?php endif; ?>
                 <?php
                 $path_info = pathinfo($signal->image_path);
@@ -329,9 +275,9 @@
                 $cropped_path = $path_info['dirname'] . '/' . $cropped_filename;
                 if (file_exists($cropped_path)):
                 ?>
-                <a href="<?= base_url('telegram_signals/view_cropped_image/' . $signal->telegram_signal_id) ?>" target="_blank" class="btn btn-outline-success btn-sm w-100">
-                    <i class="fas fa-crop me-1"></i>View Cropped Image
-                </a>
+                    <a href="<?= base_url('telegram_signals/view_cropped_image/' . $signal->telegram_signal_id) ?>" target="_blank" class="btn btn-outline-success btn-sm w-100">
+                        <i class="fas fa-crop me-1"></i>View Cropped Image
+                    </a>
                 <?php endif; ?>
             </div>
         </div>
@@ -348,72 +294,72 @@
         $signal_data = $mt_data ?: $analysis_data;
         ?>
         <?php if ($signal_data): ?>
-        <div class="card mb-3">
-            <div class="card-header bg-info text-white">
-                <h6 class="mb-0"><i class="fas fa-signal me-1"></i>MT5 Signal Data (Original)</h6>
-            </div>
-            <div class="card-body">
-                <?php
-                $decimals = $signal->display_decimals ?? 5;
-                $entry = $signal_data['entry'] ?? 0;
-                $stoploss = $signal_data['stoploss'] ?? [];
-                $tps = $signal_data['tps'] ?? [];
-                $sl1 = $stoploss[0] ?? 0;
-                $sl2 = $stoploss[1] ?? 0;
-                ?>
+            <div class="card mb-3">
+                <div class="card-header bg-info text-white">
+                    <h6 class="mb-0"><i class="fas fa-signal me-1"></i>MT5 Signal Data (Original)</h6>
+                </div>
+                <div class="card-body">
+                    <?php
+                    $decimals = $signal->display_decimals ?? 5;
+                    $entry = $signal_data['entry'] ?? 0;
+                    $stoploss = $signal_data['stoploss'] ?? [];
+                    $tps = $signal_data['tps'] ?? [];
+                    $sl1 = $stoploss[0] ?? 0;
+                    $sl2 = $stoploss[1] ?? 0;
+                    ?>
 
-                <!-- Visual Price Levels -->
-                <div class="price-levels mb-3">
-                    <!-- TPs (top to bottom for LONG, bottom to top for SHORT) -->
-                    <?php if ($op_type === 'LONG'): ?>
-                        <?php for ($i = 4; $i >= 0; $i--): ?>
-                            <?php if (isset($tps[$i]) && $tps[$i] > 0): ?>
-                                <div class="price-level tp mb-1">
-                                    <span class="badge bg-success">TP<?= $i + 1 ?></span>
-                                    <span class="price"><?= number_format($tps[$i], $decimals) ?></span>
-                                </div>
-                            <?php endif; ?>
-                        <?php endfor; ?>
-                    <?php endif; ?>
+                    <!-- Visual Price Levels -->
+                    <div class="price-levels mb-3">
+                        <!-- TPs (top to bottom for LONG, bottom to top for SHORT) -->
+                        <?php if ($op_type === 'LONG'): ?>
+                            <?php for ($i = 4; $i >= 0; $i--): ?>
+                                <?php if (isset($tps[$i]) && $tps[$i] > 0): ?>
+                                    <div class="price-level tp mb-1">
+                                        <span class="badge bg-success">TP<?= $i + 1 ?></span>
+                                        <span class="price"><?= number_format($tps[$i], $decimals) ?></span>
+                                    </div>
+                                <?php endif; ?>
+                            <?php endfor; ?>
+                        <?php endif; ?>
 
-                    <!-- Entry -->
-                    <div class="price-level entry my-2">
-                        <span class="badge bg-primary">ENTRY</span>
-                        <span class="price fw-bold"><?= number_format($entry, $decimals) ?></span>
+                        <!-- Entry -->
+                        <div class="price-level entry my-2">
+                            <span class="badge bg-primary">ENTRY</span>
+                            <span class="price fw-bold"><?= number_format($entry, $decimals) ?></span>
+                        </div>
+
+                        <!-- TPs for SHORT -->
+                        <?php if ($op_type === 'SHORT'): ?>
+                            <?php for ($i = 0; $i < count($tps); $i++): ?>
+                                <?php if (isset($tps[$i]) && $tps[$i] > 0): ?>
+                                    <div class="price-level tp mb-1">
+                                        <span class="badge bg-success">TP<?= $i + 1 ?></span>
+                                        <span class="price"><?= number_format($tps[$i], $decimals) ?></span>
+                                    </div>
+                                <?php endif; ?>
+                            <?php endfor; ?>
+                        <?php endif; ?>
+
+                        <!-- SLs -->
+                        <?php if ($sl2 > 0): ?>
+                            <div class="price-level sl mb-1">
+                                <span class="badge bg-warning text-dark">SL2</span>
+                                <span class="price"><?= number_format($sl2, $decimals) ?></span>
+                            </div>
+                        <?php endif; ?>
+                        <?php if ($sl1 > 0): ?>
+                            <div class="price-level sl mb-1">
+                                <span class="badge bg-danger">SL1</span>
+                                <span class="price"><?= number_format($sl1, $decimals) ?></span>
+                            </div>
+                        <?php endif; ?>
                     </div>
 
-                    <!-- TPs for SHORT -->
-                    <?php if ($op_type === 'SHORT'): ?>
-                        <?php for ($i = 0; $i < count($tps); $i++): ?>
-                            <?php if (isset($tps[$i]) && $tps[$i] > 0): ?>
-                                <div class="price-level tp mb-1">
-                                    <span class="badge bg-success">TP<?= $i + 1 ?></span>
-                                    <span class="price"><?= number_format($tps[$i], $decimals) ?></span>
-                                </div>
-                            <?php endif; ?>
-                        <?php endfor; ?>
-                    <?php endif; ?>
-
-                    <!-- SLs -->
-                    <?php if ($sl2 > 0): ?>
-                        <div class="price-level sl mb-1">
-                            <span class="badge bg-warning text-dark">SL2</span>
-                            <span class="price"><?= number_format($sl2, $decimals) ?></span>
-                        </div>
-                    <?php endif; ?>
-                    <?php if ($sl1 > 0): ?>
-                        <div class="price-level sl mb-1">
-                            <span class="badge bg-danger">SL1</span>
-                            <span class="price"><?= number_format($sl1, $decimals) ?></span>
-                        </div>
-                    <?php endif; ?>
+                    <small class="text-muted">
+                        <i class="fas fa-info-circle"></i> Signal prices from ATVIP (pre-correction)
+                    </small>
                 </div>
-
-                <small class="text-muted">
-                    <i class="fas fa-info-circle"></i> Signal prices from ATVIP (pre-correction)
-                </small>
             </div>
-        </div>
         <?php endif; ?>
 
         <!-- Execution Data Card -->
@@ -421,113 +367,124 @@
         $exec_data = !empty($signal->execution_data) ? json_decode($signal->execution_data, true) : null;
         ?>
         <?php if ($exec_data): ?>
-        <div class="card mb-3">
-            <div class="card-header bg-success text-white">
-                <h6 class="mb-0"><i class="fas fa-check-circle me-1"></i>Execution Data (Real)</h6>
-            </div>
-            <div class="card-body">
-                <table class="table table-sm mb-0">
-                    <tr>
-                        <th>Order Type</th>
-                        <td>
-                            <?php
-                            $order_type = $exec_data['order_type'] ?? 'N/A';
-                            $order_badge_class = 'bg-secondary';
-                            if (strpos($order_type, 'BUY') !== false) $order_badge_class = 'bg-success';
-                            if (strpos($order_type, 'SELL') !== false) $order_badge_class = 'bg-danger';
-                            ?>
-                            <span class="badge <?= $order_badge_class ?>"><?= $order_type ?></span>
-                        </td>
-                    </tr>
-                    <tr>
-                        <th>Real Entry</th>
-                        <td><strong><?= number_format($exec_data['real_entry_price'] ?? 0, $decimals) ?></strong></td>
-                    </tr>
-                    <tr>
-                        <th>Real Stop Loss</th>
-                        <td>
-                            <?= number_format($exec_data['real_stop_loss'] ?? 0, $decimals) ?>
-                            <?php
-                            $is_breakeven = ($signal->real_stop_loss == $signal->real_entry_price);
-                            if ($is_breakeven):
-                            ?>
-                                <span class="badge bg-success ms-2">
-                                    <i class="fas fa-shield-alt"></i> BE
-                                </span>
-                            <?php endif; ?>
-                        </td>
-                    </tr>
-                    <tr>
-                        <th>Real Volume</th>
-                        <td><?= number_format($exec_data['real_volume'] ?? 0, 2) ?> lots</td>
-                    </tr>
-                    <tr>
-                        <th>Trade ID</th>
-                        <td><code><?= $exec_data['trade_id'] ?? 'N/A' ?></code></td>
-                    </tr>
-                    <?php if (isset($exec_data['execution_time'])): ?>
-                    <tr>
-                        <th>Execution Time</th>
-                        <td><?= $exec_data['execution_time'] ?></td>
-                    </tr>
+            <div class="card mb-3">
+                <div class="card-header bg-success text-white">
+                    <h6 class="mb-0"><i class="fas fa-check-circle me-1"></i>Execution Data (Real)</h6>
+                </div>
+                <div class="card-body">
+                    <table class="table table-sm mb-0">
+                        <tr>
+                            <th>Order Type</th>
+                            <td>
+                                <?php
+                                $order_type = $exec_data['order_type'] ?? 'N/A';
+                                $order_badge_class = 'bg-secondary';
+                                if (strpos($order_type, 'BUY') !== false) $order_badge_class = 'bg-success';
+                                if (strpos($order_type, 'SELL') !== false) $order_badge_class = 'bg-danger';
+                                ?>
+                                <span class="badge <?= $order_badge_class ?>"><?= $order_type ?></span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th>Real Entry</th>
+                            <td><strong><?= number_format($exec_data['real_entry_price'] ?? 0, $decimals) ?></strong></td>
+                        </tr>
+                        <tr>
+                            <th>Real Stop Loss</th>
+                            <td>
+                                <?= number_format($exec_data['real_stop_loss'] ?? 0, $decimals) ?>
+                                <?php
+                                $is_breakeven = ($signal->real_stop_loss == $signal->real_entry_price);
+                                if ($is_breakeven):
+                                ?>
+                                    <span class="badge bg-success ms-2">
+                                        <i class="fas fa-shield-alt"></i> BE
+                                    </span>
+                                <?php endif; ?>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th>Real Volume</th>
+                            <td><?= number_format($exec_data['real_volume'] ?? 0, 2) ?> lots</td>
+                        </tr>
+                        <tr>
+                            <th>Trade ID</th>
+                            <td><code><?= $exec_data['trade_id'] ?? 'N/A' ?></code></td>
+                        </tr>
+                        <?php if (isset($exec_data['execution_time'])): ?>
+                            <tr>
+                                <th>Execution Time</th>
+                                <td><?= $exec_data['execution_time'] ?></td>
+                            </tr>
+                        <?php endif; ?>
+                    </table>
+
+                    <?php if ($signal->status === 'open'): ?>
+                        <hr>
+                        <h6 class="text-muted mb-2">Current Progress</h6>
+                        <div class="d-flex justify-content-between mb-2">
+                            <span>Current Level</span>
+                            <span class="badge <?= $level_class ?>"><?= $level_text ?></span>
+                        </div>
+                        <div class="d-flex justify-content-between mb-2">
+                            <span>Volume Closed</span>
+                            <span><?= number_format($signal->volume_closed_percent, 1) ?>%</span>
+                        </div>
+                        <div class="progress mb-2" style="height: 8px;">
+                            <div class="progress-bar bg-success" style="width: <?= $signal->volume_closed_percent ?>%"></div>
+                        </div>
+                        <div class="d-flex justify-content-between mb-2">
+                            <span>Remaining Volume</span>
+                            <strong><?= number_format($signal->remaining_volume, 2) ?></strong>
+                        </div>
+                        <?php if ($signal->last_price): ?>
+                            <div class="d-flex justify-content-between mb-2">
+                                <span>Last Price</span>
+                                <strong><?= number_format($signal->last_price, $decimals) ?></strong>
+                            </div>
+                        <?php endif; ?>
                     <?php endif; ?>
-                </table>
 
-                <?php if ($signal->status === 'open'): ?>
-                <hr>
-                <h6 class="text-muted mb-2">Current Progress</h6>
-                <div class="d-flex justify-content-between mb-2">
-                    <span>Current Level</span>
-                    <span class="badge <?= $level_class ?>"><?= $level_text ?></span>
-                </div>
-                <div class="d-flex justify-content-between mb-2">
-                    <span>Volume Closed</span>
-                    <span><?= number_format($signal->volume_closed_percent, 1) ?>%</span>
-                </div>
-                <div class="progress mb-2" style="height: 8px;">
-                    <div class="progress-bar bg-success" style="width: <?= $signal->volume_closed_percent ?>%"></div>
-                </div>
-                <div class="d-flex justify-content-between mb-2">
-                    <span>Remaining Volume</span>
-                    <strong><?= number_format($signal->remaining_volume, 2) ?></strong>
-                </div>
-                <?php if ($signal->last_price): ?>
-                <div class="d-flex justify-content-between mb-2">
-                    <span>Last Price</span>
-                    <strong><?= number_format($signal->last_price, $decimals) ?></strong>
-                </div>
-                <?php endif; ?>
-                <?php endif; ?>
+                    <?php if ($signal->status === 'closed'): ?>
+                        <hr>
+                        <h6 class="text-muted mb-2">Final Result</h6>
+                        <?php if ($signal->exit_level !== null): ?>
+                            <div class="d-flex justify-content-between mb-2">
+                                <span>Exit Level</span>
+                                <?php
+                                $exit_badge = 'bg-secondary';
+                                $exit_text = 'Level ' . $signal->exit_level;
+                                if ($signal->exit_level >= 1 && $signal->exit_level <= 5) {
+                                    $exit_badge = 'bg-success';
+                                    $exit_text = 'TP' . $signal->exit_level;
+                                } elseif ($signal->exit_level == 0) {
+                                    $exit_badge = 'bg-danger';
+                                    $exit_text = 'Stop Loss';
+                                }
+                                ?>
+                                <span class="badge <?= $exit_badge ?>"><?= $exit_text ?></span>
+                            </div>
+                        <?php endif; ?>
+                        <?php if ($signal->last_price): ?>
+                            <div class="d-flex justify-content-between mb-2">
+                                <span>Final Price</span>
+                                <strong><?= number_format($signal->last_price, $decimals) ?></strong>
+                            </div>
+                        <?php endif; ?>
+                    <?php endif; ?>
 
-                <?php if ($signal->status === 'closed'): ?>
-                <hr>
-                <h6 class="text-muted mb-2">Final Result</h6>
-                <?php if ($signal->exit_level !== null): ?>
-                <div class="d-flex justify-content-between mb-2">
-                    <span>Exit Level</span>
-                    <?php
-                    $exit_badge = 'bg-secondary';
-                    $exit_text = 'Level ' . $signal->exit_level;
-                    if ($signal->exit_level >= 1 && $signal->exit_level <= 5) {
-                        $exit_badge = 'bg-success';
-                        $exit_text = 'TP' . $signal->exit_level;
-                    } elseif ($signal->exit_level == 0) {
-                        $exit_badge = 'bg-danger';
-                        $exit_text = 'Stop Loss';
-                    }
-                    ?>
-                    <span class="badge <?= $exit_badge ?>"><?= $exit_text ?></span>
+                    <?php if (in_array($signal->status, ['failed_execution', 'cancelled'])): ?>
+                        <hr>
+                        <h6 class="text-muted mb-2">
+                            <i class="fas fa-exclamation-triangle text-danger me-1"></i>Failure Details
+                        </h6>
+                        <div class="d-flex justify-content-between mb-2">
+                            <span>Reason</span>
+                            <span class="badge bg-dark"><?= $signal->close_reason ?? 'Unknown' ?></span>
+                        </div>
+                    <?php endif; ?>
                 </div>
-                <?php endif; ?>
-                <?php if ($signal->last_price): ?>
-                <div class="d-flex justify-content-between mb-2">
-                    <span>Final Price</span>
-                    <strong><?= number_format($signal->last_price, $decimals) ?></strong>
-                </div>
-                <?php endif; ?>
-                <?php endif; ?>
             </div>
-        </div>
         <?php endif; ?>
 
         <!-- Original ATVIP Message -->
@@ -545,53 +502,53 @@
     <div class="col-lg-3">
         <!-- Raw MT Execution Data -->
         <?php if ($signal->mt_execution_data): ?>
-        <div class="card mb-3">
-            <div class="card-header">
-                <a class="text-decoration-none text-dark d-flex justify-content-between align-items-center" data-bs-toggle="collapse" href="#rawMtData">
-                    <h6 class="mb-0"><i class="fas fa-code me-1"></i>Raw MT Data</h6>
-                    <i class="fas fa-chevron-down"></i>
-                </a>
-            </div>
-            <div class="collapse" id="rawMtData">
-                <div class="card-body p-2">
-                    <pre class="mb-0" style="font-size: 0.75rem; max-height: 300px; overflow-y: auto;"><?= json_encode(json_decode($signal->mt_execution_data), JSON_PRETTY_PRINT) ?></pre>
+            <div class="card mb-3">
+                <div class="card-header">
+                    <a class="text-decoration-none text-dark d-flex justify-content-between align-items-center" data-bs-toggle="collapse" href="#rawMtData">
+                        <h6 class="mb-0"><i class="fas fa-code me-1"></i>Raw MT Data</h6>
+                        <i class="fas fa-chevron-down"></i>
+                    </a>
+                </div>
+                <div class="collapse" id="rawMtData">
+                    <div class="card-body p-2">
+                        <pre class="mb-0" style="font-size: 0.75rem; max-height: 300px; overflow-y: auto;"><?= json_encode(json_decode($signal->mt_execution_data), JSON_PRETTY_PRINT) ?></pre>
+                    </div>
                 </div>
             </div>
-        </div>
         <?php endif; ?>
 
         <!-- Raw Execution Data -->
         <?php if ($signal->execution_data): ?>
-        <div class="card mb-3">
-            <div class="card-header">
-                <a class="text-decoration-none text-dark d-flex justify-content-between align-items-center" data-bs-toggle="collapse" href="#rawExecData">
-                    <h6 class="mb-0"><i class="fas fa-file-code me-1"></i>Raw Exec Data</h6>
-                    <i class="fas fa-chevron-down"></i>
-                </a>
-            </div>
-            <div class="collapse" id="rawExecData">
-                <div class="card-body p-2">
-                    <pre class="mb-0" style="font-size: 0.75rem; max-height: 300px; overflow-y: auto;"><?= json_encode(json_decode($signal->execution_data), JSON_PRETTY_PRINT) ?></pre>
+            <div class="card mb-3">
+                <div class="card-header">
+                    <a class="text-decoration-none text-dark d-flex justify-content-between align-items-center" data-bs-toggle="collapse" href="#rawExecData">
+                        <h6 class="mb-0"><i class="fas fa-file-code me-1"></i>Raw Exec Data</h6>
+                        <i class="fas fa-chevron-down"></i>
+                    </a>
+                </div>
+                <div class="collapse" id="rawExecData">
+                    <div class="card-body p-2">
+                        <pre class="mb-0" style="font-size: 0.75rem; max-height: 300px; overflow-y: auto;"><?= json_encode(json_decode($signal->execution_data), JSON_PRETTY_PRINT) ?></pre>
+                    </div>
                 </div>
             </div>
-        </div>
         <?php endif; ?>
 
         <!-- Raw Analysis Data -->
         <?php if ($signal->analysis_data): ?>
-        <div class="card mb-3">
-            <div class="card-header">
-                <a class="text-decoration-none text-dark d-flex justify-content-between align-items-center" data-bs-toggle="collapse" href="#rawAnalysisData">
-                    <h6 class="mb-0"><i class="fas fa-brain me-1"></i>AI Analysis</h6>
-                    <i class="fas fa-chevron-down"></i>
-                </a>
-            </div>
-            <div class="collapse" id="rawAnalysisData">
-                <div class="card-body p-2">
-                    <pre class="mb-0" style="font-size: 0.75rem; max-height: 300px; overflow-y: auto;"><?= json_encode(json_decode($signal->analysis_data), JSON_PRETTY_PRINT) ?></pre>
+            <div class="card mb-3">
+                <div class="card-header">
+                    <a class="text-decoration-none text-dark d-flex justify-content-between align-items-center" data-bs-toggle="collapse" href="#rawAnalysisData">
+                        <h6 class="mb-0"><i class="fas fa-brain me-1"></i>AI Analysis</h6>
+                        <i class="fas fa-chevron-down"></i>
+                    </a>
+                </div>
+                <div class="collapse" id="rawAnalysisData">
+                    <div class="card-body p-2">
+                        <pre class="mb-0" style="font-size: 0.75rem; max-height: 300px; overflow-y: auto;"><?= json_encode(json_decode($signal->analysis_data), JSON_PRETTY_PRINT) ?></pre>
+                    </div>
                 </div>
             </div>
-        </div>
         <?php endif; ?>
 
         <!-- Debug Info -->
@@ -611,80 +568,80 @@
 </div>
 
 <style>
-/* Timeline Styles */
-.timeline {
-    position: relative;
-    padding-left: 30px;
-}
+    /* Timeline Styles */
+    .timeline {
+        position: relative;
+        padding-left: 30px;
+    }
 
-.timeline-item {
-    position: relative;
-    margin-bottom: 20px;
-}
+    .timeline-item {
+        position: relative;
+        margin-bottom: 20px;
+    }
 
-.timeline-item:before {
-    content: '';
-    position: absolute;
-    left: -22px;
-    top: 0;
-    bottom: -20px;
-    width: 2px;
-    background: #dee2e6;
-}
+    .timeline-item:before {
+        content: '';
+        position: absolute;
+        left: -22px;
+        top: 0;
+        bottom: -20px;
+        width: 2px;
+        background: #dee2e6;
+    }
 
-.timeline-item:last-child:before {
-    display: none;
-}
+    .timeline-item:last-child:before {
+        display: none;
+    }
 
-.timeline-marker {
-    position: absolute;
-    left: -28px;
-    top: 5px;
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    border: 2px solid #fff;
-    box-shadow: 0 0 0 2px #dee2e6;
-}
+    .timeline-marker {
+        position: absolute;
+        left: -28px;
+        top: 5px;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        border: 2px solid #fff;
+        box-shadow: 0 0 0 2px #dee2e6;
+    }
 
-.timeline-content h6 {
-    margin-bottom: 0;
-    font-size: 0.9rem;
-}
+    .timeline-content h6 {
+        margin-bottom: 0;
+        font-size: 0.9rem;
+    }
 
-.timeline-content small {
-    color: #6c757d;
-}
+    .timeline-content small {
+        color: #6c757d;
+    }
 
-/* Price Levels Styles */
-.price-levels {
-    font-family: 'Courier New', monospace;
-}
+    /* Price Levels Styles */
+    .price-levels {
+        font-family: 'Courier New', monospace;
+    }
 
-.price-level {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 4px 8px;
-    border-radius: 4px;
-}
+    .price-level {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 4px 8px;
+        border-radius: 4px;
+    }
 
-.price-level.tp {
-    background-color: rgba(25, 135, 84, 0.1);
-    border-left: 3px solid #198754;
-}
+    .price-level.tp {
+        background-color: rgba(25, 135, 84, 0.1);
+        border-left: 3px solid #198754;
+    }
 
-.price-level.entry {
-    background-color: rgba(13, 110, 253, 0.15);
-    border: 2px solid #0d6efd;
-}
+    .price-level.entry {
+        background-color: rgba(13, 110, 253, 0.15);
+        border: 2px solid #0d6efd;
+    }
 
-.price-level.sl {
-    background-color: rgba(220, 53, 69, 0.1);
-    border-left: 3px solid #dc3545;
-}
+    .price-level.sl {
+        background-color: rgba(220, 53, 69, 0.1);
+        border-left: 3px solid #dc3545;
+    }
 
-.price-level .price {
-    font-size: 0.95rem;
-}
+    .price-level .price {
+        font-size: 0.95rem;
+    }
 </style>
