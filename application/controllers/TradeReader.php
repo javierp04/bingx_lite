@@ -625,7 +625,6 @@ class TradeReader extends CI_Controller
                 'detail' => "LONG match: últimas {$required} coinciden (A={$count_a}, B={$count_b}), usando set completo de " . count($matched),
                 'matched_prices' => $matched
             ];
-
         } else {
             // SHORT: comparar las primeras 7 (SL1, SL2, entry + TPs cercanos)
             $head_a = array_slice($prices_a, 0, $required);
@@ -771,7 +770,7 @@ class TradeReader extends CI_Controller
         // Detectar caja roja ANTES de destruir la imagen
         $redCoords = $this->findRedBox($image, $width, $height, $cajaCoords);
 
-        $cropX1 = $cajaCoords['x1'] - 5;
+        $cropX1 = max(0, min($cajaCoords['x1'] - 5, $cajaCoords['x2'] - 250));
         $cropX2 = $cajaCoords['x2'] + 150;
         $cropY1 = 40;
         $cropY2 = $height - 120;
@@ -844,7 +843,7 @@ Si hay menos de 8 etiquetas, devuelve {}. Solo el JSON, sin texto adicional.
 PROMPT;
     }
 
-   
+
     private function openai_post_json($url, $apiKey, $payload)
     {
         $ch = curl_init($url);
