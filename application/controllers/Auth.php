@@ -42,17 +42,16 @@ class Auth extends CI_Controller
             $user = $this->User_model->check_login($username, $password);
 
             if ($user) {
-                // Set user session — admins auto-grant all modules
-                $is_admin = ($user->role === 'admin');
+                // Set user session — modules respect DB assignment for all users including admins
                 $user_data = array(
                     'user_id' => $user->id,
                     'username' => $user->username,
                     'email' => $user->email,
                     'role' => $user->role,
                     'logged_in' => TRUE,
-                    'module_bingx' => $is_admin || (bool) $user->module_bingx,
-                    'module_metatrader' => $is_admin || (bool) $user->module_metatrader,
-                    'module_atvip' => $is_admin || (bool) $user->module_atvip,
+                    'module_bingx' => (bool) $user->module_bingx,
+                    'module_metatrader' => (bool) $user->module_metatrader,
+                    'module_atvip' => (bool) $user->module_atvip,
                 );
 
                 $this->session->set_userdata($user_data);
