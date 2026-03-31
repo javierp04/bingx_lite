@@ -21,7 +21,7 @@ input int       USER_ID = 1;
 input group "=== Trading Settings ==="
 input string    TICKER_SYMBOL = "EURUSD";
 input double    RISK_PERCENT = 2.0;
-input int       POLL_INTERVAL = 30;
+input int       POLL_INTERVAL = 10;
 input double    MAX_SPREAD = 500.0;
 input int       PRICE_TOLERANCE_POINTS = 50;
 input double    PRICE_TOLERANCE_PERCENT = 0.0;  // 0.0 = usar points, > 0 = usar porcentaje (prioridad)
@@ -280,7 +280,7 @@ void SetupBaseUrls() {
 }
 
 bool ValidateAllInputs() {
-    if(USER_ID <= 0 || RISK_PERCENT <= 0 || RISK_PERCENT > 10 || POLL_INTERVAL < 10) return false;
+    if(USER_ID <= 0 || RISK_PERCENT <= 0 || RISK_PERCENT > 10 || POLL_INTERVAL < 5) return false;
     if(BE_LEVEL < 0 || BE_LEVEL > 5) return false;
     if(SAFETY_FACTOR < 1.0 || SAFETY_FACTOR > 5.0) return false;
     
@@ -841,6 +841,10 @@ void OnDeinit(const int reason) {
 
 void OnTimer() {
     if(ENABLE_TIME_FILTER && !IsWithinTradingHours()) return;
+    
+    // Skip polling if we already have an active position or pending order
+    if(currentTP.isActive || currentTP.ticket > 0) return;
+    
     CheckForSignals();
 }
 
