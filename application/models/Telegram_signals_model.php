@@ -32,42 +32,18 @@ class Telegram_signals_model extends CI_Model
      */
     public function create_user_signals_for_ticker($telegram_signal_id, $ticker_symbol)
     {
-        // Obtener todos los usuarios que tienen este ticker activo
-        $this->db->select('ust.user_id, ust.ticker_symbol, ust.mt_ticker');
-        $this->db->from('user_selected_tickers ust');
-        $this->db->join('available_tickers at', 'ust.ticker_symbol = at.symbol');
-        $this->db->where('ust.ticker_symbol', $ticker_symbol);
-        $this->db->where('ust.active', 1);
-        $this->db->where('at.active', 1);
+        // INSERT ... SELECT directo: evita fetch + loop PHP
+        $sql = "INSERT IGNORE INTO user_telegram_signals
+                (telegram_signal_id, user_id, ticker_symbol, mt_ticker, status, created_at)
+                SELECT ?, ust.user_id, ust.ticker_symbol, COALESCE(ust.mt_ticker, ''), 'available', NOW()
+                FROM user_selected_tickers ust
+                JOIN available_tickers at ON ust.ticker_symbol = at.symbol
+                WHERE ust.ticker_symbol = ?
+                AND ust.active = 1
+                AND at.active = 1";
 
-        $users_with_ticker = $this->db->get()->result();
-
-        if (empty($users_with_ticker)) {
-            return 0; // No users found
-        }
-
-        // Crear registros en batch usando INSERT IGNORE
-        $values = array();
-        foreach ($users_with_ticker as $user) {
-            $values[] = sprintf(
-                "(%d, %d, '%s', '%s', 'available', NOW())",
-                $telegram_signal_id,
-                $user->user_id,
-                $this->db->escape_str($user->ticker_symbol),
-                $this->db->escape_str($user->mt_ticker ?: '')
-            );
-        }
-
-        if (!empty($values)) {
-            $sql = "INSERT IGNORE INTO user_telegram_signals 
-                    (telegram_signal_id, user_id, ticker_symbol, mt_ticker, status, created_at) 
-                    VALUES " . implode(', ', $values);
-
-            $this->db->query($sql);
-            return $this->db->affected_rows();
-        }
-
-        return 0;
+        $this->db->query($sql, [$telegram_signal_id, $ticker_symbol]);
+        return $this->db->affected_rows();
     }
 
     /**
@@ -699,39 +675,32 @@ class Telegram_signals_model extends CI_Model
     }
 
     /**
-     * Contar todas las señales
+     * Obtener todos los conteos de señales en una sola query
      */
-    public function count_signals_total()
+    public function get_signal_counts()
     {
-        return $this->db->count_all_results('telegram_signals');
+        $sql = "SELECT
+            COUNT(*) as total,
+            SUM(status = 'completed') as completed,
+            SUM(status IN ('failed_crop', 'failed_analysis', 'failed_download')) as failed,
+            SUM(created_at >= NOW() - INTERVAL 24 HOUR) as last_24h
+            FROM telegram_signals";
+
+        $row = $this->db->query($sql)->row();
+
+        return [
+            'total'    => (int) ($row->total ?? 0),
+            'completed' => (int) ($row->completed ?? 0),
+            'failed'   => (int) ($row->failed ?? 0),
+            'last_24h' => (int) ($row->last_24h ?? 0),
+        ];
     }
 
-    /**
-     * Contar señales completadas
-     */
-    public function count_signals_completed()
-    {
-        $this->db->where('status', 'completed');
-        return $this->db->count_all_results('telegram_signals');
-    }
-
-    /**
-     * Contar señales fallidas
-     */
-    public function count_signals_failed()
-    {
-        $this->db->where_in('status', ['failed_crop', 'failed_analysis', 'failed_download']);
-        return $this->db->count_all_results('telegram_signals');
-    }
-
-    /**
-     * Contar señales de las últimas 24 horas
-     */
-    public function count_signals_last_24h()
-    {
-        $this->db->where('created_at >=', date('Y-m-d H:i:s', strtotime('-24 hours')));
-        return $this->db->count_all_results('telegram_signals');
-    }
+    // Backwards-compatible wrappers (deprecated - use get_signal_counts())
+    public function count_signals_total()     { $c = $this->get_signal_counts(); return $c['total']; }
+    public function count_signals_completed() { $c = $this->get_signal_counts(); return $c['completed']; }
+    public function count_signals_failed()    { $c = $this->get_signal_counts(); return $c['failed']; }
+    public function count_signals_last_24h()  { $c = $this->get_signal_counts(); return $c['last_24h']; }
 
     /**
      * Obtener estadísticas de señales por ticker

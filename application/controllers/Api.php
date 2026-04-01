@@ -176,84 +176,11 @@ class Api extends CI_Controller
         }
     }
 
-    public function fut_price_spark($symbol = null)
-    {
-        if ($symbol == null) {
-            http_response_code(400);
-            echo json_encode(['error' => 'Symbol parameter is required']);
-            return;
-        }
-        $symbol = strtoupper($symbol) . "=F"; // Append =F for futures
-
-        // 1) URL (query1, un solo símbolo, encodeado)
-        $symEnc = rawurlencode($symbol);
-        $url = "https://query1.finance.yahoo.com/v7/finance/spark?symbols={$symEnc}&range=1d&interval=1m";
-
-        // 2) HTTP GET simple
-        $ch = curl_init($url);
-        curl_setopt_array($ch, [
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_FOLLOWLOCATION => true,
-            CURLOPT_ENCODING       => 'gzip',
-            CURLOPT_CONNECTTIMEOUT => 5,
-            CURLOPT_TIMEOUT        => 8,
-            CURLOPT_HTTPHEADER     => ['Accept: application/json'],
-            CURLOPT_USERAGENT      => 'Mozilla/5.0 (CI3)'
-        ]);
-        $body = curl_exec($ch);
-        $code = (int) (curl_getinfo($ch)['http_code'] ?? 0);
-        curl_close($ch);
-
-        // 3) Defaults minimal por si algo falla
-        $lastClose = null;
-        $ts = null;
-
-        if ($code === 200 && $body) {
-            $j = json_decode($body, true);
-
-            // Formato anidado: spark.result[0].response[0]
-            $resp0 = $j['spark']['result'][0]['response'][0] ?? null;
-            if ($resp0) {
-                // Preferir close directo; si no está, usar indicators.quote[0].close
-                $closes = isset($resp0['close']) ? $resp0['close'] : ($resp0['indicators']['quote'][0]['close'] ?? []);
-                $times  = $resp0['timestamp'] ?? [];
-
-                // Penúltima no-nula (última vela CERRADA)
-                $n = count($closes);
-                if ($n > 0) {
-                    $idxLast = null;
-                    for ($i = $n - 1; $i >= 0; $i--) {
-                        if ($closes[$i] !== null) {
-                            $idxLast = $i;
-                            break;
-                        }
-                    }
-                    if ($idxLast !== null) {
-                        $idxPrev = null;
-                        for ($k = $idxLast - 1; $k >= 0; $k--) {
-                            if ($closes[$k] !== null) {
-                                $idxPrev = $k;
-                                break;
-                            }
-                        }
-                        $idx = ($idxPrev !== null) ? $idxPrev : $idxLast;
-                        $lastClose = $closes[$idx] ?? null;
-                        $ts        = $times[$idx]  ?? null;
-                    }
-                }
-            }
-        }
-
-        // 4) Salida minimal
-        $this->output
-            ->set_content_type('application/json')
-            ->set_output(json_encode([
-                'last_close' => $lastClose,
-                'ts_epoch'   => $ts,
-                'ts_local'   => $this->_epoch_to_local($ts),
-            ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
-    }
-
+    /**
+     * GET /api/fut_price/{symbol}?source=chart|spark
+     * Obtiene precio de futuros de Yahoo Finance.
+     * Default: chart (v8). Fallback: spark (v7) si se pasa ?source=spark.
+     */
     public function fut_price($symbol = null)
     {
         if ($symbol == null) {
@@ -261,13 +188,65 @@ class Api extends CI_Controller
             echo json_encode(['error' => 'Symbol parameter is required']);
             return;
         }
+
+        $source = $this->input->get('source') ?: 'chart';
         $symbol = strtoupper($symbol) . "=F";
         $symEnc = rawurlencode($symbol);
 
-        // chart v8 (query1) 1 símbolo, 1d en 1m
-        $url = "https://query1.finance.yahoo.com/v8/finance/chart/{$symEnc}?interval=1m&range=1d";
+        // Construir URL segun source
+        if ($source === 'spark') {
+            $url = "https://query1.finance.yahoo.com/v7/finance/spark?symbols={$symEnc}&range=1d&interval=1m";
+        } else {
+            $url = "https://query1.finance.yahoo.com/v8/finance/chart/{$symEnc}?interval=1m&range=1d";
+        }
 
-        // HTTP GET simple
+        // HTTP GET
+        $body = $this->_yahoo_fetch($url);
+        $lastClose = null;
+        $ts = null;
+
+        if ($body !== null) {
+            $j = json_decode($body, true);
+
+            // Extraer closes y timestamps segun formato
+            $closes = [];
+            $times = [];
+
+            if ($source === 'spark') {
+                $resp0 = $j['spark']['result'][0]['response'][0] ?? null;
+                if ($resp0) {
+                    $closes = isset($resp0['close']) ? $resp0['close'] : ($resp0['indicators']['quote'][0]['close'] ?? []);
+                    $times  = $resp0['timestamp'] ?? [];
+                }
+            } else {
+                $res = $j['chart']['result'][0] ?? null;
+                if ($res) {
+                    $closes = $res['indicators']['quote'][0]['close'] ?? [];
+                    $times  = $res['timestamp'] ?? [];
+                }
+            }
+
+            // Penultima no-nula (ultima vela CERRADA)
+            $result = $this->_extract_last_closed_candle($closes, $times);
+            $lastClose = $result['close'];
+            $ts = $result['timestamp'];
+        }
+
+        $this->output
+            ->set_content_type('application/json')
+            ->set_output(json_encode([
+                'last_close' => $lastClose,
+                'ts_epoch'   => $ts,
+                'ts_local'   => $this->_epoch_to_local($ts),
+                'source'     => $source,
+            ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+    }
+
+    /**
+     * Fetch URL de Yahoo Finance con curl
+     */
+    private function _yahoo_fetch($url)
+    {
         $ch = curl_init($url);
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
@@ -282,50 +261,41 @@ class Api extends CI_Controller
         $code = (int) (curl_getinfo($ch)['http_code'] ?? 0);
         curl_close($ch);
 
+        return ($code === 200 && $body) ? $body : null;
+    }
+
+    /**
+     * Extrae la penultima vela cerrada (no-nula) de arrays de closes/timestamps
+     */
+    private function _extract_last_closed_candle($closes, $times)
+    {
         $lastClose = null;
         $ts = null;
+        $n = count($closes);
 
-        if ($code === 200 && $body) {
-            $j = json_decode($body, true);
-            $res = $j['chart']['result'][0] ?? null;
-            if ($res) {
-                $closes = $res['indicators']['quote'][0]['close'] ?? [];
-                $times  = $res['timestamp'] ?? [];
-
-                // penúltima no-nula (última vela CERRADA)
-                $n = count($closes);
-                if ($n > 0) {
-                    $idxLast = null;
-                    for ($i = $n - 1; $i >= 0; $i--) {
-                        if ($closes[$i] !== null) {
-                            $idxLast = $i;
-                            break;
-                        }
-                    }
-                    if ($idxLast !== null) {
-                        $idxPrev = null;
-                        for ($k = $idxLast - 1; $k >= 0; $k--) {
-                            if ($closes[$k] !== null) {
-                                $idxPrev = $k;
-                                break;
-                            }
-                        }
-                        $idx = ($idxPrev !== null) ? $idxPrev : $idxLast;
-                        $lastClose = $closes[$idx] ?? null;
-                        $ts        = $times[$idx]  ?? null;
+        if ($n > 0) {
+            $idxLast = null;
+            for ($i = $n - 1; $i >= 0; $i--) {
+                if ($closes[$i] !== null) {
+                    $idxLast = $i;
+                    break;
+                }
+            }
+            if ($idxLast !== null) {
+                $idxPrev = null;
+                for ($k = $idxLast - 1; $k >= 0; $k--) {
+                    if ($closes[$k] !== null) {
+                        $idxPrev = $k;
+                        break;
                     }
                 }
+                $idx = ($idxPrev !== null) ? $idxPrev : $idxLast;
+                $lastClose = $closes[$idx] ?? null;
+                $ts        = $times[$idx]  ?? null;
             }
         }
 
-        // salida minimal
-        $this->output
-            ->set_content_type('application/json')
-            ->set_output(json_encode([
-                'last_close' => $lastClose,
-                'ts_epoch'   => $ts,
-                'ts_local'   => $this->_epoch_to_local($ts),
-            ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+        return ['close' => $lastClose, 'timestamp' => $ts];
     }
 
     private function _epoch_to_local($epoch)

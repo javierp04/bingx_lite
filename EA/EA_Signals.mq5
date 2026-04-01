@@ -1,6 +1,6 @@
-﻿#property copyright "TelegramSignals"
-#property version   "8.04"
-#property description "EA corregido - PNL calculation, stop loss detection y breakeven arreglados"
+#property copyright "TelegramSignals"
+#property version   "9.00"
+#property description "EA refactorizado - helpers, JsonBuilder, deteccion de cierre manual mejorada"
 
 // LIBRERÍAS
 #include <Trade\Trade.mqh>
@@ -59,7 +59,6 @@ input LogLevel  MIN_LOG_LEVEL = INFO_LVL;   // DEBUG_LVL = ver todo, INFO_LVL = 
 struct SymbolSpecs {
     double point, tickSize, tickValue, contractSize;
     double minVolume, maxVolume, stepVolume;
-    int digits;
     bool isValid;
 };
 
@@ -68,21 +67,21 @@ struct OptimizedTPState {
     bool isActive;
     int signalId;
     ulong ticket;
-    ulong positionID;           // NUEVO: Position ID real para historial
+    ulong positionID;
     string direction;
-    
+
     // VOLUMES
     double originalVolume;
     double currentVolume;
     double totalClosedVolume;
     double closedPercent;
-    
+
     // LEVELS
     int currentLevel;
     bool levelFlags[6];
     bool slMovedToBE;
-    
-    // PRICES (directo, sin struct anidado)
+
+    // PRICES
     double entry;
     double originalSL;
     double currentSL;
@@ -103,25 +102,32 @@ struct APIResponse {
     string data;
 };
 
+// Resultado de analisis de historial
+struct HistoryCloseResult {
+    string reason;
+    int exitLevel;
+    double dealPrice;
+    double dealProfit;
+    bool hasDealData;
+};
 
 // VARIABLES GLOBALES
 CTrade trade;
 CPositionInfo position;
 OptimizedTPState currentTP;
-int currentUserSignalId = 0;
 string currentSymbol;
-double backupStopLoss = 0.0;  // SL2 del JSON (backup, no usado actualmente)
 
 // Cache para performance
 static SymbolSpecs cachedSpecs;
 static string cachedSymbol = "";
-static string baseUrls[4];
+static string signalsBaseUrl;
+static string futPriceBaseUrl;
 
-// CLASE JSON SIMPLIFICADA
+// CLASE JSON PARSER (lectura)
 class SimpleJSONParser {
 private:
     string json;
-    
+
     bool ValidateNumber(string value) {
         if(StringLen(value) == 0) return false;
         for(int i = 0; i < StringLen(value); i++) {
@@ -134,43 +140,43 @@ private:
         }
         return true;
     }
-    
+
     string ExtractNumericValue(string key) {
         string search = "\"" + key + "\":";
         int pos = StringFind(json, search);
         if(pos == -1) return "";
-        
+
         pos += StringLen(search);
         int endPos = StringFind(json, ",", pos);
         if(endPos == -1) endPos = StringFind(json, "}", pos);
-        
+
         return StringSubstr(json, pos, endPos - pos);
     }
-    
+
 public:
     SimpleJSONParser(string jsonStr) : json(jsonStr) {}
-    
+
     double GetDouble(string key, double defaultValue = 0.0) {
         string value = ExtractNumericValue(key);
         return (ValidateNumber(value)) ? StringToDouble(value) : defaultValue;
     }
-    
+
     int GetInt(string key, int defaultValue = 0) {
         string value = ExtractNumericValue(key);
         return (ValidateNumber(value)) ? (int)StringToInteger(value) : defaultValue;
     }
-    
+
     string GetString(string key, string defaultValue = "") {
         string search = "\"" + key + "\":\"";
         int pos = StringFind(json, search);
         if(pos == -1) return defaultValue;
-        
+
         pos += StringLen(search);
         int endPos = StringFind(json, "\"", pos);
-        
+
         return StringSubstr(json, pos, endPos - pos);
     }
-    
+
     double GetArrayDouble(string arrayKey, int index, double defaultValue = 0.0) {
         string search = "\"" + arrayKey + "\":[";
         int pos = StringFind(json, search);
@@ -178,19 +184,16 @@ public:
 
         pos += StringLen(search);
 
-        // Saltar índices anteriores
         for(int i = 0; i < index; i++) {
             pos = StringFind(json, ",", pos);
             if(pos == -1) return defaultValue;
             pos++;
         }
 
-        // Trimear espacios en blanco al inicio
         while(pos < StringLen(json) && (StringGetCharacter(json, pos) == ' ' || StringGetCharacter(json, pos) == '\t' || StringGetCharacter(json, pos) == '\n' || StringGetCharacter(json, pos) == '\r')) {
             pos++;
         }
 
-        // Buscar fin del valor (coma o cierre de array)
         int endPos = StringFind(json, ",", pos);
         if(endPos == -1) {
             endPos = StringFind(json, "]", pos);
@@ -198,10 +201,7 @@ public:
 
         if(endPos == -1) return defaultValue;
 
-        // Extraer valor y trimear espacios al final
         string value = StringSubstr(json, pos, endPos - pos);
-
-        // Trimear espacios del valor extraído
         StringReplace(value, " ", "");
         StringReplace(value, "\t", "");
         StringReplace(value, "\n", "");
@@ -211,43 +211,117 @@ public:
     }
 };
 
+// CLASE JSON BUILDER (escritura)
+class JsonBuilder {
+private:
+    string pairs[];
+    int count;
+
+public:
+    JsonBuilder() : count(0) { ArrayResize(pairs, 0); }
+
+    void AddBool(string key, bool value) {
+        ArrayResize(pairs, count + 1);
+        pairs[count++] = "\"" + key + "\":" + (value ? "true" : "false");
+    }
+
+    void AddInt(string key, long value) {
+        ArrayResize(pairs, count + 1);
+        pairs[count++] = "\"" + key + "\":" + IntegerToString(value);
+    }
+
+    void AddDouble(string key, double value, int decimals = 5) {
+        ArrayResize(pairs, count + 1);
+        pairs[count++] = "\"" + key + "\":" + DoubleToString(value, decimals);
+    }
+
+    void AddString(string key, string value) {
+        ArrayResize(pairs, count + 1);
+        pairs[count++] = "\"" + key + "\":\"" + value + "\"";
+    }
+
+    void AddRaw(string key, string rawJson) {
+        ArrayResize(pairs, count + 1);
+        pairs[count++] = "\"" + key + "\":" + rawJson;
+    }
+
+    string Build() {
+        string result = "{";
+        for(int i = 0; i < count; i++) {
+            if(i > 0) result += ",";
+            result += pairs[i];
+        }
+        result += "}";
+        return result;
+    }
+};
+
 // LOGGING SIMPLIFICADO
 void Log(LogLevel level, string category, string message) {
     if(level < MIN_LOG_LEVEL) return;
 
     string prefix = "";
     switch(level) {
-        case ERROR_LVL: prefix = "[ERROR]"; break;
+        case DEBUG_LVL:   prefix = "[DEBUG]"; break;
+        case INFO_LVL:    prefix = "[INFO]"; break;
         case WARNING_LVL: prefix = "[WARN]"; break;
-        case INFO_LVL: prefix = "[INFO]"; break;
-        case DEBUG_LVL: prefix = "[DEBUG]"; break;
+        case ERROR_LVL:   prefix = "[ERROR]"; break;
     }
-    
-    Print(prefix + " [" + category + "] " + message);
+    Print(prefix, " [", category, "] ", message);
 }
 
+// ==========================================
+// HELPER FUNCTIONS (deduplicados)
+// ==========================================
+
+// Obtiene precio actual segun direccion del trade
+double GetCurrentPrice(string direction) {
+    return (direction == "LONG") ?
+        SymbolInfoDouble(currentSymbol, SYMBOL_BID) :
+        SymbolInfoDouble(currentSymbol, SYMBOL_ASK);
+}
+
+// Busca posicion propia por Magic+Comment+Symbol. Retorna true si encontro y deja position seleccionada.
+bool FindOwnPosition() {
+    for(int i = 0; i < PositionsTotal(); i++) {
+        if(position.SelectByIndex(i)) {
+            if(position.Symbol() == currentSymbol &&
+               position.Magic() == MAGIC_NUMBER &&
+               position.Comment() == TRADE_COMMENT) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+// Trunca string para logging
+string TruncLog(string data, int maxLen = 500) {
+    return StringSubstr(data, 0, maxLen);
+}
+
+// ==========================================
 // INICIALIZACIÓN
+// ==========================================
 int OnInit() {
     currentSymbol = Symbol();
+
+    if(!ValidateAllInputs()) {
+        Log(ERROR_LVL, "INIT", "Parámetros inválidos");
+        return INIT_PARAMETERS_INCORRECT;
+    }
+
+    if(!ValidateSymbol()) return INIT_FAILED;
+
     InitTPState();
     SetupBaseUrls();
-    
+
     trade.SetExpertMagicNumber(MAGIC_NUMBER);
     trade.SetDeviationInPoints(50);
-    
-    if(!ValidateAllInputs()) return INIT_PARAMETERS_INCORRECT;
-    if(!ValidateSymbol()) return INIT_FAILED;
-    
-    if(!EventSetTimer(POLL_INTERVAL)) {
-        Log(ERROR_LVL, "INIT", "Error configurando timer");
-        return INIT_FAILED;
-    }
-    
-    LogInitialization();
 
-    if(!ENABLE_TIME_FILTER || IsWithinTradingHours()) {
-        CheckForSignals();
-    }
+    LogInitialization();
+    EventSetTimer(POLL_INTERVAL);
+    CheckForSignals();
 
     return INIT_SUCCEEDED;
 }
@@ -256,7 +330,7 @@ void InitTPState() {
     currentTP.isActive = false;
     currentTP.signalId = 0;
     currentTP.ticket = 0;
-    currentTP.positionID = 0;              // NUEVO: inicializar Position ID
+    currentTP.positionID = 0;
     currentTP.direction = "";
     currentTP.originalVolume = 0;
     currentTP.currentVolume = 0;
@@ -264,9 +338,9 @@ void InitTPState() {
     currentTP.closedPercent = 0;
     currentTP.currentLevel = -2;
     currentTP.slMovedToBE = false;
-    
+
     ArrayInitialize(currentTP.levelFlags, false);
-    
+
     currentTP.entry = 0;
     currentTP.originalSL = 0;
     currentTP.currentSL = 0;
@@ -274,16 +348,15 @@ void InitTPState() {
 }
 
 void SetupBaseUrls() {
-    baseUrls[0] = API_URL + "signals/";
-    baseUrls[1] = API_URL + "signals/";
-    baseUrls[2] = API_URL + "fut_price/";
+    signalsBaseUrl = API_URL + "signals/";
+    futPriceBaseUrl = API_URL + "fut_price/";
 }
 
 bool ValidateAllInputs() {
     if(USER_ID <= 0 || RISK_PERCENT <= 0 || RISK_PERCENT > 10 || POLL_INTERVAL < 5) return false;
     if(BE_LEVEL < 0 || BE_LEVEL > 5) return false;
     if(SAFETY_FACTOR < 1.0 || SAFETY_FACTOR > 5.0) return false;
-    
+
     TPConfig tpConfig = ValidateTPConfig();
     return tpConfig.isValid;
 }
@@ -295,13 +368,13 @@ TPConfig ValidateTPConfig() {
     config.percents[2] = TP3_PERCENT;
     config.percents[3] = TP4_PERCENT;
     config.percents[4] = TP5_PERCENT;
-    
+
     config.totalPercent = 0;
     for(int i = 0; i < 5; i++) {
         config.enabled[i] = (config.percents[i] > 0);
         config.totalPercent += config.percents[i];
     }
-    
+
     config.isValid = (config.totalPercent <= 100.0);
     return config;
 }
@@ -311,26 +384,28 @@ bool ValidateSymbol() {
         Log(ERROR_LVL, "VALIDATE", "No se puede seleccionar símbolo: " + currentSymbol);
         return false;
     }
-    
+
     if(SymbolInfoInteger(currentSymbol, SYMBOL_TRADE_MODE) == SYMBOL_TRADE_MODE_DISABLED) {
         Log(ERROR_LVL, "VALIDATE", "Trading deshabilitado para: " + currentSymbol);
         return false;
     }
-    
+
     return true;
 }
 
 void LogInitialization() {
-   Print("EA Signals v8.04 | User: ", USER_ID, " | Symbol: ", currentSymbol, " | BE Level: ", BE_LEVEL);
-   Log(INFO_LVL, "INIT", "Stop management: " + (ENABLE_CODE_STOP ? "CODE" : "MT5"));    
+   Print("EA Signals v9.00 | User: ", USER_ID, " | Symbol: ", currentSymbol, " | BE Level: ", BE_LEVEL);
+   Log(INFO_LVL, "INIT", "Stop management: " + (ENABLE_CODE_STOP ? "CODE" : "MT5"));
 }
 
+// ==========================================
 // ESPECIFICACIONES DE SÍMBOLO CON CACHE
+// ==========================================
 SymbolSpecs GetSymbolSpecs() {
     if(cachedSymbol == currentSymbol && cachedSpecs.isValid) {
         return cachedSpecs;
     }
-    
+
     cachedSpecs.point = SymbolInfoDouble(currentSymbol, SYMBOL_POINT);
     cachedSpecs.tickSize = SymbolInfoDouble(currentSymbol, SYMBOL_TRADE_TICK_SIZE);
     cachedSpecs.tickValue = SymbolInfoDouble(currentSymbol, SYMBOL_TRADE_TICK_VALUE);
@@ -338,35 +413,29 @@ SymbolSpecs GetSymbolSpecs() {
     cachedSpecs.minVolume = SymbolInfoDouble(currentSymbol, SYMBOL_VOLUME_MIN);
     cachedSpecs.maxVolume = SymbolInfoDouble(currentSymbol, SYMBOL_VOLUME_MAX);
     cachedSpecs.stepVolume = SymbolInfoDouble(currentSymbol, SYMBOL_VOLUME_STEP);
-    cachedSpecs.digits = (int)SymbolInfoInteger(currentSymbol, SYMBOL_DIGITS);
-    
-    cachedSpecs.isValid = (cachedSpecs.point > 0 && cachedSpecs.contractSize > 0 && 
+
+    cachedSpecs.isValid = (cachedSpecs.point > 0 && cachedSpecs.contractSize > 0 &&
                           cachedSpecs.minVolume > 0 && cachedSpecs.stepVolume > 0);
-    
+
     if(cachedSpecs.isValid) cachedSymbol = currentSymbol;
-    
+
     return cachedSpecs;
 }
 
-
+// ==========================================
 // FUNCIONES DE API
+// ==========================================
 string BuildAPIUrl(string endpoint, int id = 0, string param = "") {
-    if(endpoint == "get_signals") {
-        return API_URL + "signals/" + IntegerToString(USER_ID) + "/" + param;
-    }
-    else if(endpoint == "open") {
-        return baseUrls[1] + IntegerToString(id) + "/open";
-    }
-    else if(endpoint == "progress") {
-        return baseUrls[1] + IntegerToString(id) + "/progress";
-    }
-    else if(endpoint == "close") {
-        return baseUrls[1] + IntegerToString(id) + "/close";
-    } 
-    else if(endpoint == "fut_price") {
-        return baseUrls[2] + param;
-    }
-    
+    if(endpoint == "get_signals")
+        return signalsBaseUrl + IntegerToString(USER_ID) + "/" + param;
+    if(endpoint == "open")
+        return signalsBaseUrl + IntegerToString(id) + "/open";
+    if(endpoint == "progress")
+        return signalsBaseUrl + IntegerToString(id) + "/progress";
+    if(endpoint == "close")
+        return signalsBaseUrl + IntegerToString(id) + "/close";
+    if(endpoint == "fut_price")
+        return futPriceBaseUrl + param;
     return "";
 }
 
@@ -396,7 +465,7 @@ APIResponse SendAPIRequest(string method, string url, string jsonData = "", bool
 
     response.httpCode = httpCode;
     response.data = CharArrayToString(result);
-    Log(DEBUG_LVL, "API", StringFormat("HTTP %d | Body: %s", httpCode, StringSubstr(response.data, 0, 500)));
+    Log(DEBUG_LVL, "API", StringFormat("HTTP %d | Body: %s", httpCode, TruncLog(response.data)));
 
     if(httpCode == 200) {
         response.result = API_SUCCESS;
@@ -404,13 +473,15 @@ APIResponse SendAPIRequest(string method, string url, string jsonData = "", bool
     } else {
         response.result = API_HTTP_ERROR;
         response.message = "HTTP " + IntegerToString(httpCode);
-        Log(ERROR_LVL, "API", StringFormat("HTTP %d error — Response: %s", httpCode, StringSubstr(response.data, 0, 1000)));
+        Log(ERROR_LVL, "API", StringFormat("HTTP %d error — Response: %s", httpCode, TruncLog(response.data, 1000)));
     }
 
     return response;
 }
 
-// FUNCIONES DE REPORTE
+// ==========================================
+// FUNCIONES DE REPORTE (usando JsonBuilder)
+// ==========================================
 void ReportOpen(int userSignalId, bool isMarketOrder, ENUM_ORDER_TYPE orderType,
                 double entryPrice, double stopLoss, double volume, ulong ticket,
                 string opType = "", double signalEntry = 0, double signalSL1 = 0, double signalSL2 = 0,
@@ -419,188 +490,176 @@ void ReportOpen(int userSignalId, bool isMarketOrder, ENUM_ORDER_TYPE orderType,
 
     string url = BuildAPIUrl("open", userSignalId);
 
-    string json = "{";
-    json += "\"success\":true,";
-    json += "\"trade_id\":\"" + IntegerToString(ticket) + "\",";
-    json += "\"order_type\":\"" + EnumToString(orderType) + "\",";
+    JsonBuilder jb;
+    jb.AddBool("success", true);
+    jb.AddString("trade_id", IntegerToString(ticket));
+    jb.AddString("order_type", EnumToString(orderType));
 
     if(isMarketOrder) {
-        json += "\"real_entry_price\":" + DoubleToString(entryPrice, 5) + ",";
-        json += "\"real_stop_loss\":" + DoubleToString(stopLoss, 5) + ",";
-        json += "\"real_volume\":" + DoubleToString(volume, 2) + ",";
-    } else {
-        // Para órdenes pending, reportar el volumen planificado
-        json += "\"real_volume\":" + DoubleToString(volume, 2) + ",";
+        jb.AddDouble("real_entry_price", entryPrice);
+        jb.AddDouble("real_stop_loss", stopLoss);
     }
+    jb.AddDouble("real_volume", volume, 2);
 
-    // NUEVO: Agregar signal_data con precios originales (pre-corrección)
+    // Agregar signal_data con precios originales (pre-corrección)
     if(signalEntry > 0 && opType != "") {
-        json += "\"signal_data\":{";
-        json += "\"op_type\":\"" + opType + "\",";
-        json += "\"entry\":" + DoubleToString(signalEntry, 5) + ",";
-        json += "\"stoploss\":[" + DoubleToString(signalSL1, 5) + "," + DoubleToString(signalSL2, 5) + "],";
-        json += "\"tps\":[" + DoubleToString(signalTP1, 5) + "," + DoubleToString(signalTP2, 5) + ","
+        string signalJson = "{";
+        signalJson += "\"op_type\":\"" + opType + "\",";
+        signalJson += "\"entry\":" + DoubleToString(signalEntry, 5) + ",";
+        signalJson += "\"stoploss\":[" + DoubleToString(signalSL1, 5) + "," + DoubleToString(signalSL2, 5) + "],";
+        signalJson += "\"tps\":[" + DoubleToString(signalTP1, 5) + "," + DoubleToString(signalTP2, 5) + ","
                 + DoubleToString(signalTP3, 5) + "," + DoubleToString(signalTP4, 5) + ","
                 + DoubleToString(signalTP5, 5) + "]";
-        json += "},";
+        signalJson += "}";
+        jb.AddRaw("signal_data", signalJson);
     }
 
-    json += "\"symbol\":\"" + TICKER_SYMBOL + "\",";
-    json += "\"execution_time\":\"" + TimeToString(TimeGMT(), TIME_DATE|TIME_SECONDS) + "\"";
-    json += "}";
+    jb.AddString("symbol", TICKER_SYMBOL);
+    jb.AddString("execution_time", TimeToString(TimeGMT(), TIME_DATE|TIME_SECONDS));
 
+    string json = jb.Build();
     APIResponse response = SendAPIRequest("POST", url, json);
     if(response.result == API_SUCCESS) {
         Log(INFO_LVL, "REPORT", "Open reportado exitosamente");
-        Log(DEBUG_LVL, "REPORT", "Open response: " + StringSubstr(response.data, 0, 500));
     } else {
-        Log(ERROR_LVL, "REPORT", StringFormat("Open FALLÓ: %s (HTTP %d) — Response: %s", response.message, response.httpCode, StringSubstr(response.data, 0, 500)));
+        Log(ERROR_LVL, "REPORT", StringFormat("Open FALLÓ: %s (HTTP %d) — Response: %s", response.message, response.httpCode, TruncLog(response.data)));
     }
 }
 
-void ReportProgress(int userSignalId, int level, double volumeClosedPercent, 
-                    double remainingVolume, double currentPrice, double pnl, 
+void ReportProgress(int userSignalId, int level, double volumeClosedPercent,
+                    double remainingVolume, double currentPrice, double pnl,
                     string message, bool nowOpen = false, double newStopLoss = 0.0) {
-    
+
     string url = BuildAPIUrl("progress", userSignalId);
-    
-    string json = "{";
-    json += "\"success\":true,";
-    json += "\"current_level\":" + IntegerToString(level) + ",";
-    json += "\"volume_closed_percent\":" + DoubleToString(volumeClosedPercent, 2) + ",";
-    json += "\"remaining_volume\":" + DoubleToString(remainingVolume, 2) + ",";
-    json += "\"gross_pnl\":" + DoubleToString(pnl, 2) + ",";
-    json += "\"last_price\":" + DoubleToString(currentPrice, 5) + ",";
-    
+
+    JsonBuilder jb;
+    jb.AddBool("success", true);
+    jb.AddInt("current_level", level);
+    jb.AddDouble("volume_closed_percent", volumeClosedPercent, 2);
+    jb.AddDouble("remaining_volume", remainingVolume, 2);
+    jb.AddDouble("gross_pnl", pnl, 2);
+    jb.AddDouble("last_price", currentPrice);
+
     if(nowOpen) {
-        json += "\"now_open\":true,";
-        json += "\"real_entry_price\":" + DoubleToString(currentTP.entry, 5) + ",";
+        jb.AddBool("now_open", true);
+        jb.AddDouble("real_entry_price", currentTP.entry);
     }
-    
+
     if(newStopLoss > 0.0) {
-        json += "\"new_stop_loss\":" + DoubleToString(newStopLoss, 5) + ",";
+        jb.AddDouble("new_stop_loss", newStopLoss);
     }
-    
-    json += "\"message\":\"" + message + "\",";
-    json += "\"symbol\":\"" + TICKER_SYMBOL + "\",";
-    json += "\"execution_time\":\"" + TimeToString(TimeGMT(), TIME_DATE|TIME_SECONDS) + "\"";
-    json += "}";
-    
+
+    jb.AddString("message", message);
+    jb.AddString("symbol", TICKER_SYMBOL);
+    jb.AddString("execution_time", TimeToString(TimeGMT(), TIME_DATE|TIME_SECONDS));
+
+    string json = jb.Build();
     APIResponse response = SendAPIRequest("POST", url, json);
     if(response.result == API_SUCCESS) {
         Log(INFO_LVL, "REPORT", "Progress reportado: " + message);
-        Log(DEBUG_LVL, "REPORT", "Progress response: " + StringSubstr(response.data, 0, 500));
     } else {
-        Log(ERROR_LVL, "REPORT", StringFormat("Progress FALLÓ: %s (HTTP %d) — Response: %s", response.message, response.httpCode, StringSubstr(response.data, 0, 500)));
+        Log(ERROR_LVL, "REPORT", StringFormat("Progress FALLÓ: %s (HTTP %d) — Response: %s", response.message, response.httpCode, TruncLog(response.data)));
     }
 }
 
-void ReportClose(int userSignalId, int exitLevel, string closeReason, 
+void ReportClose(int userSignalId, int exitLevel, string closeReason,
                  double finalPrice, double finalPnl) {
-    
+
     string url = BuildAPIUrl("close", userSignalId);
-    
-    string json = "{";
-    json += "\"success\":true,";
-    json += "\"exit_level\":" + IntegerToString(exitLevel) + ",";
-    json += "\"close_reason\":\"" + closeReason + "\",";
-    json += "\"gross_pnl\":" + DoubleToString(finalPnl, 2) + ",";
-    json += "\"last_price\":" + DoubleToString(finalPrice, 5) + ",";
-    json += "\"symbol\":\"" + TICKER_SYMBOL + "\",";
-    json += "\"execution_time\":\"" + TimeToString(TimeGMT(), TIME_DATE|TIME_SECONDS) + "\"";
-    json += "}";
-    
+
+    JsonBuilder jb;
+    jb.AddBool("success", true);
+    jb.AddInt("exit_level", exitLevel);
+    jb.AddString("close_reason", closeReason);
+    jb.AddDouble("gross_pnl", finalPnl, 2);
+    jb.AddDouble("last_price", finalPrice);
+    jb.AddString("symbol", TICKER_SYMBOL);
+    jb.AddString("execution_time", TimeToString(TimeGMT(), TIME_DATE|TIME_SECONDS));
+
+    string json = jb.Build();
     APIResponse response = SendAPIRequest("POST", url, json);
     if(response.result == API_SUCCESS) {
         Log(INFO_LVL, "REPORT", "Close reportado: " + closeReason);
-        Log(DEBUG_LVL, "REPORT", "Close response: " + StringSubstr(response.data, 0, 500));
     } else {
-        Log(ERROR_LVL, "REPORT", StringFormat("Close FALLÓ: %s (HTTP %d) — Response: %s", response.message, response.httpCode, StringSubstr(response.data, 0, 500)));
+        Log(ERROR_LVL, "REPORT", StringFormat("Close FALLÓ: %s (HTTP %d) — Response: %s", response.message, response.httpCode, TruncLog(response.data)));
     }
 }
 
-// CORRECCIÓN DE PRECIOS
+// ==========================================
+// CORRECCIÓN DE PRECIOS (logging reducido a DEBUG)
+// ==========================================
 double CalculatePriceCorrection(string symbol, string &errorMessage) {
     errorMessage = "";
-    
+
     if(!ENABLE_PRICE_CORRECTION) {
-        Log(INFO_LVL, "PRICE_CORR", "Price correction deshabilitado");
+        Log(DEBUG_LVL, "PRICE_CORR", "Price correction deshabilitado");
         return 1.0;
     }
-    
+
     string url = BuildAPIUrl("fut_price", 0, symbol);
-    Log(INFO_LVL, "PRICE_CORR", "Consultando precio futuro para: " + symbol);
-    Log(INFO_LVL, "PRICE_CORR", "URL: " + url);
-    
+    Log(DEBUG_LVL, "PRICE_CORR", "Consultando precio futuro: " + url);
+
     APIResponse response = SendAPIRequest("GET", url);
-    
-    Log(INFO_LVL, "PRICE_CORR", StringFormat("API Response: HTTP %d, Result: %d", response.httpCode, response.result));
-    Log(INFO_LVL, "PRICE_CORR", "Response data: " + response.data);
-    
+
     if(response.result != API_SUCCESS) {
         errorMessage = "Error obteniendo precio del futuro - HTTP: " + IntegerToString(response.httpCode);
         Log(ERROR_LVL, "PRICE_CORR", errorMessage);
         return 0.0;
     }
-    
+
     SimpleJSONParser parser(response.data);
     double futurePrice = parser.GetDouble("last_close");
     long epochTime = parser.GetInt("ts_epoch");
-    
-    Log(INFO_LVL, "PRICE_CORR", StringFormat("Datos parseados: Future Price=%.5f, Epoch=%d", futurePrice, epochTime));
-    
+
+    Log(DEBUG_LVL, "PRICE_CORR", StringFormat("Future Price=%.5f, Epoch=%d", futurePrice, epochTime));
+
     if(futurePrice <= 0 || epochTime <= 0) {
         errorMessage = StringFormat("Datos inválidos del futuro - Price: %.5f, Epoch: %d", futurePrice, epochTime);
         Log(ERROR_LVL, "PRICE_CORR", errorMessage);
         return 0.0;
     }
-    
+
     datetime targetTime = (datetime)epochTime;
-    datetime currentTime = TimeCurrent();    
+    datetime currentTime = TimeCurrent();
     long maxAgeSeconds = MAX_TIMESTAMP_HOURS * 3600;
-    
-    // Lógica híbrida para timezone offset
+
     datetime gmtTime = TimeGMT();
     long brokerOffset = currentTime - gmtTime;
-    
-    
+
     datetime brokerTargetTime = (datetime)(targetTime + brokerOffset);
     long timeDifference = currentTime - brokerTargetTime;
-    
-    Log(INFO_LVL, "PRICE_CORR", StringFormat("Tiempos: Target UTC=%s, Broker=%s, Diff=%ds, Max=%ds", 
+
+    Log(DEBUG_LVL, "PRICE_CORR", StringFormat("Target UTC=%s, Broker=%s, Diff=%ds, Max=%ds",
         TimeToString(targetTime), TimeToString(brokerTargetTime), timeDifference, maxAgeSeconds));
-    
+
     if(timeDifference > maxAgeSeconds) {
         errorMessage = StringFormat("Timestamp muy viejo: %ds > %ds", timeDifference, maxAgeSeconds);
         Log(ERROR_LVL, "PRICE_CORR", errorMessage);
         return 0.0;
     }
-    
-    int barIndex = iBarShift(Symbol(), PERIOD_M1, brokerTargetTime);  // Usar tiempo del broker
-    Log(INFO_LVL, "PRICE_CORR", StringFormat("Búsqueda vela CFD: Symbol=%s, BrokerTime=%s, BarIndex=%d", 
-        Symbol(), TimeToString(brokerTargetTime), barIndex));
-    
+
+    int barIndex = iBarShift(Symbol(), PERIOD_M1, brokerTargetTime);
+
     if(barIndex < 0) {
         errorMessage = "No se encontró vela CFD para tiempo: " + TimeToString(targetTime);
         Log(ERROR_LVL, "PRICE_CORR", errorMessage);
         return 0.0;
     }
-    
+
     double cfdPrice = iClose(Symbol(), PERIOD_M1, barIndex);
-    Log(INFO_LVL, "PRICE_CORR", StringFormat("Precio CFD obtenido: %.5f (bar %d)", cfdPrice, barIndex));
-    
+
     if(cfdPrice <= 0) {
         errorMessage = "Precio CFD inválido: " + DoubleToString(cfdPrice, 5);
         Log(ERROR_LVL, "PRICE_CORR", errorMessage);
         return 0.0;
     }
-    
+
     double factor = futurePrice / cfdPrice;
     double deviationPercent = MathAbs((factor - 1.0) * 100.0);
-    
-    Log(INFO_LVL, "PRICE_CORR", StringFormat("Cálculo final: Future=%.5f, CFD=%.5f, Factor=%.6f, Desviación=%.2f%%", 
+
+    Log(INFO_LVL, "PRICE_CORR", StringFormat("Future=%.5f, CFD=%.5f, Factor=%.6f, Desviación=%.2f%%",
         futurePrice, cfdPrice, factor, deviationPercent));
-    
+
     if(deviationPercent > MAX_PRICE_DEVIATION) {
         errorMessage = StringFormat("Desviación muy alta: %.2f%% > %.2f%%", deviationPercent, MAX_PRICE_DEVIATION);
         Log(ERROR_LVL, "PRICE_CORR", errorMessage);
@@ -610,16 +669,18 @@ double CalculatePriceCorrection(string symbol, string &errorMessage) {
     return factor;
 }
 
-// FUNCIONES UNIFICADAS DE PNL Y VOLUMEN
+// ==========================================
+// FUNCIONES DE PNL Y VOLUMEN
+// ==========================================
 double CalculatePNL(double currentPrice, double volume = 0) {
     if(!currentTP.isActive) return 0.0;
-    
+
     if(volume == 0) volume = currentTP.currentVolume;
-    
-    double priceDiff = (currentTP.direction == "LONG") ? 
-                      (currentPrice - currentTP.entry) : 
+
+    double priceDiff = (currentTP.direction == "LONG") ?
+                      (currentPrice - currentTP.entry) :
                       (currentTP.entry - currentPrice);
-    
+
     SymbolSpecs specs = GetSymbolSpecs();
     return (priceDiff / specs.point) * volume * (specs.tickValue * (specs.point / specs.tickSize));
 }
@@ -627,10 +688,7 @@ double CalculatePNL(double currentPrice, double volume = 0) {
 double NormalizeVolume(double volume, SymbolSpecs &specs) {
     if(!specs.isValid || specs.stepVolume <= 0) return volume;
 
-    // Redondear al step más cercano
     double normalized = MathRound(volume / specs.stepVolume) * specs.stepVolume;
-
-    // Validar límites
     normalized = MathMax(specs.minVolume, normalized);
     normalized = MathMin(specs.maxVolume, normalized);
 
@@ -646,125 +704,136 @@ double CalculateVolumeToClose(double percentOfOriginal) {
 double CalculateVolumeOptimized(double entryPrice, double stopLoss) {
     SymbolSpecs specs = GetSymbolSpecs();
     if(!specs.isValid) return 0.0;
-    
+
     double balance = AccountInfoDouble(ACCOUNT_BALANCE);
     double riskAmount = balance * (RISK_PERCENT / 100.0);
     double distancePoints = MathAbs(entryPrice - stopLoss) / specs.point;
     double pointValuePerLot = specs.tickValue * (specs.point / specs.tickSize);
-    
+
     if(pointValuePerLot <= 0 || distancePoints <= 0) return 0.0;
-    
+
     double volume = riskAmount / (distancePoints * pointValuePerLot);
     volume = MathMax(specs.minVolume, MathMin(specs.maxVolume, volume));
     volume = MathFloor(volume / specs.stepVolume) * specs.stepVolume;
-    
+
     if(volume < specs.minVolume) volume = specs.minVolume;
-    
+
     return volume;
 }
 
-// NUEVA FUNCIÓN: Obtener razón de cierre desde historial
-string GetCloseReasonFromHistory(ulong positionID, int &exitLevel) {
-    // Cargar deals de esta posición específica
+// ==========================================
+// DETECCIÓN DE CIERRE DESDE HISTORIAL (MEJORADA)
+// ==========================================
+HistoryCloseResult GetCloseReasonFromHistory(ulong positionID) {
+    HistoryCloseResult result;
+    result.exitLevel = currentTP.currentLevel;
+    result.reason = "CLOSED_EXTERNAL";
+    result.dealPrice = 0;
+    result.dealProfit = 0;
+    result.hasDealData = false;
+
+    if(positionID == 0) {
+        Log(WARNING_LVL, "HISTORY", "Position ID es 0 - no se puede consultar historial");
+        return result;
+    }
+
     if(!HistorySelectByPosition(positionID)) {
         Log(WARNING_LVL, "HISTORY", "No se pudo cargar historial para Position ID: " + IntegerToString(positionID));
-        exitLevel = currentTP.currentLevel;
-        return "CLOSED_EXTERNAL";
+        return result;
     }
-    
+
     int totalDeals = HistoryDealsTotal();
     if(totalDeals == 0) {
         Log(WARNING_LVL, "HISTORY", "No se encontraron deals para Position ID: " + IntegerToString(positionID));
-        exitLevel = currentTP.currentLevel;
-        return "CLOSED_EXTERNAL";
+        return result;
     }
-    
-    // Verificar últimos 3 deals (o menos si hay menos deals)
-    int dealsToCheck = MathMin(3, totalDeals);
-    
+
+    // Recorrer deals desde el mas reciente buscando el deal de cierre
+    int dealsToCheck = MathMin(5, totalDeals);
+
     for(int i = totalDeals - 1; i >= totalDeals - dealsToCheck; i--) {
         ulong dealTicket = HistoryDealGetTicket(i);
         if(dealTicket == 0) continue;
-        
-        // Verificar que es un deal de salida
+
         ENUM_DEAL_ENTRY dealEntry = (ENUM_DEAL_ENTRY)HistoryDealGetInteger(dealTicket, DEAL_ENTRY);
-        if(dealEntry != DEAL_ENTRY_OUT) continue;
-        
-        // Verificar que es el tipo correcto (opuesto a la posición)
+
+        // Aceptar DEAL_ENTRY_OUT y DEAL_ENTRY_INOUT (close-by / netting)
+        if(dealEntry != DEAL_ENTRY_OUT && dealEntry != DEAL_ENTRY_INOUT) continue;
+
         ENUM_DEAL_TYPE dealType = (ENUM_DEAL_TYPE)HistoryDealGetInteger(dealTicket, DEAL_TYPE);
         bool isCorrectType = false;
-        
+
         if(currentTP.direction == "LONG" && dealType == DEAL_TYPE_SELL) isCorrectType = true;
         if(currentTP.direction == "SHORT" && dealType == DEAL_TYPE_BUY) isCorrectType = true;
-        
+
         if(!isCorrectType) continue;
-        
-        // Obtener razón del deal
+
         ENUM_DEAL_REASON dealReason = (ENUM_DEAL_REASON)HistoryDealGetInteger(dealTicket, DEAL_REASON);
-        double dealPrice = HistoryDealGetDouble(dealTicket, DEAL_PRICE);
-        
-        Log(INFO_LVL, "HISTORY", StringFormat("Deal encontrado: Ticket=%d, Reason=%d, Price=%.5f", dealTicket, dealReason, dealPrice));
-        
-        // Mapear razón a string y determinar exit level con logs específicos
+        result.dealPrice = HistoryDealGetDouble(dealTicket, DEAL_PRICE);
+        result.dealProfit = HistoryDealGetDouble(dealTicket, DEAL_PROFIT);
+        result.hasDealData = true;
+
+        Log(INFO_LVL, "HISTORY", StringFormat("Deal: Ticket=%d, Reason=%s(%d), Price=%.5f, Profit=%.2f",
+            dealTicket, EnumToString(dealReason), dealReason, result.dealPrice, result.dealProfit));
+
         switch(dealReason) {
             case DEAL_REASON_SL:
-                Log(INFO_LVL, "SL_DETECTED", StringFormat("Stop Loss por MT5! Deal=%d, SL=%.5f, Precio final=%.5f", 
-                    dealTicket, currentTP.currentSL, dealPrice));
-                exitLevel = -1;
-                return "CLOSED_STOPLOSS";
-                
+                result.exitLevel = -1;
+                result.reason = "CLOSED_STOPLOSS";
+                return result;
+
             case DEAL_REASON_TP:
-                Log(INFO_LVL, "TP_COMPLETE", StringFormat("Take Profit completo! Deal=%d, Precio=%.5f", dealTicket, dealPrice));
-                exitLevel = currentTP.currentLevel;
-                return "CLOSED_COMPLETE";
-                
+                result.exitLevel = currentTP.currentLevel;
+                result.reason = "CLOSED_COMPLETE";
+                return result;
+
             case DEAL_REASON_CLIENT:
             case DEAL_REASON_MOBILE:
             case DEAL_REASON_WEB:
-                Log(INFO_LVL, "MANUAL_DETECTED", StringFormat("Cierre manual detectado! Deal=%d, Tipo=%d, Precio=%.5f", 
-                    dealTicket, dealReason, dealPrice));
-                exitLevel = currentTP.currentLevel;
-                return "CLOSED_EXTERNAL";
-                
+                Log(INFO_LVL, "MANUAL_CLOSE", StringFormat("Cierre manual detectado! Reason=%s, Price=%.5f, Profit=%.2f",
+                    EnumToString(dealReason), result.dealPrice, result.dealProfit));
+                result.exitLevel = currentTP.currentLevel;
+                result.reason = "CLOSED_MANUAL";
+                return result;
+
             case DEAL_REASON_EXPERT:
-                // Expert puede ser nuestro EA o externo
-                Log(INFO_LVL, "EXPERT_DETECTED", StringFormat("Cierre por Expert! Deal=%d, Precio=%.5f", dealTicket, dealPrice));
-                exitLevel = currentTP.currentLevel;
-                return "CLOSED_EXTERNAL";
-                
+                result.exitLevel = currentTP.currentLevel;
+                result.reason = "CLOSED_EXTERNAL";
+                return result;
+
             default:
-                Log(INFO_LVL, "OTHER_DETECTED", StringFormat("Cierre por razón %d! Deal=%d, Precio=%.5f", 
-                    dealReason, dealTicket, dealPrice));
-                exitLevel = currentTP.currentLevel;
-                return "CLOSED_EXTERNAL";
+                Log(INFO_LVL, "HISTORY", StringFormat("Cierre por razón: %s(%d)", EnumToString(dealReason), dealReason));
+                result.exitLevel = currentTP.currentLevel;
+                result.reason = "CLOSED_EXTERNAL";
+                return result;
         }
     }
-    
-    // Fallback: no se encontró deal de cierre válido
+
     Log(WARNING_LVL, "HISTORY", "No se encontró deal de cierre válido en últimos " + IntegerToString(dealsToCheck) + " deals");
-    exitLevel = currentTP.currentLevel;
-    return "CLOSED_EXTERNAL";
+    return result;
 }
 
+// ==========================================
 // FUNCIONES DE STOP LOSS POR CÓDIGO
+// ==========================================
 bool IsNewBarClosed() {
     static datetime lastBarTime = 0;
     datetime currentBarTime = iTime(currentSymbol, Period(), 0);
-    
+
     if(currentBarTime != lastBarTime && lastBarTime != 0) {
         lastBarTime = currentBarTime;
         return true;
     }
-    
+
     lastBarTime = currentBarTime;
     return false;
 }
 
 bool IsStopLossHit(double currentPrice) {
     if(!currentTP.isActive) return false;
-    
+
     double activeSL = currentTP.currentSL;
-    
+
     if(currentTP.direction == "LONG") {
         return (currentPrice <= activeSL);
     } else {
@@ -774,45 +843,39 @@ bool IsStopLossHit(double currentPrice) {
 
 bool CheckCodeStopLoss() {
     if(!ENABLE_CODE_STOP || !IsNewBarClosed()) return false;
-    
+
     double lastClose = iClose(currentSymbol, Period(), 1);
     if(lastClose <= 0) return false;
-    
+
     if(IsStopLossHit(lastClose)) {
-        // LOG: Stop loss por código detectado
-        Log(INFO_LVL, "CODE_SL", StringFormat("Stop Loss por código! Precio barra anterior=%.5f, SL=%.5f", 
+        Log(INFO_LVL, "CODE_SL", StringFormat("Stop Loss por código! Precio barra anterior=%.5f, SL=%.5f",
             lastClose, currentTP.currentSL));
         return true;
     }
-    
+
     return false;
 }
 
 bool CheckSafetyStop() {
     if(!currentTP.isActive) return false;
-    
-    double currentPrice = (currentTP.direction == "LONG") ? 
-                         SymbolInfoDouble(currentSymbol, SYMBOL_BID) : 
-                         SymbolInfoDouble(currentSymbol, SYMBOL_ASK);
-    
+
+    double currentPrice = GetCurrentPrice(currentTP.direction);
     double currentPnl = CalculatePNL(currentPrice);
     double balance = AccountInfoDouble(ACCOUNT_BALANCE);
     double maxLoss = -(balance * (RISK_PERCENT / 100.0) * SAFETY_FACTOR);
-    
+
     return (currentPnl <= maxLoss);
 }
 
 bool ClosePositionByCode(string reason) {
     if(!position.SelectByTicket(currentTP.ticket)) return false;
-    
-    double currentPrice = (currentTP.direction == "LONG") ? 
-                         SymbolInfoDouble(currentSymbol, SYMBOL_BID) : 
-                         SymbolInfoDouble(currentSymbol, SYMBOL_ASK);
-    
+
+    double currentPrice = GetCurrentPrice(currentTP.direction);
+
     if(trade.PositionClose(position.Ticket())) {
         double finalPnl = CalculatePNL(currentPrice);
         int exitLevel = (reason == "CLOSED_CODE_STOP") ? -1 : currentTP.currentLevel;
-        
+
         ReportClose(currentTP.signalId, exitLevel, reason, currentPrice, finalPnl);
         Log(INFO_LVL, "CODE_CLOSE", "Posición cerrada por código: " + reason);
         InitTPState();
@@ -821,7 +884,9 @@ bool ClosePositionByCode(string reason) {
     return false;
 }
 
+// ==========================================
 // GESTIÓN DE HORARIOS
+// ==========================================
 bool IsWithinTradingHours() {
     if(!ENABLE_TIME_FILTER) return true;
 
@@ -836,7 +901,9 @@ bool IsWithinTradingHours() {
            (hour >= START_HOUR || hour < END_HOUR);
 }
 
+// ==========================================
 // EVENTOS PRINCIPALES
+// ==========================================
 void OnDeinit(const int reason) {
     EventKillTimer();
     Log(INFO_LVL, "SYSTEM", "EA desactivado");
@@ -844,103 +911,105 @@ void OnDeinit(const int reason) {
 
 void OnTimer() {
     if(ENABLE_TIME_FILTER && !IsWithinTradingHours()) return;
-    
-    // Skip polling if we already have an active position or pending order
+
     if(currentTP.isActive || currentTP.ticket > 0) return;
-    
+
     CheckForSignals();
 }
 
-// ONTICK CORREGIDO - Nueva lógica con historial
 void OnTick() {
     if(!currentTP.isActive && currentTP.ticket > 0) {
         CheckPendingOrderExecution();
         return;
     }
-    
+
     if(!currentTP.isActive) return;
-    
-    double bid = SymbolInfoDouble(currentSymbol, SYMBOL_BID);
-    double ask = SymbolInfoDouble(currentSymbol, SYMBOL_ASK);
-    double currentPrice = (currentTP.direction == "LONG") ? bid : ask;
-    
-    // NUEVO: Verificar si la posición sigue existiendo PRIMERO
+
+    double currentPrice = GetCurrentPrice(currentTP.direction);
+
+    // Verificar si la posición sigue existiendo
     if(!position.SelectByTicket(currentTP.ticket)) {
-        // Posición no existe - determinar por qué usando historial
-        int exitLevel;
-        string closeReason = GetCloseReasonFromHistory(currentTP.positionID, exitLevel);
-        
-        double finalPnl = CalculatePNL(currentPrice);
-        ReportClose(currentTP.signalId, exitLevel, closeReason, currentPrice, finalPnl);
-        
-        Log(INFO_LVL, "POSITION", StringFormat("Posición cerrada: %s (Exit Level: %d)", closeReason, exitLevel));
+        // Posición desaparecio - analizar historial para determinar causa
+        HistoryCloseResult closeResult = GetCloseReasonFromHistory(currentTP.positionID);
+
+        // Usar precio del deal si disponible, sino precio actual
+        double reportPrice = closeResult.hasDealData ? closeResult.dealPrice : currentPrice;
+
+        // Usar profit del deal si disponible, sino calcular
+        double finalPnl = closeResult.hasDealData ? closeResult.dealProfit : CalculatePNL(currentPrice);
+
+        Log(INFO_LVL, "POSITION", StringFormat("Posición cerrada: %s (Exit Level: %d, Price: %.5f, PNL: %.2f, FromDeal: %s)",
+            closeResult.reason, closeResult.exitLevel, reportPrice, finalPnl, closeResult.hasDealData ? "YES" : "NO"));
+
+        ReportClose(currentTP.signalId, closeResult.exitLevel, closeResult.reason, reportPrice, finalPnl);
         InitTPState();
         return;
     }
-    
+
     // Actualizar volumen actual
     currentTP.currentVolume = position.Volume();
-    
+
     // Verificar stops por código si está habilitado
     if(ENABLE_CODE_STOP) {
         if(CheckCodeStopLoss()) {
             ClosePositionByCode("CLOSED_CODE_STOP");
             return;
         }
-        
+
         if(CheckSafetyStop()) {
             ClosePositionByCode("CLOSED_SAFETY_STOP");
             return;
         }
     }
-    
+
     // Gestionar TPs
     ManageTPs(currentPrice);
 }
 
-// GESTIÓN DE TPs MEJORADA - Con validación de TPs
-bool CheckAndExecuteTP(int tpLevel, double tpPrice, double tpPercent, double currentPrice) {
-    // NUEVO: Validar TP configurado
+// ==========================================
+// GESTIÓN DE TPs (unificada - TP5 ya no es caso especial)
+// ==========================================
+bool CheckAndExecuteTP(int tpLevel, double tpPrice, double tpPercent, double currentPrice, bool closeAll = false) {
     if(tpPrice <= 0.0) {
         Log(DEBUG_LVL, "TP_SKIP", StringFormat("TP%d saltado: precio no válido (%.5f)", tpLevel, tpPrice));
         return false;
     }
-    
+
     bool isLong = (currentTP.direction == "LONG");
     bool priceReached = (isLong && currentPrice >= tpPrice) || (!isLong && currentPrice <= tpPrice);
-    
+
     if(!currentTP.levelFlags[tpLevel] && priceReached) {
         currentTP.currentLevel = MathMax(currentTP.currentLevel, tpLevel);
-        
-        // NUEVO: Separar lógica de cierre de volumen vs activación de BE
-        bool hasVolumeToClose = (tpPercent > 0);
+
+        bool hasVolumeToClose = closeAll || (tpPercent > 0);
         bool shouldActivateBE = (BE_LEVEL == tpLevel && !currentTP.slMovedToBE);
-        
-        // LOG: TP alcanzado
-        Log(INFO_LVL, "TP_HIT", StringFormat("TP%d alcanzado! Precio=%.5f, Target=%.5f, Volumen a cerrar=%.2f%%, BE=%s",
-            tpLevel, currentPrice, tpPrice, tpPercent, (shouldActivateBE ? "SÍ" : "NO")));
 
-        // Paso 1: Cerrar volumen si aplica
+        Log(INFO_LVL, "TP_HIT", StringFormat("TP%d alcanzado! Precio=%.5f, Target=%.5f, %s, BE=%s",
+            tpLevel, currentPrice, tpPrice,
+            (closeAll ? "Cerrando TODO" : StringFormat("Volumen=%.2f%%", tpPercent)),
+            (shouldActivateBE ? "SÍ" : "NO")));
+
         if(hasVolumeToClose) {
-            // Calcular volumen crudo y normalizado
-            double rawVolume = (currentTP.originalVolume * tpPercent) / 100.0;
-            double volumeToClose = CalculateVolumeToClose(tpPercent);
+            double volumeToClose;
+            if(closeAll) {
+                volumeToClose = currentTP.currentVolume;
+            } else {
+                double rawVolume = (currentTP.originalVolume * tpPercent) / 100.0;
+                volumeToClose = CalculateVolumeToClose(tpPercent);
 
-            // LOG: Volumen calculado vs normalizado
-            if(rawVolume != volumeToClose) {
-                SymbolSpecs specs = GetSymbolSpecs();
-                Log(INFO_LVL, "VOLUME_NORM", StringFormat("TP%d: Volumen calculado=%.3f → normalizado=%.2f (step=%.2f)",
-                    tpLevel, rawVolume, volumeToClose, specs.stepVolume));
+                if(rawVolume != volumeToClose) {
+                    SymbolSpecs specs = GetSymbolSpecs();
+                    Log(INFO_LVL, "VOLUME_NORM", StringFormat("TP%d: Volumen calculado=%.3f → normalizado=%.2f (step=%.2f)",
+                        tpLevel, rawVolume, volumeToClose, specs.stepVolume));
+                }
             }
-
             ClosePartialPosition(volumeToClose);
         }
-        
-        // Paso 2: Activar breakeven si aplica (DESPUÉS del cierre parcial)
+
         if(shouldActivateBE) {
             SetBreakeven();
         }
-        
+
         currentTP.levelFlags[tpLevel] = true;
         return true;
     }
@@ -952,80 +1021,61 @@ void ManageTPs(double currentPrice) {
     CheckAndExecuteTP(2, currentTP.tp2, TP2_PERCENT, currentPrice);
     CheckAndExecuteTP(3, currentTP.tp3, TP3_PERCENT, currentPrice);
     CheckAndExecuteTP(4, currentTP.tp4, TP4_PERCENT, currentPrice);
-    
-    // TP5: Close ALL remaining - NUEVO: Validar TP5 configurado
-    if(!currentTP.levelFlags[5] && currentTP.tp5 > 0.0 && currentTP.currentVolume > 0 &&
-       (((currentTP.direction == "LONG") && currentPrice >= currentTP.tp5) || 
-        ((currentTP.direction == "SHORT") && currentPrice <= currentTP.tp5))) {
-        
-        currentTP.currentLevel = 5;
-        
-        // LOG: TP5 alcanzado
-        Log(INFO_LVL, "TP_HIT", StringFormat("TP5 alcanzado! Precio=%.5f, Target=%.5f, Cerrando posición completa", 
-            currentPrice, currentTP.tp5));
-        
-        ClosePartialPosition(currentTP.currentVolume);
-        currentTP.levelFlags[5] = true;
+
+    // TP5: cierra todo el volumen restante
+    if(currentTP.currentVolume > 0) {
+        CheckAndExecuteTP(5, currentTP.tp5, TP5_PERCENT, currentPrice, true);
     }
 }
 
-// BREAKEVEN CORREGIDO - Sin reportar PNL
+// ==========================================
+// BREAKEVEN
+// ==========================================
 void SetBreakeven() {
     if(position.SelectByTicket(currentTP.ticket)) {
         double newSL = currentTP.entry;
         if(trade.PositionModify(position.Ticket(), newSL, position.TakeProfit())) {
             currentTP.slMovedToBE = true;
             currentTP.currentSL = newSL;
-            
-            Log(INFO_LVL, "BE", "Stop Loss movido a Breakeven");
-            // LOG: Detalles del breakeven
-            Log(INFO_LVL, "BE_DETAIL", StringFormat("BE activado en TP%d: SL %.5f → %.5f, Vol restante=%.2f", 
+
+            Log(INFO_LVL, "BE", StringFormat("BE activado en TP%d: SL %.5f → %.5f, Vol restante=%.2f",
                 currentTP.currentLevel, currentTP.originalSL, newSL, currentTP.currentVolume));
-            
-            double currentPrice = (currentTP.direction == "LONG") ? 
-                                 SymbolInfoDouble(currentSymbol, SYMBOL_BID) : 
-                                 SymbolInfoDouble(currentSymbol, SYMBOL_ASK);
-            
-            // CORREGIDO: Reportar BE SIN PNL
-            ReportProgress(currentTP.signalId, currentTP.currentLevel, currentTP.closedPercent, 
-                          currentTP.currentVolume, currentPrice, 0.0,  // PNL = 0.0 para BE
+
+            double currentPrice = GetCurrentPrice(currentTP.direction);
+
+            ReportProgress(currentTP.signalId, currentTP.currentLevel, currentTP.closedPercent,
+                          currentTP.currentVolume, currentPrice, 0.0,
                           "Stop Loss movido a Breakeven", false, newSL);
         }
     }
 }
 
+// ==========================================
+// CIERRE PARCIAL
+// ==========================================
 bool ClosePartialPosition(double volume) {
     if(!position.SelectByTicket(currentTP.ticket)) return false;
 
     SymbolSpecs specs = GetSymbolSpecs();
 
-    // Validar que el volumen no exceda el volumen actual de la posición
     if(volume > position.Volume()) {
         volume = position.Volume();
     }
 
-    double currentPrice = (currentTP.direction == "LONG") ?
-                         SymbolInfoDouble(currentSymbol, SYMBOL_BID) :
-                         SymbolInfoDouble(currentSymbol, SYMBOL_ASK);
-
-    // PNL del volumen que se va a cerrar
+    double currentPrice = GetCurrentPrice(currentTP.direction);
     double closedPnl = CalculatePNL(currentPrice, volume);
-    
+
     if(trade.PositionClosePartial(position.Ticket(), volume)) {
-        // Update tracking
         currentTP.totalClosedVolume += volume;
         currentTP.closedPercent = (currentTP.totalClosedVolume / currentTP.originalVolume) * 100.0;
         currentTP.currentVolume = position.Volume() - volume;
-        
-        // Reportar PNL del volumen cerrado
-        ReportProgress(currentTP.signalId, currentTP.currentLevel, currentTP.closedPercent, 
+
+        ReportProgress(currentTP.signalId, currentTP.currentLevel, currentTP.closedPercent,
                       currentTP.currentVolume, currentPrice, closedPnl, "TP parcial");
-        
-        // LOG: Cierre parcial detallado
-        Log(INFO_LVL, "PARTIAL_CLOSE", StringFormat("TP%d: Cerrado %.2f lots (%.1f%%) a %.5f, PNL=%.2f, Restante=%.2f", 
+
+        Log(INFO_LVL, "PARTIAL_CLOSE", StringFormat("TP%d: Cerrado %.2f lots (%.1f%%) a %.5f, PNL=%.2f, Restante=%.2f",
             currentTP.currentLevel, volume, (volume/currentTP.originalVolume)*100, currentPrice, closedPnl, currentTP.currentVolume));
-        
-        // Check if fully closed
+
         if(currentTP.currentVolume <= specs.minVolume) {
             ReportClose(currentTP.signalId, currentTP.currentLevel, "CLOSED_COMPLETE", currentPrice, 0.0);
             InitTPState();
@@ -1035,35 +1085,28 @@ bool ClosePartialPosition(double volume) {
     return false;
 }
 
+// ==========================================
+// PENDING ORDER MONITORING
+// ==========================================
 void CheckPendingOrderExecution() {
-    for(int i = 0; i < PositionsTotal(); i++) {
-        if(position.SelectByIndex(i)) {
-            if(position.Symbol() == currentSymbol && 
-               position.Magic() == MAGIC_NUMBER &&
-               position.Comment() == TRADE_COMMENT) {
-                
-                Log(INFO_LVL, "PENDING", "Orden pendiente ejecutada");
-                
-                currentTP.isActive = true;
-                currentTP.ticket = position.Ticket();
-                // NUEVO: Obtener Position ID real
-                currentTP.positionID = position.Identifier();
-                currentTP.currentVolume = position.Volume();
-                currentTP.entry = position.PriceOpen();
-                currentTP.currentLevel = 0;
-                currentTP.currentSL = position.StopLoss();
-                
-                double currentPrice = (currentTP.direction == "LONG") ? 
-                                     SymbolInfoDouble(currentSymbol, SYMBOL_BID) : 
-                                     SymbolInfoDouble(currentSymbol, SYMBOL_ASK);
-                double pnl = CalculatePNL(currentPrice);
-                ReportProgress(currentTP.signalId, 0, 0.0, currentTP.currentVolume, 
-                              currentTP.entry, pnl, "Orden pendiente ejecutada", true);
-                return;
-            }
-        }
+    if(FindOwnPosition()) {
+        Log(INFO_LVL, "PENDING", "Orden pendiente ejecutada");
+
+        currentTP.isActive = true;
+        currentTP.ticket = position.Ticket();
+        currentTP.positionID = position.Identifier();
+        currentTP.currentVolume = position.Volume();
+        currentTP.entry = position.PriceOpen();
+        currentTP.currentLevel = 0;
+        currentTP.currentSL = position.StopLoss();
+
+        double currentPrice = GetCurrentPrice(currentTP.direction);
+        double pnl = CalculatePNL(currentPrice);
+        ReportProgress(currentTP.signalId, 0, 0.0, currentTP.currentVolume,
+                      currentTP.entry, pnl, "Orden pendiente ejecutada", true);
+        return;
     }
-    
+
     if(!OrderSelect(currentTP.ticket)) {
         Log(WARNING_LVL, "PENDING", "Orden pendiente cancelada");
         ReportClose(currentTP.signalId, -999, "ORDER_CANCELLED", 0, 0);
@@ -1071,16 +1114,16 @@ void CheckPendingOrderExecution() {
     }
 }
 
+// ==========================================
 // CONSULTA DE SEÑALES
+// ==========================================
 void CheckForSignals() {
-
     string url = BuildAPIUrl("get_signals", 0, TICKER_SYMBOL);
     Log(DEBUG_LVL, "POLL", StringFormat("Polling señales: %s", url));
     APIResponse response = SendAPIRequest("GET", url, "", true);
 
     if(response.result != API_SUCCESS) {
         Log(WARNING_LVL, "SIGNALS", StringFormat("Error consultando señales: %s (HTTP %d)", response.message, response.httpCode));
-        Log(DEBUG_LVL, "SIGNALS", "Response body: " + StringSubstr(response.data, 0, 500));
         return;
     }
 
@@ -1094,11 +1137,11 @@ void ProcessSignalResponse(string jsonResponse) {
         return;
     }
     if(StringFind(jsonResponse, "\"success\":true") == -1) {
-        Log(DEBUG_LVL, "POLL", "Respuesta sin success:true — Body: " + StringSubstr(jsonResponse, 0, 500));
+        Log(DEBUG_LVL, "POLL", "Respuesta sin success:true — Body: " + TruncLog(jsonResponse));
         return;
     }
 
-    Log(INFO_LVL, "JSON_DEBUG", "JSON recibido (500 chars): " + StringSubstr(jsonResponse, 0, 500));
+    Log(INFO_LVL, "JSON_DEBUG", "JSON recibido (500 chars): " + TruncLog(jsonResponse));
 
     SimpleJSONParser parser(jsonResponse);
 
@@ -1107,35 +1150,29 @@ void ProcessSignalResponse(string jsonResponse) {
         Log(DEBUG_LVL, "POLL", "user_signal_id inválido o ausente en respuesta");
         return;
     }
-    
+
     string opType = parser.GetString("op_type");
     double entry = parser.GetDouble("entry");
-    double sl1 = parser.GetArrayDouble("stoploss", 0);  // SL más alejado (usado para volumen)
-    double sl2 = parser.GetArrayDouble("stoploss", 1);  // SL más cercano (backup)
+    double sl1 = parser.GetArrayDouble("stoploss", 0);
+    double sl2 = parser.GetArrayDouble("stoploss", 1);
 
     double tp1 = parser.GetArrayDouble("tps", 0);
     double tp2 = parser.GetArrayDouble("tps", 1);
     double tp3 = parser.GetArrayDouble("tps", 2);
     double tp4 = parser.GetArrayDouble("tps", 3);
     double tp5 = parser.GetArrayDouble("tps", 4);
-    
-    // Guardar SL2 en variable global (para uso futuro)
-    backupStopLoss = sl2;
 
-    // LOG: Señal encontrada con AMBOS SLs
-    Log(INFO_LVL, "SIGNAL", StringFormat("Nueva señal recibida: ID=%d, %s, Entry=%.5f, SL1=%.5f (usado), SL2=%.5f (backup), TPs=[%.5f,%.5f,%.5f,%.5f,%.5f]",
+    Log(INFO_LVL, "SIGNAL", StringFormat("Nueva señal: ID=%d, %s, Entry=%.5f, SL1=%.5f, SL2=%.5f, TPs=[%.5f,%.5f,%.5f,%.5f,%.5f]",
         userSignalId, opType, entry, sl1, sl2, tp1, tp2, tp3, tp4, tp5));
 
-    // Validar SL1
     if(sl1 <= 0) {
         Log(ERROR_LVL, "SIGNAL", StringFormat("Señal rechazada ID=%d: SL1 inválido", userSignalId));
         ReportClose(userSignalId, -998, "INVALID_STOPLOSS", 0, 0);
         return;
     }
 
-    // Validación completa de TPs
     if(tp1 <= 0 || tp2 <= 0 || tp3 <= 0 || tp4 <= 0 || tp5 <= 0) {
-        Log(ERROR_LVL, "SIGNAL", StringFormat("Señal rechazada ID=%d: TPs incompletos. Faltan: %s%s%s%s%s", 
+        Log(ERROR_LVL, "SIGNAL", StringFormat("Señal rechazada ID=%d: TPs incompletos. Faltan: %s%s%s%s%s",
             userSignalId,
             (tp1 <= 0 ? "TP1 " : ""),
             (tp2 <= 0 ? "TP2 " : ""),
@@ -1146,45 +1183,31 @@ void ProcessSignalResponse(string jsonResponse) {
         ReportClose(userSignalId, -998, "INVALID_TPS", 0, 0);
         return;
     }
-    
+
     if(ExecuteTrade(userSignalId, opType, entry, sl1, tp1, tp2, tp3, tp4, tp5, sl2)) {
-        currentUserSignalId = userSignalId;
         Log(INFO_LVL, "TRADE", "Trade ejecutado exitosamente");
     }
 }
 
-bool ExecuteTrade(int userSignalId, string opType, double entryPrice, double stopLoss,
-                  double tp1, double tp2, double tp3, double tp4, double tp5,
-                  double sl2 = 0) {
+// ==========================================
+// EJECUCIÓN DE TRADE (refactorizado en subfunciones)
+// ==========================================
 
-    if(currentTP.isActive) {
-        Log(WARNING_LVL, "TRADE", StringFormat("Señal IGNORADA (posición activa): nueva señal ID=%d, posición actual ID=%d ticket=%d",
-            userSignalId, currentTP.signalId, currentTP.ticket));
-        return false;
-    }
+// Subfuncion: Aplicar correccion de precios. Retorna false si falla.
+bool ApplyPriceCorrection(double &entryPrice, double &stopLoss,
+                          double &tp1, double &tp2, double &tp3, double &tp4, double &tp5,
+                          int userSignalId, double &correctionFactor) {
 
-    // NUEVO: Guardar precios originales de la señal (pre-corrección)
-    double originalEntry = entryPrice;
-    double originalSL1 = stopLoss;
-    double originalSL2 = sl2;
-    double originalTP1 = tp1;
-    double originalTP2 = tp2;
-    double originalTP3 = tp3;
-    double originalTP4 = tp4;
-    double originalTP5 = tp5;
-
-    // Aplicar corrección de precios
     string errorMessage = "";
-    double correctionFactor = CalculatePriceCorrection(TICKER_SYMBOL, errorMessage);
+    correctionFactor = CalculatePriceCorrection(TICKER_SYMBOL, errorMessage);
 
     if(correctionFactor <= 0.0) {
         ReportClose(userSignalId, -999, "PRICE_CORRECTION_ERROR", 0, 0);
         return false;
     }
 
-    // Aplicar corrección si es necesaria (convertir ES → US500)
     if(correctionFactor != 1.0) {
-        entryPrice /= correctionFactor;  // CORREGIDO: dividir para convertir ES a US500
+        entryPrice /= correctionFactor;
         stopLoss /= correctionFactor;
         tp1 /= correctionFactor;
         tp2 /= correctionFactor;
@@ -1195,145 +1218,146 @@ bool ExecuteTrade(int userSignalId, string opType, double entryPrice, double sto
         Log(INFO_LVL, "PRICE_CORR", StringFormat("Precios corregidos: Entry=%.5f, SL=%.5f, TPs=[%.5f,%.5f,%.5f,%.5f,%.5f]",
                 entryPrice, stopLoss, tp1, tp2, tp3, tp4, tp5));
     } else {
-        Log(INFO_LVL, "PRICES", StringFormat("Precios originales (sin corrección): Entry=%.5f, SL=%.5f, TPs=[%.5f,%.5f,%.5f,%.5f,%.5f]",
-                entryPrice, stopLoss, tp1, tp2, tp3, tp4, tp5));
+        Log(INFO_LVL, "PRICES", StringFormat("Precios originales (sin corrección): Entry=%.5f, SL=%.5f",
+                entryPrice, stopLoss));
     }
+    return true;
+}
 
-    // Validar spread
+// Subfuncion: Validar spread. Retorna false si muy alto.
+bool ValidateSpread(int userSignalId) {
     int spreadPoints = (int)SymbolInfoInteger(currentSymbol, SYMBOL_SPREAD);
     if(spreadPoints > MAX_SPREAD) {
         SymbolSpecs specs = GetSymbolSpecs();
-        double spreadPrice = spreadPoints * specs.point;
-
-        Log(ERROR_LVL, "SPREAD", StringFormat("Spread demasiado alto: Actual=%d points (%.5f precio) | Max=%d points (%.5f precio) | Symbol=%s | Digits=%d | Point=%.5f",
-                spreadPoints, spreadPrice,
-                (int)MAX_SPREAD, MAX_SPREAD * specs.point,
-                currentSymbol, specs.digits, specs.point));
-
+        Log(ERROR_LVL, "SPREAD", StringFormat("Spread demasiado alto: %d points > %d max | Symbol=%s",
+                spreadPoints, (int)MAX_SPREAD, currentSymbol));
         ReportClose(userSignalId, -999, "SPREAD_TOO_HIGH", 0, 0);
         return false;
     }
-    
-    // Calcular volumen
-    double calculatedVolume = CalculateVolumeOptimized(entryPrice, stopLoss);
-    if(calculatedVolume <= 0) {
-        SymbolSpecs volSpecs = GetSymbolSpecs();
-        double balance = AccountInfoDouble(ACCOUNT_BALANCE);
-        double slDist = MathAbs(entryPrice - stopLoss);
-        Log(ERROR_LVL, "VOLUME", StringFormat("Volumen=0: Balance=%.2f, Risk%%=%.1f, Entry=%.5f, SL=%.5f, SLdist=%.5f, SpecsValid=%s, MinVol=%.2f",
-            balance, RISK_PERCENT, entryPrice, stopLoss, slDist, (volSpecs.isValid ? "YES" : "NO"), volSpecs.minVolume));
-        ReportClose(userSignalId, -999, "VOLUME_ERROR", 0, 0);
-        return false;
-    }
-    
-    // Determinar tipo de orden
-    ENUM_ORDER_TYPE orderType;
-    double currentPrice = (opType == "LONG") ?
-                         SymbolInfoDouble(currentSymbol, SYMBOL_ASK) :
-                         SymbolInfoDouble(currentSymbol, SYMBOL_BID);
+    return true;
+}
+
+// Subfuncion: Determinar tipo de orden basado en precio actual vs entry
+ENUM_ORDER_TYPE DetermineOrderType(string opType, double entryPrice, double &currentPrice, string &orderDecision) {
+    currentPrice = (opType == "LONG") ?
+                   SymbolInfoDouble(currentSymbol, SYMBOL_ASK) :
+                   SymbolInfoDouble(currentSymbol, SYMBOL_BID);
 
     double point = SymbolInfoDouble(currentSymbol, SYMBOL_POINT);
     double priceDifference = MathAbs(entryPrice - currentPrice);
     double differencePoints = priceDifference / point;
 
-    // Determinar tolerancia según configuración (prioridad: PERCENT > POINTS)
+    // Calcular tolerancia
     double tolerance;
-    double tolerancePoints;
     string toleranceMode;
 
     if(PRICE_TOLERANCE_PERCENT > 0.0) {
-        // Modo: Porcentaje del precio de entrada
         tolerance = entryPrice * (PRICE_TOLERANCE_PERCENT / 100.0);
-        tolerancePoints = tolerance / point;
-        toleranceMode = StringFormat("%.3f%% (%.1f points)", PRICE_TOLERANCE_PERCENT, tolerancePoints);
+        double tolerancePoints = tolerance / point;
+        toleranceMode = StringFormat("%.3f%% (%.1f pts)", PRICE_TOLERANCE_PERCENT, tolerancePoints);
     } else {
-        // Modo: Points absolutos (fallback)
         tolerance = PRICE_TOLERANCE_POINTS * point;
-        tolerancePoints = (double)PRICE_TOLERANCE_POINTS;
-        toleranceMode = StringFormat("%d points", PRICE_TOLERANCE_POINTS);
+        toleranceMode = StringFormat("%d pts", PRICE_TOLERANCE_POINTS);
     }
 
-    string orderDecision = "";
+    ENUM_ORDER_TYPE orderType;
 
     if(opType == "LONG") {
-        if(priceDifference <= tolerance) {
-            orderType = ORDER_TYPE_BUY;
-            orderDecision = "MARKET";
-        } else if(entryPrice < currentPrice) {
-            orderType = ORDER_TYPE_BUY_LIMIT;
-            orderDecision = "LIMIT";
-        } else {
-            orderType = ORDER_TYPE_BUY_STOP;
-            orderDecision = "STOP";
-        }
+        if(priceDifference <= tolerance)     { orderType = ORDER_TYPE_BUY;       orderDecision = "MARKET"; }
+        else if(entryPrice < currentPrice)   { orderType = ORDER_TYPE_BUY_LIMIT; orderDecision = "LIMIT"; }
+        else                                 { orderType = ORDER_TYPE_BUY_STOP;  orderDecision = "STOP"; }
     } else {
-        if(priceDifference <= tolerance) {
-            orderType = ORDER_TYPE_SELL;
-            orderDecision = "MARKET";
-        } else if(entryPrice > currentPrice) {
-            orderType = ORDER_TYPE_SELL_LIMIT;
-            orderDecision = "LIMIT";
-        } else {
-            orderType = ORDER_TYPE_SELL_STOP;
-            orderDecision = "STOP";
-        }
+        if(priceDifference <= tolerance)     { orderType = ORDER_TYPE_SELL;       orderDecision = "MARKET"; }
+        else if(entryPrice > currentPrice)   { orderType = ORDER_TYPE_SELL_LIMIT; orderDecision = "LIMIT"; }
+        else                                 { orderType = ORDER_TYPE_SELL_STOP;  orderDecision = "STOP"; }
     }
 
-    Log(INFO_LVL, "ORDER_DECISION", StringFormat("Precio actual=%.5f, Entry=%.5f, Diff=%.1f points, Tolerancia=%s, Decisión=%s",
+    Log(INFO_LVL, "ORDER_DECISION", StringFormat("Actual=%.5f, Entry=%.5f, Diff=%.1f pts, Tolerancia=%s, Decisión=%s",
         currentPrice, entryPrice, differencePoints, toleranceMode, orderDecision));
-    
-    // Configurar SL según modo - CORREGIDO: multiplicar DISTANCIA, no precio
+
+    return orderType;
+}
+
+bool ExecuteTrade(int userSignalId, string opType, double entryPrice, double stopLoss,
+                  double tp1, double tp2, double tp3, double tp4, double tp5,
+                  double sl2 = 0) {
+
+    if(currentTP.isActive) {
+        Log(WARNING_LVL, "TRADE", StringFormat("Señal IGNORADA (posición activa): nueva=%d, actual=%d ticket=%d",
+            userSignalId, currentTP.signalId, currentTP.ticket));
+        return false;
+    }
+
+    // Guardar precios originales (pre-corrección)
+    double originalEntry = entryPrice, originalSL1 = stopLoss, originalSL2 = sl2;
+    double originalTP1 = tp1, originalTP2 = tp2, originalTP3 = tp3, originalTP4 = tp4, originalTP5 = tp5;
+
+    // 1. Corrección de precios
+    double correctionFactor;
+    if(!ApplyPriceCorrection(entryPrice, stopLoss, tp1, tp2, tp3, tp4, tp5, userSignalId, correctionFactor))
+        return false;
+
+    // 2. Validar spread
+    if(!ValidateSpread(userSignalId))
+        return false;
+
+    // 3. Calcular volumen
+    double calculatedVolume = CalculateVolumeOptimized(entryPrice, stopLoss);
+    if(calculatedVolume <= 0) {
+        double balance = AccountInfoDouble(ACCOUNT_BALANCE);
+        Log(ERROR_LVL, "VOLUME", StringFormat("Volumen=0: Balance=%.2f, Risk%%=%.1f, Entry=%.5f, SL=%.5f",
+            balance, RISK_PERCENT, entryPrice, stopLoss));
+        ReportClose(userSignalId, -999, "VOLUME_ERROR", 0, 0);
+        return false;
+    }
+
+    // 4. Determinar tipo de orden
+    double currentPrice;
+    string orderDecision;
+    ENUM_ORDER_TYPE orderType = DetermineOrderType(opType, entryPrice, currentPrice, orderDecision);
+
+    // 5. Configurar SL
     double slDistance = MathAbs(entryPrice - stopLoss);
     double effectiveDistance = ENABLE_CODE_STOP ? (slDistance * SAFETY_FACTOR) : slDistance;
     double orderStopLoss = (opType == "LONG") ? (entryPrice - effectiveDistance) : (entryPrice + effectiveDistance);
 
-    Log(INFO_LVL, "SL_CALC", StringFormat("SL Calculation: Original=%.5f, Distance=%.5f, SafetyFactor=%.2f, Effective=%.5f, Final=%.5f",
-            stopLoss, slDistance, ENABLE_CODE_STOP ? SAFETY_FACTOR : 1.0, effectiveDistance, orderStopLoss));
+    Log(INFO_LVL, "SL_CALC", StringFormat("Original=%.5f, Distance=%.5f, Factor=%.2f, Final=%.5f",
+            stopLoss, slDistance, ENABLE_CODE_STOP ? SAFETY_FACTOR : 1.0, orderStopLoss));
 
-    // Ejecutar orden
+    // 6. Ejecutar orden
     bool success = false;
     ulong ticket = 0;
     bool isMarketOrder = (orderType == ORDER_TYPE_BUY || orderType == ORDER_TYPE_SELL);
-    
+
     if(isMarketOrder) {
         success = trade.PositionOpen(currentSymbol, orderType, calculatedVolume, 0, orderStopLoss, 0, TRADE_COMMENT);
-        ticket = trade.ResultOrder();
     } else {
-        success = trade.OrderOpen(currentSymbol, orderType, calculatedVolume, 0, entryPrice, orderStopLoss, 0, 
+        success = trade.OrderOpen(currentSymbol, orderType, calculatedVolume, 0, entryPrice, orderStopLoss, 0,
                                  ORDER_TIME_DAY, 0, TRADE_COMMENT);
-        ticket = trade.ResultOrder();
     }
-    
+    ticket = trade.ResultOrder();
+
     if(success && ticket > 0) {
-        // NUEVO: Para market orders, obtener precio real de ejecución
-        double realEntryPrice = entryPrice; // fallback al precio de señal
-        
-        if(isMarketOrder) {
-            // Buscar posición recién creada para obtener precio real
-            for(int i = 0; i < PositionsTotal(); i++) {
-                if(position.SelectByIndex(i)) {
-                    if(position.Symbol() == Symbol() && 
-                       position.Magic() == MAGIC_NUMBER &&
-                       position.Comment() == TRADE_COMMENT) {
-                        realEntryPrice = position.PriceOpen();
-                        Log(INFO_LVL, "REAL_ENTRY", StringFormat("Precio real obtenido: %.5f (vs señal: %.5f)", 
-                            realEntryPrice, entryPrice));
-                        break;
-                    }
-                }
+        // Para market orders, obtener precio real y position ID
+        double realEntryPrice = entryPrice;
+        ulong positionID = 0;
+
+        if(isMarketOrder && FindOwnPosition()) {
+            realEntryPrice = position.PriceOpen();
+            positionID = position.Identifier();
+            if(realEntryPrice != entryPrice) {
+                Log(INFO_LVL, "REAL_ENTRY", StringFormat("Precio real: %.5f (vs señal: %.5f)", realEntryPrice, entryPrice));
             }
-            
-            // Actualizar precio de entrada con precio real
             entryPrice = realEntryPrice;
         }
-        
-        SetupTPState(userSignalId, opType, entryPrice, stopLoss, calculatedVolume, tp1, tp2, tp3, tp4, tp5, ticket, isMarketOrder);
 
-        // LOG: Posición abierta con detalles
-        Log(INFO_LVL, "TRADE_OPEN", StringFormat("Posición abierta: %s %s, Ticket=%d, Vol=%.2f, Tipo=%s, Entry=%.5f, Corrección=%.4f",
-            (isMarketOrder ? "MARKET" : "PENDING"), opType, ticket, calculatedVolume, EnumToString(orderType), entryPrice, correctionFactor));
+        // Setup state (ya con positionID resuelto)
+        SetupTPState(userSignalId, opType, entryPrice, stopLoss, calculatedVolume,
+                     tp1, tp2, tp3, tp4, tp5, ticket, isMarketOrder, positionID);
 
-        // NUEVO: Reportar con precio real para market orders + datos originales de la señal
+        Log(INFO_LVL, "TRADE_OPEN", StringFormat("%s %s, Ticket=%d, PosID=%d, Vol=%.2f, Entry=%.5f, Corrección=%.4f",
+            (isMarketOrder ? "MARKET" : "PENDING"), opType, ticket, positionID, calculatedVolume, entryPrice, correctionFactor));
+
         ReportOpen(userSignalId, isMarketOrder, orderType, entryPrice, orderStopLoss, calculatedVolume, ticket,
                    opType, originalEntry, originalSL1, originalSL2,
                    originalTP1, originalTP2, originalTP3, originalTP4, originalTP5);
@@ -1341,16 +1365,20 @@ bool ExecuteTrade(int userSignalId, string opType, double entryPrice, double sto
     } else {
         uint retcode = trade.ResultRetcode();
         string retdesc = trade.ResultRetcodeDescription();
-        Log(ERROR_LVL, "TRADE", StringFormat("Orden falló: Retcode=%d (%s), Tipo=%s, Vol=%.2f, Entry=%.5f, SL=%.5f, Symbol=%s",
-            retcode, retdesc, EnumToString(orderType), calculatedVolume, entryPrice, orderStopLoss, currentSymbol));
+        Log(ERROR_LVL, "TRADE", StringFormat("Orden falló: %d (%s), Tipo=%s, Vol=%.2f, Entry=%.5f, SL=%.5f",
+            retcode, retdesc, EnumToString(orderType), calculatedVolume, entryPrice, orderStopLoss));
         ReportClose(userSignalId, -999, "EXECUTION_FAILED", 0, 0);
         return false;
     }
 }
 
-void SetupTPState(int signalId, string direction, double entry, double originalStopLoss, double volume, 
-                  double tp1, double tp2, double tp3, double tp4, double tp5, ulong ticket, bool isMarketOrder) {
-    
+// ==========================================
+// SETUP TP STATE (recibe positionID, no re-busca)
+// ==========================================
+void SetupTPState(int signalId, string direction, double entry, double originalStopLoss, double volume,
+                  double tp1, double tp2, double tp3, double tp4, double tp5,
+                  ulong ticket, bool isMarketOrder, ulong positionID = 0) {
+
     currentTP.isActive = isMarketOrder;
     currentTP.signalId = signalId;
     currentTP.direction = direction;
@@ -1361,9 +1389,9 @@ void SetupTPState(int signalId, string direction, double entry, double originalS
     currentTP.closedPercent = 0;
     currentTP.currentLevel = isMarketOrder ? 0 : -2;
     currentTP.slMovedToBE = false;
-    
+
     ArrayInitialize(currentTP.levelFlags, false);
-    
+
     currentTP.entry = entry;
     currentTP.originalSL = originalStopLoss;
     currentTP.currentSL = originalStopLoss;
@@ -1372,24 +1400,13 @@ void SetupTPState(int signalId, string direction, double entry, double originalS
     currentTP.tp3 = tp3;
     currentTP.tp4 = tp4;
     currentTP.tp5 = tp5;
-    
-    // NUEVO: Obtener Position ID real para market orders
-    if(isMarketOrder) {
-        // Para market orders, obtener Position ID después de la ejecución
-        for(int i = 0; i < PositionsTotal(); i++) {
-            if(position.SelectByIndex(i)) {
-                if(position.Symbol() == currentSymbol && 
-                   position.Magic() == MAGIC_NUMBER &&
-                   position.Comment() == TRADE_COMMENT) {
-                    currentTP.positionID = position.Identifier();
-                    Log(INFO_LVL, "SETUP", "Position ID obtenido: " + IntegerToString(currentTP.positionID));
-                    break;
-                }
-            }
-        }
-    } else {
-        // Para pending orders, usar el ticket por ahora
-        currentTP.positionID = ticket;
-        Log(INFO_LVL, "SETUP", "Position ID temporal (pending): " + IntegerToString(currentTP.positionID));
+
+    if(isMarketOrder && positionID > 0) {
+        currentTP.positionID = positionID;
+    } else if(!isMarketOrder) {
+        currentTP.positionID = ticket;  // Temporal para pending, se actualiza en CheckPendingOrderExecution
     }
+
+    Log(INFO_LVL, "SETUP", StringFormat("TP State: SignalID=%d, Ticket=%d, PosID=%d, Active=%s",
+        signalId, ticket, currentTP.positionID, (isMarketOrder ? "YES" : "PENDING")));
 }

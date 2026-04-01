@@ -54,27 +54,7 @@
                     <tr>
                         <th>Operation Type</th>
                         <td>
-                            <?php if (!empty($signal->op_type)): ?>
-                                <?php
-                                $op_type_class = '';
-                                $op_type_icon = '';
-                                if (strtoupper($signal->op_type) === 'LONG') {
-                                    $op_type_class = 'bg-success';
-                                    $op_type_icon = 'fas fa-arrow-up';
-                                } elseif (strtoupper($signal->op_type) === 'SHORT') {
-                                    $op_type_class = 'bg-danger';
-                                    $op_type_icon = 'fas fa-arrow-down';
-                                } else {
-                                    $op_type_class = 'bg-secondary';
-                                    $op_type_icon = 'fas fa-question';
-                                }
-                                ?>
-                                <span class="badge <?= $op_type_class ?>">
-                                    <i class="<?= $op_type_icon ?> me-1"></i><?= strtoupper($signal->op_type) ?>
-                                </span>
-                            <?php else: ?>
-                                <span class="text-muted">Not Available</span>
-                            <?php endif; ?>
+                            <?= signal_op_type_badge($signal->op_type) ?>
                         </td>
                     </tr>
                     <tr>

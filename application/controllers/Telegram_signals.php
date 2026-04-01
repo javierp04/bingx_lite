@@ -41,13 +41,8 @@ class Telegram_signals extends CI_Controller
         $data['available_tickers'] = $this->User_tickers_model->get_all_available_tickers(true);
         $data['filters'] = $filters;
 
-        // Get stats
-        $data['stats'] = array(
-            'total' => $this->Telegram_signals_model->count_signals_total(),
-            'completed' => $this->Telegram_signals_model->count_signals_completed(),
-            'failed' => $this->Telegram_signals_model->count_signals_failed(),
-            'last_24h' => $this->Telegram_signals_model->count_signals_last_24h()
-        );
+        // Get stats (single query)
+        $data['stats'] = $this->Telegram_signals_model->get_signal_counts();
 
         // Get ticker stats
         $data['ticker_stats'] = $this->Telegram_signals_model->get_ticker_stats(7);

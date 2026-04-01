@@ -1,4 +1,7 @@
-<?php $decimals = $signal->display_decimals ?? 5; ?>
+<?php
+$decimals = $signal->display_decimals ?? 5;
+$op_type = strtoupper($signal->op_type ?? '');
+?>
 <div class="mb-4">
     <div class="d-flex justify-content-between align-items-center">
         <h1 class="h3 mb-0">
@@ -38,14 +41,7 @@
                     <?php endif; ?>
                     <div class="d-flex justify-content-between align-items-center mb-2">
                         <span class="text-muted">Type</span>
-                        <?php
-                        $op_type = strtoupper($signal->op_type);
-                        $op_class = $op_type === 'LONG' ? 'bg-success' : 'bg-danger';
-                        $op_icon = $op_type === 'LONG' ? 'fas fa-arrow-up' : 'fas fa-arrow-down';
-                        ?>
-                        <span class="badge <?= $op_class ?>">
-                            <i class="<?= $op_icon ?> me-1"></i><?= $op_type ?>
-                        </span>
+                        <?= signal_op_type_badge($signal->op_type) ?>
                     </div>
                     <div class="d-flex justify-content-between align-items-center mb-2">
                         <span class="text-muted">Status</span>
@@ -66,22 +62,7 @@
                     <h6 class="text-muted mb-2">Current State</h6>
                     <div class="d-flex justify-content-between mb-2">
                         <span>Level</span>
-                        <?php
-                        $level = $signal->current_level;
-                        $level_text = '-';
-                        $level_class = 'bg-light text-muted';
-                        if ($level == 0) {
-                            $level_text = 'INIT';
-                            $level_class = 'bg-secondary';
-                        } elseif ($level >= 1 && $level <= 5) {
-                            $level_text = 'TP' . $level;
-                            $level_class = 'bg-success';
-                        } elseif ($level == -1) {
-                            $level_text = 'SL HIT';
-                            $level_class = 'bg-danger';
-                        }
-                        ?>
-                        <span class="badge <?= $level_class ?>"><?= $level_text ?></span>
+                        <?= signal_level_badge($signal->current_level) ?>
                     </div>
                     <div class="d-flex justify-content-between mb-2">
                         <span>Volume</span>
@@ -308,10 +289,10 @@
                     $sl2 = $stoploss[1] ?? 0;
                     ?>
 
-                    <!-- Visual Price Levels -->
+                    <!-- Visual Price Levels (TradingView box style: mayor precio arriba) -->
                     <div class="price-levels mb-3">
-                        <!-- TPs (top to bottom for LONG, bottom to top for SHORT) -->
                         <?php if ($op_type === 'LONG'): ?>
+                            <!-- LONG: TP5→TP1 (profit arriba), ENTRY, SL1, SL2 (loss abajo) -->
                             <?php for ($i = 4; $i >= 0; $i--): ?>
                                 <?php if (isset($tps[$i]) && $tps[$i] > 0): ?>
                                     <div class="price-level tp mb-1">
@@ -320,16 +301,45 @@
                                     </div>
                                 <?php endif; ?>
                             <?php endfor; ?>
-                        <?php endif; ?>
 
-                        <!-- Entry -->
-                        <div class="price-level entry my-2">
-                            <span class="badge bg-primary">ENTRY</span>
-                            <span class="price fw-bold"><?= number_format($entry, $decimals) ?></span>
-                        </div>
+                            <div class="price-level entry my-2">
+                                <span class="badge bg-primary">ENTRY</span>
+                                <span class="price fw-bold"><?= number_format($entry, $decimals) ?></span>
+                            </div>
 
-                        <!-- TPs for SHORT -->
-                        <?php if ($op_type === 'SHORT'): ?>
+                            <?php if ($sl1 > 0): ?>
+                                <div class="price-level sl mb-1">
+                                    <span class="badge bg-danger">SL1</span>
+                                    <span class="price"><?= number_format($sl1, $decimals) ?></span>
+                                </div>
+                            <?php endif; ?>
+                            <?php if ($sl2 > 0): ?>
+                                <div class="price-level sl mb-1">
+                                    <span class="badge bg-warning text-dark">SL2</span>
+                                    <span class="price"><?= number_format($sl2, $decimals) ?></span>
+                                </div>
+                            <?php endif; ?>
+
+                        <?php else: ?>
+                            <!-- SHORT: SL1, SL2 (loss arriba), ENTRY, TP1→TP5 (profit abajo) -->
+                            <?php if ($sl1 > 0): ?>
+                                <div class="price-level sl mb-1">
+                                    <span class="badge bg-danger">SL1</span>
+                                    <span class="price"><?= number_format($sl1, $decimals) ?></span>
+                                </div>
+                            <?php endif; ?>
+                            <?php if ($sl2 > 0): ?>
+                                <div class="price-level sl mb-1">
+                                    <span class="badge bg-warning text-dark">SL2</span>
+                                    <span class="price"><?= number_format($sl2, $decimals) ?></span>
+                                </div>
+                            <?php endif; ?>
+
+                            <div class="price-level entry my-2">
+                                <span class="badge bg-primary">ENTRY</span>
+                                <span class="price fw-bold"><?= number_format($entry, $decimals) ?></span>
+                            </div>
+
                             <?php for ($i = 0; $i < count($tps); $i++): ?>
                                 <?php if (isset($tps[$i]) && $tps[$i] > 0): ?>
                                     <div class="price-level tp mb-1">
@@ -338,20 +348,6 @@
                                     </div>
                                 <?php endif; ?>
                             <?php endfor; ?>
-                        <?php endif; ?>
-
-                        <!-- SLs -->
-                        <?php if ($sl2 > 0): ?>
-                            <div class="price-level sl mb-1">
-                                <span class="badge bg-warning text-dark">SL2</span>
-                                <span class="price"><?= number_format($sl2, $decimals) ?></span>
-                            </div>
-                        <?php endif; ?>
-                        <?php if ($sl1 > 0): ?>
-                            <div class="price-level sl mb-1">
-                                <span class="badge bg-danger">SL1</span>
-                                <span class="price"><?= number_format($sl1, $decimals) ?></span>
-                            </div>
                         <?php endif; ?>
                     </div>
 
@@ -367,34 +363,67 @@
         $exec_data = !empty($signal->execution_data) ? json_decode($signal->execution_data, true) : null;
         ?>
         <?php if ($exec_data): ?>
+            <?php
+            $is_pending = ($signal->status === 'pending');
+            $order_type = $exec_data['order_type'] ?? 'N/A';
+            $is_pending_order = (strpos($order_type, 'LIMIT') !== false || strpos($order_type, 'STOP') !== false);
+            $header_class = $is_pending ? 'bg-warning text-dark' : 'bg-success text-white';
+            $header_icon = $is_pending ? 'fas fa-clock' : 'fas fa-check-circle';
+            $header_text = $is_pending ? 'Pending Order' : 'Execution Data (Real)';
+            ?>
             <div class="card mb-3">
-                <div class="card-header bg-success text-white">
-                    <h6 class="mb-0"><i class="fas fa-check-circle me-1"></i>Execution Data (Real)</h6>
+                <div class="card-header <?= $header_class ?>">
+                    <h6 class="mb-0"><i class="<?= $header_icon ?> me-1"></i><?= $header_text ?></h6>
                 </div>
                 <div class="card-body">
+                    <?php if ($is_pending): ?>
+                        <div class="alert alert-warning mb-3">
+                            <i class="fas fa-hourglass-half me-2"></i>
+                            <strong><?= $order_type ?></strong> placed — waiting for price to reach entry level.
+                        </div>
+                    <?php endif; ?>
+
                     <table class="table table-sm mb-0">
                         <tr>
                             <th>Order Type</th>
                             <td>
                                 <?php
-                                $order_type = $exec_data['order_type'] ?? 'N/A';
                                 $order_badge_class = 'bg-secondary';
                                 if (strpos($order_type, 'BUY') !== false) $order_badge_class = 'bg-success';
                                 if (strpos($order_type, 'SELL') !== false) $order_badge_class = 'bg-danger';
                                 ?>
                                 <span class="badge <?= $order_badge_class ?>"><?= $order_type ?></span>
+                                <?php if ($is_pending_order): ?>
+                                    <span class="badge bg-warning text-dark ms-1"><i class="fas fa-clock me-1"></i>Pending</span>
+                                <?php endif; ?>
                             </td>
                         </tr>
+                        <?php if (!$is_pending && !empty($exec_data['real_entry_price'])): ?>
+                            <tr>
+                                <th>Real Entry</th>
+                                <td><strong><?= number_format($exec_data['real_entry_price'], $decimals) ?></strong></td>
+                            </tr>
+                        <?php else: ?>
+                            <tr>
+                                <th>Target Entry</th>
+                                <td>
+                                    <?php
+                                    // Mostrar precio de entrada planificado desde signal_data
+                                    $target_entry = $signal_data['entry'] ?? $exec_data['real_entry_price'] ?? 0;
+                                    ?>
+                                    <span class="text-muted"><?= number_format($target_entry, $decimals) ?></span>
+                                    <?php if ($is_pending): ?>
+                                        <small class="text-muted ms-1">(waiting)</small>
+                                    <?php endif; ?>
+                                </td>
+                            </tr>
+                        <?php endif; ?>
                         <tr>
-                            <th>Real Entry</th>
-                            <td><strong><?= number_format($exec_data['real_entry_price'] ?? 0, $decimals) ?></strong></td>
-                        </tr>
-                        <tr>
-                            <th>Real Stop Loss</th>
+                            <th><?= $is_pending ? 'Planned Stop Loss' : 'Real Stop Loss' ?></th>
                             <td>
                                 <?= number_format($exec_data['real_stop_loss'] ?? 0, $decimals) ?>
                                 <?php
-                                $is_breakeven = ($signal->real_stop_loss == $signal->real_entry_price);
+                                $is_breakeven = (!$is_pending && $signal->real_stop_loss == $signal->real_entry_price && $signal->real_entry_price > 0);
                                 if ($is_breakeven):
                                 ?>
                                     <span class="badge bg-success ms-2">
@@ -404,7 +433,7 @@
                             </td>
                         </tr>
                         <tr>
-                            <th>Real Volume</th>
+                            <th><?= $is_pending ? 'Planned Volume' : 'Real Volume' ?></th>
                             <td><?= number_format($exec_data['real_volume'] ?? 0, 2) ?> lots</td>
                         </tr>
                         <tr>
@@ -413,7 +442,7 @@
                         </tr>
                         <?php if (isset($exec_data['execution_time'])): ?>
                             <tr>
-                                <th>Execution Time</th>
+                                <th><?= $is_pending ? 'Order Placed' : 'Execution Time' ?></th>
                                 <td><?= $exec_data['execution_time'] ?></td>
                             </tr>
                         <?php endif; ?>
@@ -424,7 +453,7 @@
                         <h6 class="text-muted mb-2">Current Progress</h6>
                         <div class="d-flex justify-content-between mb-2">
                             <span>Current Level</span>
-                            <span class="badge <?= $level_class ?>"><?= $level_text ?></span>
+                            <?= signal_level_badge($signal->current_level) ?>
                         </div>
                         <div class="d-flex justify-content-between mb-2">
                             <span>Volume Closed</span>

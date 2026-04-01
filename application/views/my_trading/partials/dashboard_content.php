@@ -36,20 +36,8 @@
                             $analysis = json_decode($signal->analysis_data, true);
                             $op_type = $signal->op_type ?: ($analysis['op_type'] ?? 'UNKNOWN');
 
-                            // Decimals for price display
                             $decimals = $signal->display_decimals ?? 5;
-
-                            // Calculate time elapsed
-                            $created_time = strtotime($signal->created_at);
-                            $elapsed = time() - $created_time;
-                            $elapsed_formatted = '';
-                            if ($elapsed < 3600) {
-                                $elapsed_formatted = floor($elapsed / 60) . 'm';
-                            } else if ($elapsed < 86400) {
-                                $elapsed_formatted = floor($elapsed / 3600) . 'h ' . floor(($elapsed % 3600) / 60) . 'm';
-                            } else {
-                                $elapsed_formatted = floor($elapsed / 86400) . 'd ' . floor(($elapsed % 86400) / 3600) . 'h';
-                            }
+                            $elapsed_formatted = signal_elapsed($signal->created_at);
 
                             // Detectar breakeven
                             $is_breakeven = ($signal->real_stop_loss == $signal->real_entry_price);
@@ -74,24 +62,7 @@
                                     <?php endif; ?>
                                 </td>
                                 <td>
-                                    <?php
-                                    $op_type_upper = strtoupper($op_type);
-                                    $op_class = '';
-                                    $op_icon = '';
-                                    if ($op_type_upper === 'LONG') {
-                                        $op_class = 'bg-success';
-                                        $op_icon = 'fas fa-arrow-up';
-                                    } elseif ($op_type_upper === 'SHORT') {
-                                        $op_class = 'bg-danger';
-                                        $op_icon = 'fas fa-arrow-down';
-                                    } else {
-                                        $op_class = 'bg-secondary';
-                                        $op_icon = 'fas fa-question';
-                                    }
-                                    ?>
-                                    <span class="badge <?= $op_class ?>">
-                                        <i class="<?= $op_icon ?> me-1"></i><?= $op_type_upper ?>
-                                    </span>
+                                    <?= signal_op_type_badge($op_type) ?>
                                 </td>
                                 <td>
                                     <?php $ssd = get_signal_status_display($signal); ?>
@@ -157,49 +128,17 @@
                                     <?php endif; ?>
                                 </td>
                                 <td>
-                                    <?php
-                                    // LÓGICA DE LEVELS CORREGIDA - Sin redundancia con Status
-                                    $level = $signal->current_level;
-                                    $level_text = '';
-                                    $level_class = 'bg-secondary';
-
-                                    if ($level == -2) {
-                                        $level_text = '-';              // No hay progreso aún
-                                        $level_class = 'bg-light text-muted';
-                                    } elseif ($level == 0) {
-                                        $level_text = 'INIT';           // Posición abierta, sin TPs
-                                        $level_class = 'bg-secondary';
-                                    } elseif ($level >= 1 && $level <= 5) {
-                                        $level_text = 'TP' . $level;    // TPs alcanzados
-                                        $level_class = 'bg-success';
-                                    } elseif ($level == -1) {
-                                        $level_text = 'SL HIT';         // Stop loss tocado
-                                        $level_class = 'bg-danger';
-                                    }
-                                    ?>
-                                    <span class="badge <?= $level_class ?>">
-                                        <?= $level_text ?>
-                                    </span>
+                                    <?= signal_level_badge($signal->current_level) ?>
                                 </td>
                                 <td>
                                     <div class="pnl-display" data-pnl="<?= $signal->gross_pnl ?>">
-                                        <?php if ($signal->gross_pnl != 0): ?>
-                                            <?php
-                                            $pnl_class = $signal->gross_pnl > 0 ? 'text-success' : 'text-danger';
-                                            $pnl_icon = $signal->gross_pnl > 0 ? 'fa-arrow-up' : 'fa-arrow-down';
-                                            ?>
-                                            <span class="<?= $pnl_class ?>">
-                                                <i class="fas <?= $pnl_icon ?> me-1"></i>$<?= number_format(abs($signal->gross_pnl), 2) ?>
-                                            </span>
-                                        <?php else: ?>
-                                            <span class="text-muted">$0.00</span>
-                                        <?php endif; ?>
+                                        <?= signal_pnl($signal->gross_pnl) ?>
                                     </div>
                                 </td>
                                 <td>
                                     <div class="time-info">
                                         <span class="elapsed-time"><?= $elapsed_formatted ?></span><br>
-                                        <small class="text-muted"><?= date('M j H:i', $created_time) ?></small>
+                                        <small class="text-muted"><?= date('M j H:i', strtotime($signal->created_at)) ?></small>
                                     </div>
                                 </td>
                                 <td>

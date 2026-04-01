@@ -171,6 +171,7 @@ function _resolve_close_reason_display($close_reason)
         'CLOSED_CODE_STOP'   => ['bg-danger', 'Stop Loss'],
         'CLOSED_SAFETY_STOP' => ['bg-danger', 'Stop Loss'],
         'CLOSED_EXTERNAL'    => ['bg-warning text-dark', 'Manual Close'],
+        'CLOSED_MANUAL'      => ['bg-warning text-dark', 'Manual Close'],
     ];
 
     if (isset($map[$close_reason])) {
@@ -194,4 +195,108 @@ function _get_failure_label($close_reason)
         'EXECUTION_FAILED'       => 'Execution Failed',
     ];
     return $labels[$close_reason] ?? 'Error';
+}
+
+// ==========================================
+// Signal display helpers (shared across views)
+// ==========================================
+
+/**
+ * Render signal level badge HTML
+ * @param int|null $level current_level value (-2, -1, 0, 1-5)
+ * @return string HTML badge
+ */
+function signal_level_badge($level)
+{
+    $level_text = '-';
+    $level_class = 'bg-light text-muted';
+
+    if ($level == -2 || $level === null) {
+        // No progress yet
+    } elseif ($level == 0) {
+        $level_text = 'INIT';
+        $level_class = 'bg-secondary';
+    } elseif ($level >= 1 && $level <= 5) {
+        $level_text = 'TP' . $level;
+        $level_class = 'bg-success';
+    } elseif ($level == -1) {
+        $level_text = 'SL HIT';
+        $level_class = 'bg-danger';
+    }
+
+    return '<span class="badge ' . $level_class . '">' . $level_text . '</span>';
+}
+
+/**
+ * Render op_type (LONG/SHORT) badge HTML
+ * @param string|null $op_type 'LONG', 'SHORT', or null
+ * @return string HTML badge
+ */
+function signal_op_type_badge($op_type)
+{
+    if (empty($op_type)) {
+        return '<span class="text-muted">-</span>';
+    }
+
+    $op_type = strtoupper($op_type);
+
+    if ($op_type === 'LONG') {
+        return '<span class="badge bg-success"><i class="fas fa-arrow-up me-1"></i>LONG</span>';
+    } elseif ($op_type === 'SHORT') {
+        return '<span class="badge bg-danger"><i class="fas fa-arrow-down me-1"></i>SHORT</span>';
+    }
+
+    return '<span class="badge bg-secondary"><i class="fas fa-question me-1"></i>' . $op_type . '</span>';
+}
+
+/**
+ * Format price with signal's display_decimals
+ * @param float|null $value Price value
+ * @param object|int $signal_or_decimals Signal object (with display_decimals) or integer decimals
+ * @return string Formatted price or 'N/A'
+ */
+function signal_price($value, $signal_or_decimals = 5)
+{
+    if ($value === null || $value === '' || $value === false) {
+        return '<span class="text-muted">N/A</span>';
+    }
+
+    $decimals = is_object($signal_or_decimals)
+        ? ($signal_or_decimals->display_decimals ?? 5)
+        : (int) $signal_or_decimals;
+
+    return number_format((float) $value, $decimals);
+}
+
+/**
+ * Format PNL with color and icon
+ * @param float $pnl PNL value
+ * @return string HTML formatted PNL
+ */
+function signal_pnl($pnl)
+{
+    if (!$pnl || $pnl == 0) {
+        return '<span class="text-muted">$0.00</span>';
+    }
+
+    $class = $pnl > 0 ? 'text-success' : 'text-danger';
+    $icon = $pnl > 0 ? 'fa-arrow-up' : 'fa-arrow-down';
+
+    return '<span class="' . $class . '"><i class="fas ' . $icon . ' me-1"></i>$' . number_format(abs($pnl), 2) . '</span>';
+}
+
+/**
+ * Format elapsed time since a timestamp
+ * @param string $created_at datetime string
+ * @return string e.g. "5m", "2h 30m", "1d 5h"
+ */
+function signal_elapsed($created_at)
+{
+    $elapsed = time() - strtotime($created_at);
+    if ($elapsed < 3600) {
+        return floor($elapsed / 60) . 'm';
+    } elseif ($elapsed < 86400) {
+        return floor($elapsed / 3600) . 'h ' . floor(($elapsed % 3600) / 60) . 'm';
+    }
+    return floor($elapsed / 86400) . 'd ' . floor(($elapsed % 86400) / 3600) . 'h';
 }
