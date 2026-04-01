@@ -177,32 +177,7 @@ public:
         return StringSubstr(json, pos, endPos - pos);
     }
 
-    /*
-    // VIEJO - bug: busca solo coma, para arrays cortos encuentra la coma fuera del array
-    double GetArrayDouble(string arrayKey, int index, double defaultValue = 0.0) {
-        string search = "\"" + arrayKey + "\":[";
-        int pos = StringFind(json, search);
-        if(pos == -1) return defaultValue;
-        pos += StringLen(search);
-        for(int i = 0; i < index; i++) {
-            pos = StringFind(json, ",", pos);
-            if(pos == -1) return defaultValue;
-            pos++;
-        }
-        while(pos < StringLen(json) && (StringGetCharacter(json, pos) == ' ' || StringGetCharacter(json, pos) == '\t' || StringGetCharacter(json, pos) == '\n' || StringGetCharacter(json, pos) == '\r')) pos++;
-        int endPos = StringFind(json, ",", pos);
-        if(endPos == -1) endPos = StringFind(json, "]", pos);
-        if(endPos == -1) return defaultValue;
-        string value = StringSubstr(json, pos, endPos - pos);
-        StringReplace(value, " ", "");
-        StringReplace(value, "\t", "");
-        StringReplace(value, "\n", "");
-        StringReplace(value, "\r", "");
-        return ValidateNumber(value) ? StringToDouble(value) : defaultValue;
-    }
-    */
-
-    // NUEVO - fix minimal: busca coma Y corchete, usa el primero
+    // GetArrayDouble: busca coma Y corchete, usa el primero
     double GetArrayDouble(string arrayKey, int index, double defaultValue = 0.0) {
         string search = "\"" + arrayKey + "\":[";
         int pos = StringFind(json, search);
@@ -1119,15 +1094,12 @@ bool ClosePartialPosition(double volume) {
 
 // NUEVO: Reportar ejecución completa cuando pending order se convierte en posición
 void ReportPendingExecuted(int userSignalId, ulong ticket, double entryPrice, 
-                           double stopLoss, double volume, string direction,
-                           ENUM_ORDER_TYPE orderType) {
+                           double stopLoss, double volume) {
     
     string url = BuildAPIUrl("progress", userSignalId);
     
     JsonBuilder jb;
-    jb.AddBool("success", true);
     jb.AddBool("now_open", true);
-    jb.AddString("order_type", EnumToString(orderType));
     jb.AddString("trade_id", IntegerToString(ticket));
     jb.AddDouble("real_entry_price", entryPrice);
     jb.AddDouble("real_stop_loss", stopLoss);
@@ -1170,8 +1142,7 @@ void CheckPendingOrderExecution() {
         
         // Reportar ejecución completa de la pending order
         ReportPendingExecuted(currentTP.signalId, currentTP.ticket, currentTP.entry, 
-                              currentTP.currentSL, currentTP.currentVolume, 
-                              currentTP.direction, position.OrderType());
+                              currentTP.currentSL, currentTP.currentVolume);
         return;
     }
 

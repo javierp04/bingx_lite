@@ -272,103 +272,115 @@ $op_type = strtoupper($signal->op_type ?? '');
         $mt_data = !empty($signal->mt_execution_data) ? json_decode($signal->mt_execution_data, true) : null;
         $analysis_data = !empty($signal->analysis_data) ? json_decode($signal->analysis_data, true) : null;
 
-        // Use mt_corrected_data (post-correction) as primary, fallback to mt_execution_data or analysis_data
-        $signal_data = $mt_corrected ?: $mt_data ?: $analysis_data;
+        $original_data = $mt_data ?: $analysis_data;
         $has_correction = !empty($mt_corrected);
+        // For display in price-levels: use corrected as default if available
+        $signal_data = $has_correction ? $mt_corrected : $original_data;
         ?>
-        <?php if ($signal_data): ?>
+        <?php if ($original_data || $mt_corrected): ?>
             <div class="card mb-3">
                 <div class="card-header bg-info text-white">
-                    <h6 class="mb-0"><i class="fas fa-signal me-1"></i>MT5 Signal Data<?= $has_correction ? ' (Corrected)' : '' ?></h6>
+                    <h6 class="mb-0"><i class="fas fa-signal me-1"></i>MT5 Signal Data</h6>
                 </div>
-                <div class="card-body">
-                    <?php
-                    $decimals = $signal->display_decimals ?? 5;
-                    $entry = $signal_data['entry'] ?? 0;
-                    $stoploss = $signal_data['stoploss'] ?? [];
-                    $tps = $signal_data['tps'] ?? [];
-                    $sl1 = $stoploss[0] ?? 0;
-                    $sl2 = $stoploss[1] ?? 0;
-                    ?>
-
-                    <!-- Visual Price Levels (TradingView box style: mayor precio arriba) -->
-                    <div class="price-levels mb-3">
-                        <?php if ($op_type === 'LONG'): ?>
-                            <!-- LONG: TP5→TP1 (profit arriba), ENTRY, SL1, SL2 (loss abajo) -->
-                            <?php for ($i = 4; $i >= 0; $i--): ?>
-                                <?php if (isset($tps[$i]) && $tps[$i] > 0): ?>
-                                    <div class="price-level tp mb-1">
-                                        <span class="badge bg-success">TP<?= $i + 1 ?></span>
-                                        <span class="price"><?= number_format($tps[$i], $decimals) ?></span>
-                                    </div>
-                                <?php endif; ?>
-                            <?php endfor; ?>
-
-                            <div class="price-level entry my-2">
-                                <span class="badge bg-primary">ENTRY</span>
-                                <span class="price fw-bold"><?= number_format($entry, $decimals) ?></span>
-                            </div>
-
-                            <?php if ($sl1 > 0): ?>
-                                <div class="price-level sl mb-1">
-                                    <span class="badge bg-danger">SL</span>
-                                    <span class="price"><?= number_format($sl1, $decimals) ?></span>
-                                </div>
-                            <?php endif; ?>
-                            <?php if ($sl2 > 0): ?>
-                                <div class="price-level sl mb-1">
-                                    <span class="badge bg-warning text-dark">SL ref</span>
-                                    <span class="price text-muted"><?= number_format($sl2, $decimals) ?></span>
-                                </div>
-                            <?php endif; ?>
-
-                        <?php else: ?>
-                            <!-- SHORT: SL, SL ref (loss arriba), ENTRY, TP1→TP5 (profit abajo) -->
-                            <?php if ($sl1 > 0): ?>
-                                <div class="price-level sl mb-1">
-                                    <span class="badge bg-danger">SL</span>
-                                    <span class="price"><?= number_format($sl1, $decimals) ?></span>
-                                </div>
-                            <?php endif; ?>
-                            <?php if ($sl2 > 0): ?>
-                                <div class="price-level sl mb-1">
-                                    <span class="badge bg-warning text-dark">SL ref</span>
-                                    <span class="price text-muted"><?= number_format($sl2, $decimals) ?></span>
-                                </div>
-                            <?php endif; ?>
-
-                            <div class="price-level entry my-2">
-                                <span class="badge bg-primary">ENTRY</span>
-                                <span class="price fw-bold"><?= number_format($entry, $decimals) ?></span>
-                            </div>
-
-                            <?php for ($i = 0; $i < count($tps); $i++): ?>
-                                <?php if (isset($tps[$i]) && $tps[$i] > 0): ?>
-                                    <div class="price-level tp mb-1">
-                                        <span class="badge bg-success">TP<?= $i + 1 ?></span>
-                                        <span class="price"><?= number_format($tps[$i], $decimals) ?></span>
-                                    </div>
-                                <?php endif; ?>
-                            <?php endfor; ?>
-                        <?php endif; ?>
+                <?php if ($has_correction): ?>
+                    <!-- Tabs: Corrected + Original -->
+                    <div class="card-body pb-0">
+                        <ul class="nav nav-tabs nav-fill" role="tablist">
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-corrected" type="button">
+                                    <i class="fas fa-exchange-alt me-1"></i>Corrected
+                                </button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-original" type="button">
+                                    <i class="fas fa-satellite-dish me-1"></i>Original ATVIP
+                                </button>
+                            </li>
+                        </ul>
                     </div>
-
-                    <small class="text-muted">
-                        <i class="fas fa-info-circle"></i> <?= $has_correction ? 'Signal prices corrected for MT5 execution' : 'Signal prices from ATVIP (pre-correction)' ?>
-                    </small>
-                </div>
+                    <div class="tab-content">
+                        <!-- Corrected Prices Tab -->
+                        <div class="tab-pane fade show active p-3" id="tab-corrected">
+                            <?php
+                            $c_entry = $mt_corrected['entry'] ?? 0;
+                            $c_stoploss = $mt_corrected['stoploss'] ?? [];
+                            $c_tps = $mt_corrected['tps'] ?? [];
+                            $c_sl1 = $c_stoploss[0] ?? 0;
+                            $c_sl2 = $c_stoploss[1] ?? 0;
+                            ?>
+                            <?= $this->load->view('my_trading/_price_levels', [
+                                'op_type' => $op_type,
+                                'entry' => $c_entry,
+                                'sl1' => $c_sl1,
+                                'sl2' => $c_sl2,
+                                'tps' => $c_tps,
+                                'decimals' => $decimals
+                            ], true) ?>
+                            <small class="text-muted">
+                                <i class="fas fa-info-circle"></i> Prices corrected for MT5 CFD execution
+                            </small>
+                        </div>
+                        <!-- Original ATVIP Tab -->
+                        <div class="tab-pane fade p-3" id="tab-original">
+                            <?php if ($original_data): ?>
+                                <?php
+                                $o_entry = $original_data['entry'] ?? 0;
+                                $o_stoploss = $original_data['stoploss'] ?? [];
+                                $o_tps = $original_data['tps'] ?? [];
+                                $o_sl1 = $o_stoploss[0] ?? 0;
+                                $o_sl2 = $o_stoploss[1] ?? 0;
+                                ?>
+                                <?= $this->load->view('my_trading/_price_levels', [
+                                    'op_type' => $op_type,
+                                    'entry' => $o_entry,
+                                    'sl1' => $o_sl1,
+                                    'sl2' => $o_sl2,
+                                    'tps' => $o_tps,
+                                    'decimals' => $decimals
+                                ], true) ?>
+                                <small class="text-muted">
+                                    <i class="fas fa-info-circle"></i> Original prices from ATVIP signal (pre-correction)
+                                </small>
+                            <?php else: ?>
+                                <p class="text-muted mb-0"><em>No original signal data available</em></p>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                <?php else: ?>
+                    <!-- No correction: single view -->
+                    <div class="card-body">
+                        <?php
+                        $entry = $original_data['entry'] ?? 0;
+                        $stoploss = $original_data['stoploss'] ?? [];
+                        $tps = $original_data['tps'] ?? [];
+                        $sl1 = $stoploss[0] ?? 0;
+                        $sl2 = $stoploss[1] ?? 0;
+                        ?>
+                        <?= $this->load->view('my_trading/_price_levels', [
+                            'op_type' => $op_type,
+                            'entry' => $entry,
+                            'sl1' => $sl1,
+                            'sl2' => $sl2,
+                            'tps' => $tps,
+                            'decimals' => $decimals
+                        ], true) ?>
+                        <small class="text-muted">
+                            <i class="fas fa-info-circle"></i> Signal prices from ATVIP (no correction applied)
+                        </small>
+                    </div>
+                <?php endif; ?>
             </div>
         <?php endif; ?>
 
         <!-- Execution Data Card -->
         <?php
         $exec_data = !empty($signal->execution_data) ? json_decode($signal->execution_data, true) : null;
+        $is_pending = ($signal->status === 'pending');
+        $order_type = $signal->order_type ?: ($exec_data['order_type'] ?? 'N/A');
+        $is_pending_order = (strpos($order_type, 'LIMIT') !== false || strpos($order_type, 'STOP') !== false);
         ?>
-        <?php if ($exec_data): ?>
+        <?php if ($exec_data || $signal->order_type): ?>
             <?php
-            $is_pending = ($signal->status === 'pending');
-            $order_type = $exec_data['order_type'] ?? 'N/A';
-            $is_pending_order = (strpos($order_type, 'LIMIT') !== false || strpos($order_type, 'STOP') !== false);
             $header_class = $is_pending ? 'bg-warning text-dark' : 'bg-success text-white';
             $header_icon = $is_pending ? 'fas fa-clock' : 'fas fa-check-circle';
             $header_text = $is_pending ? 'Pending Order' : 'Execution Data (Real)';
@@ -400,20 +412,16 @@ $op_type = strtoupper($signal->op_type ?? '');
                                 <?php endif; ?>
                             </td>
                         </tr>
-                        <?php if (!$is_pending && !empty($exec_data['real_entry_price'])): ?>
+                        <?php if (!$is_pending && $signal->real_entry_price > 0): ?>
                             <tr>
                                 <th>Real Entry</th>
-                                <td><strong><?= number_format($exec_data['real_entry_price'], $decimals) ?></strong></td>
+                                <td><strong><?= number_format($signal->real_entry_price, $decimals) ?></strong></td>
                             </tr>
                         <?php else: ?>
                             <tr>
                                 <th>Target Entry</th>
                                 <td>
-                                    <?php
-                                    // Mostrar precio de entrada planificado desde signal_data
-                                    $target_entry = $signal_data['entry'] ?? $exec_data['real_entry_price'] ?? 0;
-                                    ?>
-                                    <span class="text-muted"><?= number_format($target_entry, $decimals) ?></span>
+                                    <span class="text-muted"><?= number_format($signal_data['entry'] ?? 0, $decimals) ?></span>
                                     <?php if ($is_pending): ?>
                                         <small class="text-muted ms-1">(waiting)</small>
                                     <?php endif; ?>
@@ -424,20 +432,15 @@ $op_type = strtoupper($signal->op_type ?? '');
                             <th><?= $is_pending ? 'Planned Stop Loss' : 'Real Stop Loss' ?></th>
                             <td>
                                 <?php
-                                // Para pending orders, usar mt_corrected_data o signal_data como fallback
-                                $display_sl = $exec_data['real_stop_loss'] ?? 0;
-                                if ($is_pending && $display_sl == 0) {
-                                    $corrected_data = !empty($signal->mt_corrected_data) ? json_decode($signal->mt_corrected_data, true) : null;
-                                    $exec_signal_data = !empty($signal->mt_execution_data) ? json_decode($signal->mt_execution_data, true) : null;
-                                    $fallback_data = $corrected_data ?: $exec_signal_data;
-                                    if ($fallback_data && isset($fallback_data['stoploss'])) {
-                                        $display_sl = $fallback_data['stoploss'][0] ?? 0;
-                                    }
+                                $display_sl = $signal->real_stop_loss ?: 0;
+                                if ($display_sl == 0 && $signal_data) {
+                                    $sl_arr = $signal_data['stoploss'] ?? [];
+                                    $display_sl = $sl_arr[0] ?? 0;
                                 }
                                 ?>
                                 <?= number_format($display_sl, $decimals) ?>
                                 <?php
-                                $is_breakeven = (!$is_pending && $signal->real_stop_loss == $signal->real_entry_price && $signal->real_entry_price > 0);
+                                $is_breakeven = (!$is_pending && $signal->real_stop_loss > 0 && $signal->real_stop_loss == $signal->real_entry_price);
                                 if ($is_breakeven):
                                 ?>
                                     <span class="badge bg-success ms-2">
@@ -448,11 +451,11 @@ $op_type = strtoupper($signal->op_type ?? '');
                         </tr>
                         <tr>
                             <th><?= $is_pending ? 'Planned Volume' : 'Real Volume' ?></th>
-                            <td><?= number_format($exec_data['real_volume'] ?? 0, 2) ?> lots</td>
+                            <td><?= number_format($signal->real_volume ?: 0, 2) ?> lots</td>
                         </tr>
                         <tr>
                             <th>Trade ID</th>
-                            <td><code><?= $exec_data['trade_id'] ?? 'N/A' ?></code></td>
+                            <td><code><?= $signal->trade_id ?: 'N/A' ?></code></td>
                         </tr>
                         <?php if (isset($exec_data['execution_time'])): ?>
                             <tr>

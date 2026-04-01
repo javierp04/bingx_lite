@@ -229,6 +229,14 @@ class Telegram_signals_model extends CI_Model
             if (isset($progress_data['remaining_volume']) && $progress_data['remaining_volume'] > 0) {
                 $update_data['real_volume'] = $progress_data['remaining_volume'];
             }
+            // Guardar campos adicionales de ejecución real
+            if (isset($progress_data['real_stop_loss'])) {
+                $update_data['real_stop_loss'] = $progress_data['real_stop_loss'];
+            }
+            if (isset($progress_data['trade_id'])) {
+                $update_data['trade_id'] = $progress_data['trade_id'];
+            }
+            $update_data['current_level'] = 0;
         }
 
         // Actualizar nivel actual alcanzado
@@ -351,8 +359,14 @@ class Telegram_signals_model extends CI_Model
             $close_data['execution_time_local'] = $this->convert_utc_to_local($close_data['execution_time']);
         }
 
-        // Mantener execution_data actualizada
-        $update_data['execution_data'] = json_encode($close_data);
+        // Mergear con execution_data existente en lugar de sobreescribir
+        $existing_data = $this->get_existing_execution_data($user_signal_id);
+        if ($existing_data) {
+            $merged_data = array_merge($existing_data, $close_data);
+        } else {
+            $merged_data = $close_data;
+        }
+        $update_data['execution_data'] = json_encode($merged_data);
 
         $this->db->where('id', $user_signal_id);
         $result = $this->db->update('user_telegram_signals', $update_data);

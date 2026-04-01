@@ -32,15 +32,9 @@
                     <tbody>
                         <?php foreach ($dashboard_signals as $signal): ?>
                             <?php
-                            // Parse analysis data for operation type
-                            $analysis = json_decode($signal->analysis_data, true);
-                            $op_type = $signal->op_type ?: ($analysis['op_type'] ?? 'UNKNOWN');
-
+                            $op_type = $signal->op_type ?: 'UNKNOWN';
                             $decimals = $signal->display_decimals ?? 5;
                             $elapsed_formatted = signal_elapsed($signal->created_at);
-
-                            // Detectar breakeven
-                            $is_breakeven = ($signal->real_stop_loss == $signal->real_entry_price);
 
                             // Row class: activas = normal, closed con ejecución real = blanco, failed/cancelled = gris
                             $row_class = '';
@@ -73,14 +67,13 @@
                                         <?= $ssd['text'] ?>
                                     </span>
 
-                                    <?php
-                                    // NUEVO: BE como indicador separado debajo del status
-                                    $is_breakeven = ($signal->real_stop_loss == $signal->real_entry_price);
-                                    if ($is_breakeven && $signal->status == 'open'):
-                                    ?>
+                                    <?php if ($signal->status == 'open' && $signal->real_stop_loss > 0 && $signal->real_stop_loss == $signal->real_entry_price): ?>
                                         <br><small class="text-success mt-1 d-inline-block">
-                                            <i class="fas fa-shield-alt"></i> Break Even
+                                            <i class="fas fa-shield-alt"></i> BE
                                         </small>
+                                    <?php endif; ?>
+                                    <?php if ($signal->status == 'closed' && $signal->exit_level >= 1): ?>
+                                        <br><small class="text-muted mt-1 d-inline-block">at TP<?= $signal->exit_level ?></small>
                                     <?php endif; ?>
                                 </td>
                                 <td>
@@ -97,8 +90,20 @@
                                                 <small class="text-muted">Final: <?= number_format($signal->last_price, $decimals) ?></small>
                                             </div>
                                         <?php endif; ?>
-                                    <?php elseif (in_array($signal->status, ['closed', 'failed_execution', 'cancelled'])): ?>
-                                        <span class="text-danger"><i class="fas fa-times-circle me-1"></i>Not Executed</span>
+                                    <?php elseif ($signal->status === 'pending'): ?>
+                                        <?php
+                                        $target_data = !empty($signal->mt_corrected_data) ? json_decode($signal->mt_corrected_data, true) : null;
+                                        if (!$target_data) $target_data = !empty($signal->mt_execution_data) ? json_decode($signal->mt_execution_data, true) : null;
+                                        $target_entry = $target_data['entry'] ?? 0;
+                                        ?>
+                                        <?php if ($target_entry > 0): ?>
+                                            <div class="entry-price text-muted">
+                                                <i class="fas fa-crosshairs me-1"></i><?= number_format($target_entry, $decimals) ?>
+                                            </div>
+                                            <small class="text-muted">(target)</small>
+                                        <?php else: ?>
+                                            <span class="text-muted"><i class="fas fa-clock me-1"></i>Waiting...</span>
+                                        <?php endif; ?>
                                     <?php else: ?>
                                         <span class="text-muted"><i class="fas fa-clock me-1"></i>Waiting...</span>
                                     <?php endif; ?>
@@ -168,23 +173,25 @@
 <?php if (!empty($dashboard_signals)): ?>
     <div class="row mt-4">
         <?php
-        $active_signals = array_filter($dashboard_signals, function ($s) {
-            return in_array($s->status, ['pending', 'claimed', 'open']);
-        });
-        $closed_signals = array_filter($dashboard_signals, function ($s) {
-            return $s->status === 'closed';
-        });
-        $profitable_signals = array_filter($dashboard_signals, function ($s) {
-            return $s->gross_pnl > 0;
-        });
-        $total_pnl = array_sum(array_column($dashboard_signals, 'gross_pnl'));
+        $stat_active = 0;
+        $stat_closed = 0;
+        $stat_wins = 0;
+        $total_pnl = 0;
+        foreach ($dashboard_signals as $s) {
+            $total_pnl += $s->gross_pnl;
+            if (in_array($s->status, ['pending', 'claimed', 'open'])) $stat_active++;
+            if ($s->status === 'closed') {
+                $stat_closed++;
+                if ($s->gross_pnl > 0) $stat_wins++;
+            }
+        }
         ?>
         <div class="col-md-3">
             <div class="card border-info">
                 <div class="card-body text-center">
                     <h6 class="text-muted">Active Positions</h6>
                     <h4 class="text-info mb-0">
-                        <?= count($active_signals) ?>
+                        <?= $stat_active ?>
                     </h4>
                     <small class="text-muted">Pending + Open</small>
                 </div>
@@ -195,7 +202,7 @@
                 <div class="card-body text-center">
                     <h6 class="text-muted">Closed Positions</h6>
                     <h4 class="text-secondary mb-0">
-                        <?= count($closed_signals) ?>
+                        <?= $stat_closed ?>
                     </h4>
                     <small class="text-muted">In selected period</small>
                 </div>
@@ -205,13 +212,11 @@
             <div class="card border-success">
                 <div class="card-body text-center">
                     <h6 class="text-muted">Win Rate</h6>
-                    <?php
-                    $win_rate = count($closed_signals) > 0 ? (count($profitable_signals) / count($closed_signals)) * 100 : 0;
-                    ?>
+                    <?php $win_rate = $stat_closed > 0 ? ($stat_wins / $stat_closed) * 100 : 0; ?>
                     <h4 class="text-success mb-0">
                         <?= number_format($win_rate, 1) ?>%
                     </h4>
-                    <small class="text-muted"><?= count($profitable_signals) ?> / <?= count($closed_signals) ?> wins</small>
+                    <small class="text-muted"><?= $stat_wins ?> / <?= $stat_closed ?> wins</small>
                 </div>
             </div>
         </div>
@@ -223,7 +228,7 @@
                     $pnl_class = $total_pnl > 0 ? 'text-success' : ($total_pnl < 0 ? 'text-danger' : 'text-muted');
                     ?>
                     <h4 class="<?= $pnl_class ?> mb-0">
-                        $<?= number_format(abs($total_pnl), 2) ?>
+                        <?= $total_pnl >= 0 ? '+' : '-' ?>$<?= number_format(abs($total_pnl), 2) ?>
                     </h4>
                     <small class="text-muted">Period P&L</small>
                 </div>
