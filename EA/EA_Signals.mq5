@@ -428,6 +428,9 @@ void ReportOpen(int userSignalId, bool isMarketOrder, ENUM_ORDER_TYPE orderType,
         json += "\"real_entry_price\":" + DoubleToString(entryPrice, 5) + ",";
         json += "\"real_stop_loss\":" + DoubleToString(stopLoss, 5) + ",";
         json += "\"real_volume\":" + DoubleToString(volume, 2) + ",";
+    } else {
+        // Para órdenes pending, reportar el volumen planificado
+        json += "\"real_volume\":" + DoubleToString(volume, 2) + ",";
     }
 
     // NUEVO: Agregar signal_data con precios originales (pre-corrección)
@@ -1144,7 +1147,7 @@ void ProcessSignalResponse(string jsonResponse) {
         return;
     }
     
-    if(ExecuteTrade(userSignalId, opType, entry, sl1, sl2, tp1, tp2, tp3, tp4, tp5)) {
+    if(ExecuteTrade(userSignalId, opType, entry, sl1, tp1, tp2, tp3, tp4, tp5, sl2)) {
         currentUserSignalId = userSignalId;
         Log(INFO_LVL, "TRADE", "Trade ejecutado exitosamente");
     }
