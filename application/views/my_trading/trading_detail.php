@@ -423,7 +423,19 @@ $op_type = strtoupper($signal->op_type ?? '');
                         <tr>
                             <th><?= $is_pending ? 'Planned Stop Loss' : 'Real Stop Loss' ?></th>
                             <td>
-                                <?= number_format($exec_data['real_stop_loss'] ?? 0, $decimals) ?>
+                                <?php
+                                // Para pending orders, usar mt_corrected_data o signal_data como fallback
+                                $display_sl = $exec_data['real_stop_loss'] ?? 0;
+                                if ($is_pending && $display_sl == 0) {
+                                    $corrected_data = !empty($signal->mt_corrected_data) ? json_decode($signal->mt_corrected_data, true) : null;
+                                    $exec_signal_data = !empty($signal->mt_execution_data) ? json_decode($signal->mt_execution_data, true) : null;
+                                    $fallback_data = $corrected_data ?: $exec_signal_data;
+                                    if ($fallback_data && isset($fallback_data['stoploss'])) {
+                                        $display_sl = $fallback_data['stoploss'][0] ?? 0;
+                                    }
+                                }
+                                ?>
+                                <?= number_format($display_sl, $decimals) ?>
                                 <?php
                                 $is_breakeven = (!$is_pending && $signal->real_stop_loss == $signal->real_entry_price && $signal->real_entry_price > 0);
                                 if ($is_breakeven):

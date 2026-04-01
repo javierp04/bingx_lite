@@ -503,7 +503,7 @@ void ReportOpen(int userSignalId, bool isMarketOrder, ENUM_ORDER_TYPE orderType,
                 string opType = "", double signalEntry = 0, double signalSL1 = 0, double signalSL2 = 0,
                 double signalTP1 = 0, double signalTP2 = 0, double signalTP3 = 0,
                 double signalTP4 = 0, double signalTP5 = 0,
-                double correctedEntry = 0, double correctedSL = 0,
+                double correctedEntry = 0, double correctedSL = 0, double correctedSL2 = 0,
                 double correctedTP1 = 0, double correctedTP2 = 0, double correctedTP3 = 0,
                 double correctedTP4 = 0, double correctedTP5 = 0) {
 
@@ -538,7 +538,7 @@ void ReportOpen(int userSignalId, bool isMarketOrder, ENUM_ORDER_TYPE orderType,
         string correctedJson = "{";
         correctedJson += "\"op_type\":\"" + opType + "\",";
         correctedJson += "\"entry\":" + DoubleToString(correctedEntry, 5) + ",";
-        correctedJson += "\"stoploss\":[" + DoubleToString(correctedSL, 5) + ",0],";
+        correctedJson += "\"stoploss\":[" + DoubleToString(correctedSL, 5) + "," + DoubleToString(correctedSL2, 5) + "],";
         correctedJson += "\"tps\":[" + DoubleToString(correctedTP1, 5) + "," + DoubleToString(correctedTP2, 5) + ","
                 + DoubleToString(correctedTP3, 5) + "," + DoubleToString(correctedTP4, 5) + ","
                 + DoubleToString(correctedTP5, 5) + "]";
@@ -1117,6 +1117,39 @@ bool ClosePartialPosition(double volume) {
     return false;
 }
 
+// NUEVO: Reportar ejecución completa cuando pending order se convierte en posición
+void ReportPendingExecuted(int userSignalId, ulong ticket, double entryPrice, 
+                           double stopLoss, double volume, string direction,
+                           ENUM_ORDER_TYPE orderType) {
+    
+    string url = BuildAPIUrl("progress", userSignalId);
+    
+    JsonBuilder jb;
+    jb.AddBool("success", true);
+    jb.AddBool("now_open", true);
+    jb.AddString("order_type", EnumToString(orderType));
+    jb.AddString("trade_id", IntegerToString(ticket));
+    jb.AddDouble("real_entry_price", entryPrice);
+    jb.AddDouble("real_stop_loss", stopLoss);
+    jb.AddDouble("real_volume", volume, 2);
+    jb.AddInt("current_level", 0);
+    jb.AddDouble("volume_closed_percent", 0.0, 2);
+    jb.AddDouble("remaining_volume", volume, 2);
+    jb.AddDouble("gross_pnl", 0.0, 2);
+    jb.AddDouble("last_price", entryPrice);
+    jb.AddString("message", "Orden pendiente ejecutada - datos completos");
+    jb.AddString("symbol", TICKER_SYMBOL);
+    jb.AddString("execution_time", TimeToString(TimeGMT(), TIME_DATE|TIME_SECONDS));
+    
+    string json = jb.Build();
+    APIResponse response = SendAPIRequest("POST", url, json);
+    if(response.result == API_SUCCESS) {
+        Log(INFO_LVL, "REPORT", "Pending execution reportada exitosamente con datos completos");
+    } else {
+        Log(ERROR_LVL, "REPORT", StringFormat("Pending execution FALLÓ: %s (HTTP %d)", response.message, response.httpCode));
+    }
+}
+
 // ==========================================
 // PENDING ORDER MONITORING
 // ==========================================
@@ -1134,8 +1167,11 @@ void CheckPendingOrderExecution() {
 
         double currentPrice = GetCurrentPrice(currentTP.direction);
         double pnl = CalculatePNL(currentPrice);
-        ReportProgress(currentTP.signalId, 0, 0.0, currentTP.currentVolume,
-                      currentTP.entry, pnl, "Orden pendiente ejecutada", true);
+        
+        // Reportar ejecución completa de la pending order
+        ReportPendingExecuted(currentTP.signalId, currentTP.ticket, currentTP.entry, 
+                              currentTP.currentSL, currentTP.currentVolume, 
+                              currentTP.direction, position.OrderType());
         return;
     }
 
@@ -1393,7 +1429,7 @@ bool ExecuteTrade(int userSignalId, string opType, double entryPrice, double sto
         ReportOpen(userSignalId, isMarketOrder, orderType, entryPrice, orderStopLoss, calculatedVolume, ticket,
                    opType, originalEntry, originalSL1, originalSL2,
                    originalTP1, originalTP2, originalTP3, originalTP4, originalTP5,
-                   entryPrice, orderStopLoss, tp1, tp2, tp3, tp4, tp5);
+                   entryPrice, orderStopLoss, originalSL2, tp1, tp2, tp3, tp4, tp5);
         return true;
     } else {
         uint retcode = trade.ResultRetcode();
