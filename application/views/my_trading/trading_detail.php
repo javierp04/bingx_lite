@@ -309,29 +309,29 @@ $op_type = strtoupper($signal->op_type ?? '');
 
                             <?php if ($sl1 > 0): ?>
                                 <div class="price-level sl mb-1">
-                                    <span class="badge bg-danger">SL1</span>
+                                    <span class="badge bg-danger">SL</span>
                                     <span class="price"><?= number_format($sl1, $decimals) ?></span>
                                 </div>
                             <?php endif; ?>
                             <?php if ($sl2 > 0): ?>
                                 <div class="price-level sl mb-1">
-                                    <span class="badge bg-warning text-dark">SL2</span>
-                                    <span class="price"><?= number_format($sl2, $decimals) ?></span>
+                                    <span class="badge bg-warning text-dark">SL ref</span>
+                                    <span class="price text-muted"><?= number_format($sl2, $decimals) ?></span>
                                 </div>
                             <?php endif; ?>
 
                         <?php else: ?>
-                            <!-- SHORT: SL1, SL2 (loss arriba), ENTRY, TP1→TP5 (profit abajo) -->
+                            <!-- SHORT: SL, SL ref (loss arriba), ENTRY, TP1→TP5 (profit abajo) -->
                             <?php if ($sl1 > 0): ?>
                                 <div class="price-level sl mb-1">
-                                    <span class="badge bg-danger">SL1</span>
+                                    <span class="badge bg-danger">SL</span>
                                     <span class="price"><?= number_format($sl1, $decimals) ?></span>
                                 </div>
                             <?php endif; ?>
                             <?php if ($sl2 > 0): ?>
                                 <div class="price-level sl mb-1">
-                                    <span class="badge bg-warning text-dark">SL2</span>
-                                    <span class="price"><?= number_format($sl2, $decimals) ?></span>
+                                    <span class="badge bg-warning text-dark">SL ref</span>
+                                    <span class="price text-muted"><?= number_format($sl2, $decimals) ?></span>
                                 </div>
                             <?php endif; ?>
 
