@@ -565,25 +565,25 @@ void ReportProgress(int userSignalId, int level, double volumeClosedPercent,
     string url = BuildAPIUrl("progress", userSignalId);
 
     JsonBuilder jb;
-    jb.AddBool("success", true);
+    // Solo campos dinámicos que cambian durante el trade - no sobreescribir execution_data
     jb.AddInt("current_level", level);
     jb.AddDouble("volume_closed_percent", volumeClosedPercent, 2);
     jb.AddDouble("remaining_volume", remainingVolume, 2);
     jb.AddDouble("gross_pnl", pnl, 2);
     jb.AddDouble("last_price", currentPrice);
+    jb.AddString("message", message);
+    jb.AddString("execution_time", TimeToString(TimeGMT(), TIME_DATE|TIME_SECONDS));
 
+    // Solo para cuando pending order se ejecuta (una sola vez)
     if(nowOpen) {
         jb.AddBool("now_open", true);
         jb.AddDouble("real_entry_price", currentTP.entry);
     }
 
+    // Solo cuando se mueve SL a BE
     if(newStopLoss > 0.0) {
         jb.AddDouble("new_stop_loss", newStopLoss);
     }
-
-    jb.AddString("message", message);
-    jb.AddString("symbol", TICKER_SYMBOL);
-    jb.AddString("execution_time", TimeToString(TimeGMT(), TIME_DATE|TIME_SECONDS));
 
     string json = jb.Build();
     APIResponse response = SendAPIRequest("POST", url, json);

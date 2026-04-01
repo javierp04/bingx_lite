@@ -264,8 +264,14 @@ class Telegram_signals_model extends CI_Model
             $progress_data['execution_time_local'] = $this->convert_utc_to_local($progress_data['execution_time']);
         }
 
-        // Mantener execution_data actualizada
-        $update_data['execution_data'] = json_encode($progress_data);
+        // NUEVO: Mergear con execution_data existente en lugar de sobreescribir
+        $existing_data = $this->get_existing_execution_data($user_signal_id);
+        if ($existing_data) {
+            $merged_data = array_merge($existing_data, $progress_data);
+        } else {
+            $merged_data = $progress_data;
+        }
+        $update_data['execution_data'] = json_encode($merged_data);
 
         $this->db->where('id', $user_signal_id);
         $result = $this->db->update('user_telegram_signals', $update_data);
@@ -873,5 +879,21 @@ class Telegram_signals_model extends CI_Model
         $result = $this->db->get('user_telegram_signals')->row();
 
         return $result ? $result->gross_pnl : 0.00;
+    }
+
+    /**
+     * Obtener execution_data existente para mergear con nuevos datos
+     */
+    private function get_existing_execution_data($user_signal_id)
+    {
+        $this->db->select('execution_data');
+        $this->db->where('id', $user_signal_id);
+        $result = $this->db->get('user_telegram_signals')->row();
+
+        if ($result && !empty($result->execution_data)) {
+            $decoded = json_decode($result->execution_data, true);
+            return is_array($decoded) ? $decoded : null;
+        }
+        return null;
     }
 }
