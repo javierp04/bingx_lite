@@ -502,7 +502,10 @@ void ReportOpen(int userSignalId, bool isMarketOrder, ENUM_ORDER_TYPE orderType,
                 double entryPrice, double stopLoss, double volume, ulong ticket,
                 string opType = "", double signalEntry = 0, double signalSL1 = 0, double signalSL2 = 0,
                 double signalTP1 = 0, double signalTP2 = 0, double signalTP3 = 0,
-                double signalTP4 = 0, double signalTP5 = 0) {
+                double signalTP4 = 0, double signalTP5 = 0,
+                double correctedEntry = 0, double correctedSL = 0,
+                double correctedTP1 = 0, double correctedTP2 = 0, double correctedTP3 = 0,
+                double correctedTP4 = 0, double correctedTP5 = 0) {
 
     string url = BuildAPIUrl("open", userSignalId);
 
@@ -528,6 +531,19 @@ void ReportOpen(int userSignalId, bool isMarketOrder, ENUM_ORDER_TYPE orderType,
                 + DoubleToString(signalTP5, 5) + "]";
         signalJson += "}";
         jb.AddRaw("signal_data", signalJson);
+    }
+
+    // NUEVO: Agregar mt_corrected_data con precios post-corrección (lo que realmente usa MT5)
+    if(correctedEntry > 0 && opType != "") {
+        string correctedJson = "{";
+        correctedJson += "\"op_type\":\"" + opType + "\",";
+        correctedJson += "\"entry\":" + DoubleToString(correctedEntry, 5) + ",";
+        correctedJson += "\"stoploss\":[" + DoubleToString(correctedSL, 5) + ",0],";
+        correctedJson += "\"tps\":[" + DoubleToString(correctedTP1, 5) + "," + DoubleToString(correctedTP2, 5) + ","
+                + DoubleToString(correctedTP3, 5) + "," + DoubleToString(correctedTP4, 5) + ","
+                + DoubleToString(correctedTP5, 5) + "]";
+        correctedJson += "}";
+        jb.AddRaw("mt_corrected_data", correctedJson);
     }
 
     jb.AddString("symbol", TICKER_SYMBOL);
@@ -1376,7 +1392,8 @@ bool ExecuteTrade(int userSignalId, string opType, double entryPrice, double sto
 
         ReportOpen(userSignalId, isMarketOrder, orderType, entryPrice, orderStopLoss, calculatedVolume, ticket,
                    opType, originalEntry, originalSL1, originalSL2,
-                   originalTP1, originalTP2, originalTP3, originalTP4, originalTP5);
+                   originalTP1, originalTP2, originalTP3, originalTP4, originalTP5,
+                   entryPrice, orderStopLoss, tp1, tp2, tp3, tp4, tp5);
         return true;
     } else {
         uint retcode = trade.ResultRetcode();

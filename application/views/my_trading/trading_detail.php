@@ -268,16 +268,18 @@ $op_type = strtoupper($signal->op_type ?? '');
     <div class="col-lg-5">
         <!-- MT5 Signal Data Card -->
         <?php
+        $mt_corrected = !empty($signal->mt_corrected_data) ? json_decode($signal->mt_corrected_data, true) : null;
         $mt_data = !empty($signal->mt_execution_data) ? json_decode($signal->mt_execution_data, true) : null;
         $analysis_data = !empty($signal->analysis_data) ? json_decode($signal->analysis_data, true) : null;
 
-        // Use mt_execution_data if available, fallback to analysis_data
-        $signal_data = $mt_data ?: $analysis_data;
+        // Use mt_corrected_data (post-correction) as primary, fallback to mt_execution_data or analysis_data
+        $signal_data = $mt_corrected ?: $mt_data ?: $analysis_data;
+        $has_correction = !empty($mt_corrected);
         ?>
         <?php if ($signal_data): ?>
             <div class="card mb-3">
                 <div class="card-header bg-info text-white">
-                    <h6 class="mb-0"><i class="fas fa-signal me-1"></i>MT5 Signal Data (Original)</h6>
+                    <h6 class="mb-0"><i class="fas fa-signal me-1"></i>MT5 Signal Data<?= $has_correction ? ' (Corrected)' : '' ?></h6>
                 </div>
                 <div class="card-body">
                     <?php
@@ -352,7 +354,7 @@ $op_type = strtoupper($signal->op_type ?? '');
                     </div>
 
                     <small class="text-muted">
-                        <i class="fas fa-info-circle"></i> Signal prices from ATVIP (pre-correction)
+                        <i class="fas fa-info-circle"></i> <?= $has_correction ? 'Signal prices corrected for MT5 execution' : 'Signal prices from ATVIP (pre-correction)' ?>
                     </small>
                 </div>
             </div>

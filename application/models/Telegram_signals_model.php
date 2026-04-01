@@ -178,6 +178,11 @@ class Telegram_signals_model extends CI_Model
             $update_data['mt_execution_data'] = json_encode($open_data['signal_data']);
         }
 
+        // NUEVO: Guardar mt_corrected_data con precios post-corrección (lo que realmente usa MT5)
+        if (isset($open_data['mt_corrected_data'])) {
+            $update_data['mt_corrected_data'] = json_encode($open_data['mt_corrected_data']);
+        }
+
         // Actualizar execution_data con info completa
         if ($open_data) {
             $update_data['execution_data'] = json_encode($open_data);
@@ -697,10 +702,26 @@ class Telegram_signals_model extends CI_Model
     }
 
     // Backwards-compatible wrappers (deprecated - use get_signal_counts())
-    public function count_signals_total()     { $c = $this->get_signal_counts(); return $c['total']; }
-    public function count_signals_completed() { $c = $this->get_signal_counts(); return $c['completed']; }
-    public function count_signals_failed()    { $c = $this->get_signal_counts(); return $c['failed']; }
-    public function count_signals_last_24h()  { $c = $this->get_signal_counts(); return $c['last_24h']; }
+    public function count_signals_total()
+    {
+        $c = $this->get_signal_counts();
+        return $c['total'];
+    }
+    public function count_signals_completed()
+    {
+        $c = $this->get_signal_counts();
+        return $c['completed'];
+    }
+    public function count_signals_failed()
+    {
+        $c = $this->get_signal_counts();
+        return $c['failed'];
+    }
+    public function count_signals_last_24h()
+    {
+        $c = $this->get_signal_counts();
+        return $c['last_24h'];
+    }
 
     /**
      * Obtener estadísticas de señales por ticker
