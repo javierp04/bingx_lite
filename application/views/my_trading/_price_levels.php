@@ -16,31 +16,25 @@
             <span class="price fw-bold"><?= number_format($entry, $decimals) ?></span>
         </div>
 
-        <?php if ($sl1 > 0): ?>
-            <div class="price-level sl mb-1">
-                <span class="badge bg-danger">SL</span>
-                <span class="price"><?= number_format($sl1, $decimals) ?></span>
-            </div>
-        <?php endif; ?>
         <?php if ($sl2 > 0): ?>
             <div class="price-level sl mb-1">
                 <span class="badge bg-warning text-dark">SL ref</span>
                 <span class="price text-muted"><?= number_format($sl2, $decimals) ?></span>
+            </div>
+        <?php endif; ?>
+        <?php if ($sl1 > 0): ?>
+            <div class="price-level sl mb-1">
+                <span class="badge bg-danger">SL</span>
+                <span class="price"><?= number_format($sl1, $decimals) ?></span>
             </div>
         <?php endif; ?>
 
     <?php else: ?>
-        <!-- SHORT: SL, SL ref (loss arriba), ENTRY, TP1→TP5 (profit abajo) -->
+        <!-- SHORT: SL (loss arriba), ENTRY, SL ref, TP1→TP5 (profit abajo) -->
         <?php if ($sl1 > 0): ?>
             <div class="price-level sl mb-1">
                 <span class="badge bg-danger">SL</span>
                 <span class="price"><?= number_format($sl1, $decimals) ?></span>
-            </div>
-        <?php endif; ?>
-        <?php if ($sl2 > 0): ?>
-            <div class="price-level sl mb-1">
-                <span class="badge bg-warning text-dark">SL ref</span>
-                <span class="price text-muted"><?= number_format($sl2, $decimals) ?></span>
             </div>
         <?php endif; ?>
 
@@ -48,6 +42,13 @@
             <span class="badge bg-primary">ENTRY</span>
             <span class="price fw-bold"><?= number_format($entry, $decimals) ?></span>
         </div>
+
+        <?php if ($sl2 > 0): ?>
+            <div class="price-level sl mb-1">
+                <span class="badge bg-warning text-dark">SL ref</span>
+                <span class="price text-muted"><?= number_format($sl2, $decimals) ?></span>
+            </div>
+        <?php endif; ?>
 
         <?php for ($i = 0; $i < count($tps); $i++): ?>
             <?php if (isset($tps[$i]) && $tps[$i] > 0): ?>
