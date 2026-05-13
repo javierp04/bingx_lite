@@ -14,6 +14,7 @@ class TradeReader extends CI_Controller
         $this->load->model('User_tickers_model');
         $this->load->model('Telegram_signals_model');
         $this->load->model('Log_model');
+        $this->load->helper('signal_analysis');
     }
 
     /**
@@ -253,55 +254,7 @@ class TradeReader extends CI_Controller
 
     private function transformAnalysisData($raw_json)
     {
-        // Verificar estructura básica
-        if (!isset($raw_json['op_type']) || !isset($raw_json['label_prices'])) {
-            return null;
-        }
-
-        $prices = $raw_json['label_prices'];
-        $op_type = strtoupper(trim($raw_json['op_type']));
-        $n = count($prices);
-
-        // Validar mínimo 7 precios (2 SL + 1 Entry + 4+ TPs)
-        if (!is_array($prices) || $n < 7) {
-            return null;
-        }
-
-        // Convertir todos los precios a float
-        $prices = array_map('floatval', $prices);
-
-        // LOS PRECIOS VIENEN ORDENADOS VISUALMENTE DE ARRIBA HACIA ABAJO
-        // Dinámico: siempre 2 SL + 1 Entry, el resto son TPs (5 o más)
-
-        if ($op_type === 'LONG') {
-            // LONG: de arriba a abajo = TPs..., Entry, SL2, SL1
-            $sl1 = $prices[$n - 1];       // último (más abajo)
-            $sl2 = $prices[$n - 2];       // anteúltimo
-            $entry = $prices[$n - 3];     // tercero desde abajo
-            $tps = array_reverse(array_slice($prices, 0, $n - 3));  // todo el resto, invertido (TP1 a TPn)
-
-            return [
-                'op_type' => $op_type,
-                'stoploss' => [$sl1, $sl2],
-                'entry' => $entry,
-                'tps' => $tps
-            ];
-        } elseif ($op_type === 'SHORT') {
-            // SHORT: de arriba a abajo = SL1, SL2, Entry, TPs...
-            $sl1 = $prices[0];            // primero (más arriba)
-            $sl2 = $prices[1];            // segundo
-            $entry = $prices[2];          // tercero desde arriba
-            $tps = array_slice($prices, 3);  // todo el resto (TP1 a TPn)
-
-            return [
-                'op_type' => $op_type,
-                'stoploss' => [$sl1, $sl2],
-                'entry' => $entry,
-                'tps' => $tps
-            ];
-        } else {
-            return null; // op_type inválido
-        }
+        return transform_analysis_data($raw_json);
     }
 
     /**

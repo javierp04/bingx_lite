@@ -183,14 +183,33 @@
                         <?php endfor; ?>
                     <?php endfor; ?>
 
+                    <?php
+                    $this->load->helper('signal_analysis');
+                    $oai_first = isset($openai_responses[0]) ? $openai_responses[0] : null;
+                    $cld_first = isset($claude_responses[0]) ? $claude_responses[0] : null;
+                    $oai_processed = $oai_first ? transform_analysis_data($oai_first) : null;
+                    $cld_processed = $cld_first ? transform_analysis_data($cld_first) : null;
+                    ?>
                     <div class="row mt-3">
                         <div class="col-6">
+                            <div class="small text-muted mb-1"><strong>OpenAI &mdash; Processed JSON</strong> <span class="text-muted">(lo que se guarda si elegís OpenAI)</span></div>
+                            <?php if ($oai_processed): ?>
+                                <pre class="bg-light p-2 rounded small mb-2"><?= json_encode($oai_processed, JSON_PRETTY_PRINT) ?></pre>
+                            <?php else: ?>
+                                <div class="alert alert-warning py-1 px-2 small mb-2">No se pudo transformar (estructura inválida o &lt;7 label_prices)</div>
+                            <?php endif; ?>
                             <details>
                                 <summary class="small text-muted">Raw OpenAI JSON</summary>
                                 <pre class="bg-light p-2 rounded small mt-1 mb-0"><?= json_encode($openai_raw, JSON_PRETTY_PRINT) ?></pre>
                             </details>
                         </div>
                         <div class="col-6">
+                            <div class="small text-muted mb-1"><strong>Claude &mdash; Processed JSON</strong> <span class="text-muted">(lo que se guarda si elegís Claude)</span></div>
+                            <?php if ($cld_processed): ?>
+                                <pre class="bg-light p-2 rounded small mb-2"><?= json_encode($cld_processed, JSON_PRETTY_PRINT) ?></pre>
+                            <?php else: ?>
+                                <div class="alert alert-warning py-1 px-2 small mb-2">No se pudo transformar (estructura inválida o &lt;7 label_prices)</div>
+                            <?php endif; ?>
                             <details>
                                 <summary class="small text-muted">Raw Claude JSON</summary>
                                 <pre class="bg-light p-2 rounded small mt-1 mb-0"><?= json_encode($claude_raw, JSON_PRETTY_PRINT) ?></pre>
@@ -233,7 +252,7 @@
         </div>
         <?php endif; ?>
 
-        <?php if (in_array($signal->status, ['completed', 'pending_review']) && $signal->analysis_data): ?>
+        <?php if ($signal->status === 'completed' && $signal->analysis_data): ?>
         <div class="card mb-4">
             <div class="card-header">
                 <h5 class="mb-0">AI Analysis Result (Final)</h5>

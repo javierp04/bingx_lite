@@ -21,6 +21,7 @@ class Telegram_signals extends CI_Controller
         $this->load->model('Telegram_signals_model');
         $this->load->model('User_tickers_model');
         $this->load->model('Log_model');
+        $this->load->helper('signal_analysis');
     }
 
     public function index()
@@ -153,13 +154,17 @@ class Telegram_signals extends CI_Controller
 
         // Puede ser array de respuestas (retry) o respuesta única — usar la primera
         $decoded = json_decode($raw_field, true);
-        if (isset($decoded[0]) && is_array($decoded[0])) {
-            $raw_data = json_encode($decoded[0]);
-        } else {
-            $raw_data = $raw_field;
+        $raw_response = (isset($decoded[0]) && is_array($decoded[0])) ? $decoded[0] : $decoded;
+
+        // Transformar de raw {op_type, label_prices} al formato procesado {op_type, stoploss[], entry, tps[]}
+        $processed = transform_analysis_data($raw_response);
+        if (!$processed) {
+            $this->session->set_flashdata('error', 'Failed to transform raw analysis (invalid structure or insufficient label_prices)');
+            redirect('telegram_signals/view/' . $id);
+            return;
         }
 
-        $result = $this->Telegram_signals_model->resolve_signal($id, $raw_data, $signal->ticker_symbol);
+        $result = $this->Telegram_signals_model->resolve_signal($id, json_encode($processed), $signal->ticker_symbol);
 
         if ($result) {
             $this->Log_model->add_log([

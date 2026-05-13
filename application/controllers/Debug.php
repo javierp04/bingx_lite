@@ -362,27 +362,10 @@ class Debug extends CI_Controller
         $tp4 = $this->input->post('tp4', true);
         $tp5 = $this->input->post('tp5', true);
         $volume = $this->input->post('volume', true) ?: 1.0;
-        $ai_provider = $this->input->post('ai_provider', true) ?: 'claude';
 
         if (!$ticker || !$op_type || !$entry_price) {
             $this->_send_json_response(false, 'Missing required fields: ticker, operation type, and entry price');
             return;
-        }
-
-        // Validate AI provider
-        if (!in_array($ai_provider, ['openai', 'claude'])) {
-            $ai_provider = 'claude';
-        }
-
-        // Validate API key is configured (note: JSON generator doesn't use AI, but we log it)
-        $validation = $this->_validate_ai_provider($ai_provider);
-        if (!$validation['valid']) {
-            // Warning only - JSON generator doesn't actually call AI
-            $this->Log_model->add_log([
-                'user_id' => $this->session->userdata('user_id'),
-                'action' => 'telegram_debug_warning',
-                'description' => "JSON Generator used with {$ai_provider} but API key not configured: " . $validation['error']
-            ]);
         }
 
         try {
@@ -463,7 +446,7 @@ class Debug extends CI_Controller
                 'user_id' => $this->session->userdata('user_id'),
                 'action' => 'telegram_debug_signal',
                 'description' => "Generated debug Telegram signal for {$ticker} ({$op_type}). " .
-                    "Signal ID: {$telegram_signal_id}, Users affected: {$users_affected}, AI: {$ai_provider}"
+                    "Signal ID: {$telegram_signal_id}, Users affected: {$users_affected}"
             ]);
 
             $this->_send_json_response(
@@ -474,8 +457,7 @@ class Debug extends CI_Controller
                     'telegram_signal_id' => $telegram_signal_id,
                     'users_affected' => $users_affected,
                     'analysis_data' => $analysis_data,
-                    'view_url' => base_url('telegram_signals/view/' . $telegram_signal_id),
-                    'ai_provider' => $ai_provider
+                    'view_url' => base_url('telegram_signals/view/' . $telegram_signal_id)
                 ]
             );
         } catch (Exception $e) {

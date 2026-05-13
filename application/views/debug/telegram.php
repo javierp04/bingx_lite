@@ -33,9 +33,14 @@
             <div class="tab-pane fade show active" id="json-panel">
                 <div class="card">
                     <div class="card-header">
-                        <h5 class="mb-0"><i class="fas fa-magic me-1"></i>Signal Generator</h5>
+                        <h5 class="mb-0"><i class="fas fa-magic me-1"></i>Synthetic Signal Generator</h5>
                     </div>
                     <div class="card-body">
+                        <div class="alert alert-info py-2 small mb-3">
+                            <i class="fas fa-info-circle me-1"></i>
+                            Genera señales sintéticas con SL/TP calculados matemáticamente. No descarga imagen ni usa IA.
+                            Para probar el pipeline completo (download + crop + AI) usá el tab <strong>Webhook</strong>.
+                        </div>
                         <form id="jsonForm">
                             <div class="row g-2 mb-3">
                                 <div class="col-md-3">
@@ -59,16 +64,9 @@
                                     <label class="form-label small mb-1">Entry</label>
                                     <input type="number" class="form-control form-control-sm" id="entry_price" name="entry_price" step="0.00001" placeholder="1.16554" required>
                                 </div>
-                                <div class="col-md-2">
+                                <div class="col-md-3">
                                     <label class="form-label small mb-1">Diff</label>
                                     <input type="number" class="form-control form-control-sm" id="diff_points" name="diff_points" step="0.00001" placeholder="0.003" required>
-                                </div>
-                                <div class="col-md-3">
-                                    <label class="form-label small mb-1"><i class="fas fa-robot me-1"></i>AI Provider</label>
-                                    <select class="form-select form-select-sm" id="json_ai_provider" name="ai_provider">
-                                        <option value="openai">OpenAI (GPT-4o-mini)</option>
-                                        <option value="claude" selected>Claude (Sonnet 4.5)</option>
-                                    </select>
                                 </div>
                             </div>
 
@@ -296,16 +294,11 @@ function generateSignal() {
     .then(r => r.json())
     .then(data => {
         if (data.success) {
-            const aiProviderName = data.data.ai_provider === 'claude' ? 'Claude Sonnet 4.5' : 'OpenAI GPT-4o-mini';
-            const aiProviderBadge = data.data.ai_provider === 'claude'
-                ? '<span class="badge bg-primary">Claude</span>'
-                : '<span class="badge bg-success">OpenAI</span>';
-
             document.getElementById('json-results').innerHTML = `
                 <div class="alert alert-success mt-3">
-                    <strong><i class="fas fa-check me-1"></i>Generated!</strong> ${aiProviderBadge}
+                    <strong><i class="fas fa-check me-1"></i>Generated!</strong>
                     <p class="mb-2 small">${data.message}</p>
-                    <p class="mb-2 small"><strong>Signal ID:</strong> ${data.data.telegram_signal_id} | <strong>AI:</strong> ${aiProviderName}</p>
+                    <p class="mb-2 small"><strong>Signal ID:</strong> ${data.data.telegram_signal_id}</p>
                     <a href="${data.data.view_url}" target="_blank" class="btn btn-sm btn-primary">
                         <i class="fas fa-eye me-1"></i>View Signal
                     </a>
