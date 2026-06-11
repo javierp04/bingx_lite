@@ -593,7 +593,7 @@ void ReportClose(int userSignalId, int exitLevel, string closeReason,
 }
 
 // ==========================================
-// CORRECCIÓN DE PRECIOS (logging reducido a DEBUG)
+// CORRECCIÓN DE PRECIOS (resultado y datos clave en INFO, internals en DEBUG)
 // ==========================================
 double CalculatePriceCorrection(string symbol, string &errorMessage) {
     errorMessage = "";
@@ -604,7 +604,7 @@ double CalculatePriceCorrection(string symbol, string &errorMessage) {
     }
 
     string url = BuildAPIUrl("fut_price", 0, symbol);
-    Log(DEBUG_LVL, "PRICE_CORR", "Consultando precio futuro: " + url);
+    Log(INFO_LVL, "PRICE_CORR", "Consultando precio futuro: " + url);
 
     APIResponse response = SendAPIRequest("GET", url);
 
@@ -618,7 +618,7 @@ double CalculatePriceCorrection(string symbol, string &errorMessage) {
     double futurePrice = parser.GetDouble("last_close");
     long epochTime = parser.GetInt("ts_epoch");
 
-    Log(DEBUG_LVL, "PRICE_CORR", StringFormat("Future Price=%.5f, Epoch=%d", futurePrice, epochTime));
+    Log(INFO_LVL, "PRICE_CORR", StringFormat("Future Price=%.5f, Epoch=%d", futurePrice, epochTime));
 
     if(futurePrice <= 0 || epochTime <= 0) {
         errorMessage = StringFormat("Datos inválidos del futuro - Price: %.5f, Epoch: %d", futurePrice, epochTime);
