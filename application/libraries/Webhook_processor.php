@@ -17,7 +17,7 @@ class Webhook_processor
         $this->CI->load->model('Log_model');
 
         // Load BingX API library
-        $this->CI->load->library('BingxApi');
+        $this->CI->load->library('Bingxapi');
     }
 
     public function process_webhook_data($json_data)

@@ -21,7 +21,7 @@ class Debug extends CI_Controller
         }
 
         // Load BingX API library
-        $this->load->library('BingxApi');
+        $this->load->library('Bingxapi');
 
         // Load Webhook processor library
         $this->load->library('Webhook_processor');

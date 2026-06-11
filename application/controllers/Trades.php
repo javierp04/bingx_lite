@@ -194,7 +194,7 @@ class Trades extends CI_Controller
         }
 
         // Load BingX API library
-        $this->load->library('Bingx Api');
+        $this->load->library('Bingxapi');
 
         // Set correct environment
         $this->bingxapi->set_environment($trade->environment);

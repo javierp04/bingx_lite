@@ -70,7 +70,7 @@ http://localhost/bingx_lite/
 
 **Libraries** (`application/libraries/`):
 
-- `BingXApi.php` - BingX exchange integration (spot/futures, production/sandbox environments)
+- `Bingxapi.php` - BingX exchange integration (spot/futures, production/sandbox environments)
 - `Webhook_processor.php` - TradingView signal processing
 - `Mt_signal_processor.php` - MetaTrader signal processing
 
@@ -87,7 +87,7 @@ http://localhost/bingx_lite/
 **TradingView Signal Flow:**
 
 1. TradingView Alert → `Webhook.php` → `Webhook_processor.php`
-2. Executes BingX order via `BingXApi.php`
+2. Executes BingX order via `Bingxapi.php`
 3. Records trade in `trades` table
 
 **MetaTrader Integration:**
@@ -572,7 +572,7 @@ The system supports three trading modules with per-user access control:
 ### BingX API Integration
 
 - Symbol formatting: BingX uses hyphenated format (e.g., `BTC-USDT`) for spot
-- Environment switching: Call `BingxApi::set_environment('production'|'sandbox')` before API calls
+- Environment switching: Call `Bingxapi::set_environment('production'|'sandbox')` before API calls
 - Price caching: Dashboard uses batch price fetching to minimize API calls
 
 ### Route Configuration
