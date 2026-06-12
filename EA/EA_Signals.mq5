@@ -1441,16 +1441,21 @@ bool ApplyPriceCorrection(double &entryPrice, double &stopLoss,
     return true;
 }
 
-// Subfuncion: Validar spread. Retorna false si muy alto.
-bool ValidateSpread(int userSignalId) {
-    int spreadPoints = (int)SymbolInfoInteger(currentSymbol, SYMBOL_SPREAD);
-    if(spreadPoints > MAX_SPREAD) {
-        SymbolSpecs specs = GetSymbolSpecs();
-        Log(ERROR_LVL, "SPREAD", StringFormat("Spread demasiado alto: %d points > %d max | Symbol=%s",
-                spreadPoints, (int)MAX_SPREAD, currentSymbol));
+// Subfuncion: Validar spread como fraccion de T1 (asset-agnostic). Retorna false si muy alto.
+bool ValidateSpread(int userSignalId, double t1) {
+    double spreadReal = SymbolInfoDouble(currentSymbol, SYMBOL_ASK) - SymbolInfoDouble(currentSymbol, SYMBOL_BID);
+    double spreadTol  = C_SPREAD_RATIO * t1;
+    double pctT1      = (t1 > 0) ? (spreadReal / t1 * 100.0) : 0.0;
+
+    // spreadReal <= 0: dato no disponible (algunos brokers reportan 0 un instante) -> no rechazar por 0
+    if(spreadReal > 0 && spreadReal > spreadTol) {
+        Log(ERROR_LVL, "SPREAD", StringFormat("real=%.5f | tol=%.5f (c=%.2f*T1) | %.1f%% T1 -> RECHAZA SPREAD_TOO_HIGH",
+            spreadReal, spreadTol, C_SPREAD_RATIO, pctT1));
         ReportClose(userSignalId, -999, "SPREAD_TOO_HIGH", 0, 0);
         return false;
     }
+    Log(INFO_LVL, "SPREAD", StringFormat("real=%.5f | tol=%.5f (c=%.2f*T1) | %.1f%% T1 -> OK",
+        spreadReal, spreadTol, C_SPREAD_RATIO, pctT1));
     return true;
 }
 
@@ -1514,8 +1519,13 @@ bool ExecuteTrade(int userSignalId, string opType, double entryPrice, double sto
     if(!ApplyPriceCorrection(entryPrice, stopLoss, tp1, tp2, tp3, tp4, tp5, userSignalId, correctionFactor))
         return false;
 
-    // 2. Validar spread
-    if(!ValidateSpread(userSignalId))
+    // 1.5 Escala de la señal: T1 (distancia a TP1) para los gates de entrada/costo.
+    //     R (entry->SL) se sigue usando para el volumen. Ambos con precios ya corregidos.
+    double t1 = MathAbs(entryPrice - tp1);
+    if(t1 <= 0) t1 = MathAbs(entryPrice - stopLoss);   // fallback a R si TP1 degenerado
+
+    // 2. Validar spread (fraccion de T1)
+    if(!ValidateSpread(userSignalId, t1))
         return false;
 
     // 3. Calcular volumen
