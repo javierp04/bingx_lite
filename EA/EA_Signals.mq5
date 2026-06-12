@@ -413,6 +413,7 @@ void AdoptStateOnInit() {
         currentTP.positionID    = position.Identifier();
         currentTP.currentVolume = position.Volume();
         currentTP.currentSL     = position.StopLoss();
+        currentTP.entry         = position.PriceOpen();   // precio REAL de ejecucion (no el intencional de la señal)
         if(currentTP.currentLevel < 0) currentTP.currentLevel = 0;
 
         Log(INFO_LVL, "ADOPT", StringFormat("Posición re-adoptada: SignalID=%d, Ticket=%d, PosID=%d, Vol=%.2f, %s",
