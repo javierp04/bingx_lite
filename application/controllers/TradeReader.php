@@ -472,6 +472,8 @@ class TradeReader extends CI_Controller
     {
         if ($provider === 'claude') {
             $response = $this->call_claude_api($image_base64, $prompt);
+        } elseif ($provider === 'gemini') {
+            $response = $this->call_gemini_api($image_base64, $prompt);
         } else {
             $response = $this->call_openai_api($image_base64, $prompt);
         }
@@ -910,6 +912,55 @@ PROMPT;
         return $this->claude_post_json("https://api.anthropic.com/v1/messages", $apiKey, $payload);
     }
 
+    private function call_gemini_api($image_base64, $prompt)
+    {
+        $apiKey = $this->config->item('gemini_api_key');
+        if (!$apiKey) {
+            return ['error' => 'Gemini API key not configured'];
+        }
+        $model = $this->config->item('gemini_model') ?: 'gemini-2.5-flash';
+
+        // Gemini: imagen como inline_data base64 (sin prefijo data:)
+        $payload = [
+            "contents" => [[
+                "parts" => [
+                    ["text" => $prompt],
+                    ["inline_data" => ["mime_type" => "image/png", "data" => $image_base64]]
+                ]
+            ]],
+            "generationConfig" => ["response_mime_type" => "application/json"]
+        ];
+
+        $url = "https://generativelanguage.googleapis.com/v1beta/models/{$model}:generateContent?key=" . urlencode($apiKey);
+        return $this->gemini_post_json($url, $payload);
+    }
+
+    private function gemini_post_json($url, $payload)
+    {
+        $ch = curl_init($url);
+        $headers = ["Content-Type: application/json"]; // Gemini lleva la API key en la URL
+        curl_setopt_array($ch, [
+            CURLOPT_POST => true,
+            CURLOPT_HTTPHEADER => $headers,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => 120,
+            CURLOPT_POSTFIELDS => json_encode($payload)
+        ]);
+        $raw = curl_exec($ch);
+        if ($raw === false) {
+            $err = curl_error($ch);
+            curl_close($ch);
+            return ['error' => "cURL error: {$err}"];
+        }
+        $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        $json = json_decode($raw, true);
+        if ($code >= 400) {
+            return ['error' => $json ?: $raw, 'status' => $code];
+        }
+        return $json ?: ['error' => 'Respuesta no JSON', 'raw' => $raw];
+    }
+
     private function extract_ai_response($response, $provider)
     {
         if (isset($response['error'])) {
@@ -922,6 +973,11 @@ PROMPT;
             // Claude: response.content[0].text
             if (isset($response['content'][0]['text'])) {
                 $text = $response['content'][0]['text'];
+            }
+        } elseif ($provider === 'gemini') {
+            // Gemini: response.candidates[0].content.parts[0].text
+            if (isset($response['candidates'][0]['content']['parts'][0]['text'])) {
+                $text = $response['candidates'][0]['content']['parts'][0]['text'];
             }
         } else {
             // OpenAI: response.choices[0].message.content
