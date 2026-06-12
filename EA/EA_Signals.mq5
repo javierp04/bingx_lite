@@ -1578,6 +1578,8 @@ bool ValidateSpread(int userSignalId, double t1) {
     }
     Log(INFO_LVL, "SPREAD", StringFormat("real=%.5f | tol=%.5f (c=%.2f*T1) | %.1f%% T1 -> OK",
         spreadReal, spreadTol, C_SPREAD_RATIO, pctT1));
+    currentJournal.spread_real = spreadReal;
+    currentJournal.spread_tol  = spreadTol;
     return true;
 }
 
@@ -1613,6 +1615,12 @@ ENUM_ORDER_TYPE DetermineOrderType(string opType, double entryPrice, double t1, 
     Log(INFO_LVL, "ORDER", StringFormat("price=%.5f | dist=%.5f (%.1f%% T1) | side=%s | k=%.2f tol=%.5f -> %s",
         currentPrice, diff, pctT1, side, k, tol, orderDecision));
 
+    currentJournal.price_signal = currentPrice;
+    currentJournal.dist_entry   = diff;
+    currentJournal.side         = side;
+    currentJournal.k_band       = tol;
+    currentJournal.order_type   = orderDecision;
+
     return orderType;
 }
 
@@ -1642,6 +1650,16 @@ bool ExecuteTrade(int userSignalId, string opType, double entryPrice, double sto
 
     Log(INFO_LVL, "GATES", StringFormat("#%d %s %s | entry=%.5f SL=%.5f TP1=%.5f | R=%.5f T1=%.5f",
         userSignalId, TICKER_SYMBOL, opType, entryPrice, stopLoss, tp1, MathAbs(entryPrice - stopLoss), t1));
+
+    currentJournal.corr_on     = (correctionFactor != 1.0);
+    currentJournal.corr_factor = correctionFactor;
+    currentJournal.entry_raw   = originalEntry;
+    currentJournal.sl_raw      = originalSL1;
+    currentJournal.entry       = entryPrice;
+    currentJournal.sl          = stopLoss;
+    currentJournal.tp1 = tp1; currentJournal.tp2 = tp2; currentJournal.tp3 = tp3; currentJournal.tp4 = tp4; currentJournal.tp5 = tp5;
+    currentJournal.rdist       = MathAbs(entryPrice - stopLoss);
+    currentJournal.t1          = t1;
 
     // 2. Validar spread (fraccion de T1)
     if(!ValidateSpread(userSignalId, t1))
@@ -1680,6 +1698,8 @@ bool ExecuteTrade(int userSignalId, string opType, double entryPrice, double sto
         return false;
     }
     Log(INFO_LVL, "STOPS", StringFormat("broker_min=%.5f | sl_dist=%.5f -> OK", stopsMin, slDistFinal));
+    currentJournal.stops_min = stopsMin;
+    currentJournal.sl_dist   = slDistFinal;
 
     // 6. Ejecutar orden
     bool success = false;
@@ -1693,6 +1713,7 @@ bool ExecuteTrade(int userSignalId, string opType, double entryPrice, double sto
         if(devPoints < 1) devPoints = 1;
         trade.SetDeviationInPoints(devPoints);
         Log(INFO_LVL, "SLIPPAGE", StringFormat("tol=%.5f (m=%.2f*T1) = %d points", slipTol, M_SLIP_RATIO, devPoints));
+        currentJournal.slip_tol = slipTol;
     }
 
     if(isMarketOrder) {
@@ -1713,10 +1734,14 @@ bool ExecuteTrade(int userSignalId, string opType, double entryPrice, double sto
             positionID = position.Identifier();
             double slipReal = MathAbs(realEntryPrice - currentPrice);
             Log(INFO_LVL, "SLIPPAGE", StringFormat("real=%.5f | pedido=%.5f fill=%.5f", slipReal, currentPrice, realEntryPrice));
+            currentJournal.slip_real = slipReal;
             entryPrice = realEntryPrice;
         }
 
         // Setup state (ya con positionID resuelto)
+        currentJournal.real_entry  = entryPrice;
+        currentJournal.real_volume = calculatedVolume;
+
         SetupTPState(userSignalId, opType, entryPrice, stopLoss, calculatedVolume,
                      tp1, tp2, tp3, tp4, tp5, ticket, isMarketOrder, positionID);
 
