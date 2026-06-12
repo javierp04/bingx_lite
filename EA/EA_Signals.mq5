@@ -1499,6 +1499,11 @@ void ProcessSignalResponse(string jsonResponse) {
     Log(INFO_LVL, "SIGNAL", StringFormat("Nueva señal: ID=%d, %s, Entry=%.5f, SL1=%.5f, SL2=%.5f, TPs=[%.5f,%.5f,%.5f,%.5f,%.5f]",
         userSignalId, opType, entry, sl1, sl2, tp1, tp2, tp3, tp4, tp5));
 
+    JournalReset();
+    currentJournal.ts_signal = JournalIsoTime();
+    currentJournal.signal_id = userSignalId;
+    currentJournal.dir       = opType;
+
     if(sl1 <= 0) {
         Log(ERROR_LVL, "SIGNAL", StringFormat("Señal rechazada ID=%d: SL1 inválido", userSignalId));
         ReportClose(userSignalId, -998, "INVALID_STOPLOSS", 0, 0);
