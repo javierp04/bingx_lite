@@ -1459,43 +1459,37 @@ bool ValidateSpread(int userSignalId, double t1) {
     return true;
 }
 
-// Subfuncion: Determinar tipo de orden basado en precio actual vs entry
-ENUM_ORDER_TYPE DetermineOrderType(string opType, double entryPrice, double &currentPrice, string &orderDecision) {
+// Subfuncion: Determinar tipo de orden. Banda market = k*T1, con k distinto por lado:
+//   lado FAVORABLE (STOP): market daria mejor precio que el entry  -> k_stop  (mas ancho)
+//   lado ADVERSO  (LIMIT): market seria chase (peor precio)        -> k_limit (mas angosto)
+ENUM_ORDER_TYPE DetermineOrderType(string opType, double entryPrice, double t1, double &currentPrice, string &orderDecision) {
     currentPrice = (opType == "LONG") ?
                    SymbolInfoDouble(currentSymbol, SYMBOL_ASK) :
                    SymbolInfoDouble(currentSymbol, SYMBOL_BID);
 
-    double point = SymbolInfoDouble(currentSymbol, SYMBOL_POINT);
-    double priceDifference = MathAbs(entryPrice - currentPrice);
-    double differencePoints = priceDifference / point;
+    double diff = MathAbs(entryPrice - currentPrice);
 
-    // Calcular tolerancia
-    double tolerance;
-    string toleranceMode;
-
-    if(PRICE_TOLERANCE_PERCENT > 0.0) {
-        tolerance = entryPrice * (PRICE_TOLERANCE_PERCENT / 100.0);
-        double tolerancePoints = tolerance / point;
-        toleranceMode = StringFormat("%.3f%% (%.1f pts)", PRICE_TOLERANCE_PERCENT, tolerancePoints);
-    } else {
-        tolerance = PRICE_TOLERANCE_POINTS * point;
-        toleranceMode = StringFormat("%d pts", PRICE_TOLERANCE_POINTS);
-    }
+    // Lado favorable = el precio actual esta del lado que daria mejor entrada que el entry de la señal.
+    bool stopSide = (opType == "LONG") ? (currentPrice < entryPrice) : (currentPrice > entryPrice);
+    double k      = stopSide ? K_STOP_RATIO : K_LIMIT_RATIO;
+    double tol    = k * t1;
+    double pctT1  = (t1 > 0) ? (diff / t1 * 100.0) : 0.0;
+    string side   = stopSide ? "FAVORABLE" : "ADVERSO";
 
     ENUM_ORDER_TYPE orderType;
-
-    if(opType == "LONG") {
-        if(priceDifference <= tolerance)     { orderType = ORDER_TYPE_BUY;       orderDecision = "MARKET"; }
-        else if(entryPrice < currentPrice)   { orderType = ORDER_TYPE_BUY_LIMIT; orderDecision = "LIMIT"; }
-        else                                 { orderType = ORDER_TYPE_BUY_STOP;  orderDecision = "STOP"; }
+    if(diff <= tol) {
+        orderType     = (opType == "LONG") ? ORDER_TYPE_BUY : ORDER_TYPE_SELL;
+        orderDecision = "MARKET";
+    } else if(stopSide) {
+        orderType     = (opType == "LONG") ? ORDER_TYPE_BUY_STOP : ORDER_TYPE_SELL_STOP;
+        orderDecision = "STOP";
     } else {
-        if(priceDifference <= tolerance)     { orderType = ORDER_TYPE_SELL;       orderDecision = "MARKET"; }
-        else if(entryPrice > currentPrice)   { orderType = ORDER_TYPE_SELL_LIMIT; orderDecision = "LIMIT"; }
-        else                                 { orderType = ORDER_TYPE_SELL_STOP;  orderDecision = "STOP"; }
+        orderType     = (opType == "LONG") ? ORDER_TYPE_BUY_LIMIT : ORDER_TYPE_SELL_LIMIT;
+        orderDecision = "LIMIT";
     }
 
-    Log(INFO_LVL, "ORDER_DECISION", StringFormat("Actual=%.5f, Entry=%.5f, Diff=%.1f pts, Tolerancia=%s, Decisión=%s",
-        currentPrice, entryPrice, differencePoints, toleranceMode, orderDecision));
+    Log(INFO_LVL, "ORDER", StringFormat("price=%.5f | dist=%.5f (%.1f%% T1) | side=%s | k=%.2f tol=%.5f -> %s",
+        currentPrice, diff, pctT1, side, k, tol, orderDecision));
 
     return orderType;
 }
@@ -1541,7 +1535,7 @@ bool ExecuteTrade(int userSignalId, string opType, double entryPrice, double sto
     // 4. Determinar tipo de orden
     double currentPrice;
     string orderDecision;
-    ENUM_ORDER_TYPE orderType = DetermineOrderType(opType, entryPrice, currentPrice, orderDecision);
+    ENUM_ORDER_TYPE orderType = DetermineOrderType(opType, entryPrice, t1, currentPrice, orderDecision);
 
     // 5. Configurar SL
     double slDistance = MathAbs(entryPrice - stopLoss);
