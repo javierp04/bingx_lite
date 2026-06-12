@@ -152,6 +152,9 @@
                                         <li><a class="dropdown-item" href="<?= base_url('available_tickers') ?>">
                                                 <i class="fas fa-tags me-2"></i>Manage Tickers
                                             </a></li>
+                                        <li><a class="dropdown-item" href="<?= base_url('settings') ?>">
+                                                <i class="fas fa-robot me-2"></i>AI Settings
+                                            </a></li>
                                     <?php endif; ?>
                                     <?php if (has_module('metatrader')): ?>
                                         <li>

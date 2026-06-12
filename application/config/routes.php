@@ -32,6 +32,10 @@ $route['strategies/edit/(:num)'] = 'Strategies/edit/$1';
 $route['strategies/delete/(:num)'] = 'Strategies/delete/$1';
 $route['strategies/view_image/(:num)'] = 'Strategies/view_image/$1';
 
+// Settings routes (Admin only)
+$route['settings'] = 'Settings';
+$route['settings/save'] = 'Settings/save';
+
 // Trades routes
 $route['trades'] = 'Trades';
 $route['trades/close/(:num)'] = 'Trades/close/$1';
