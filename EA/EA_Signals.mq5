@@ -992,6 +992,7 @@ bool ClosePositionByCode(string reason) {
         ReportClose(currentTP.signalId, exitLevel, reason, currentPrice, finalPnl);
         Log(INFO_LVL, "CODE_CLOSE", "Posición cerrada por código: " + reason);
         InitTPState();
+        ClearState();
         return true;
     }
     return false;
@@ -1056,6 +1057,7 @@ void OnTick() {
 
         ReportClose(currentTP.signalId, closeResult.exitLevel, closeResult.reason, reportPrice, finalPnl);
         InitTPState();
+        ClearState();
         return;
     }
 
@@ -1124,6 +1126,7 @@ bool CheckAndExecuteTP(int tpLevel, double tpPrice, double tpPercent, double cur
         }
 
         currentTP.levelFlags[tpLevel] = true;
+        SaveState();
         return true;
     }
     return false;
@@ -1150,6 +1153,7 @@ void SetBreakeven() {
         if(trade.PositionModify(position.Ticket(), newSL, position.TakeProfit())) {
             currentTP.slMovedToBE = true;
             currentTP.currentSL = newSL;
+            SaveState();
 
             Log(INFO_LVL, "BE", StringFormat("BE activado en TP%d: SL %.5f → %.5f, Vol restante=%.2f",
                 currentTP.currentLevel, currentTP.originalSL, newSL, currentTP.currentVolume));
@@ -1189,9 +1193,12 @@ bool ClosePartialPosition(double volume) {
         Log(INFO_LVL, "PARTIAL_CLOSE", StringFormat("TP%d: Cerrado %.2f lots (%.1f%%) a %.5f, PNL=%.2f, Restante=%.2f",
             currentTP.currentLevel, volume, (volume/currentTP.originalVolume)*100, currentPrice, closedPnl, currentTP.currentVolume));
 
+        SaveState();
+
         if(currentTP.currentVolume <= specs.minVolume) {
             ReportClose(currentTP.signalId, currentTP.currentLevel, "CLOSED_COMPLETE", currentPrice, 0.0);
             InitTPState();
+            ClearState();
         }
         return true;
     }
@@ -1249,6 +1256,7 @@ void CheckPendingOrderExecution() {
         // Reportar ejecución completa de la pending order
         ReportPendingExecuted(currentTP.signalId, currentTP.ticket, currentTP.entry, 
                               currentTP.currentSL, currentTP.currentVolume);
+        SaveState();
         return;
     }
 
@@ -1256,6 +1264,7 @@ void CheckPendingOrderExecution() {
         Log(WARNING_LVL, "PENDING", "Orden pendiente cancelada");
         ReportClose(currentTP.signalId, -999, "ORDER_CANCELLED", 0, 0);
         InitTPState();
+        ClearState();
     }
 }
 
@@ -1555,4 +1564,6 @@ void SetupTPState(int signalId, string direction, double entry, double originalS
 
     Log(INFO_LVL, "SETUP", StringFormat("TP State: SignalID=%d, Ticket=%d, PosID=%d, Active=%s",
         signalId, ticket, currentTP.positionID, (isMarketOrder ? "YES" : "PENDING")));
+
+    SaveState();
 }
