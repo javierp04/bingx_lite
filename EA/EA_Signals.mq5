@@ -294,6 +294,110 @@ string TruncLog(string data, int maxLen = 500) {
 }
 
 // ==========================================
+// STATE STORE (PERSISTENCIA EN DISCO)
+// ==========================================
+// Persiste currentTP a MQL5/Files para sobrevivir reinicios del EA/terminal.
+// Formato: una sola linea JSON. Se reusa JsonBuilder (write) y SimpleJSONParser (read).
+
+string StateFilePath() {
+    return "bxlite_state_" + IntegerToString(USER_ID) + "_" + TICKER_SYMBOL + ".json";
+}
+
+void SaveState() {
+    JsonBuilder jb;
+    jb.AddBool("isActive", currentTP.isActive);
+    jb.AddInt("signalId", currentTP.signalId);
+    jb.AddString("ticket", IntegerToString((long)currentTP.ticket));
+    jb.AddString("positionID", IntegerToString((long)currentTP.positionID));
+    jb.AddString("direction", currentTP.direction);
+    jb.AddDouble("originalVolume", currentTP.originalVolume, 2);
+    jb.AddDouble("currentVolume", currentTP.currentVolume, 2);
+    jb.AddDouble("totalClosedVolume", currentTP.totalClosedVolume, 2);
+    jb.AddDouble("closedPercent", currentTP.closedPercent, 2);
+    jb.AddInt("currentLevel", currentTP.currentLevel);
+    jb.AddBool("slMovedToBE", currentTP.slMovedToBE);
+    jb.AddDouble("entry", currentTP.entry, 5);
+    jb.AddDouble("originalSL", currentTP.originalSL, 5);
+    jb.AddDouble("currentSL", currentTP.currentSL, 5);
+    jb.AddDouble("tp1", currentTP.tp1, 5);
+    jb.AddDouble("tp2", currentTP.tp2, 5);
+    jb.AddDouble("tp3", currentTP.tp3, 5);
+    jb.AddDouble("tp4", currentTP.tp4, 5);
+    jb.AddDouble("tp5", currentTP.tp5, 5);
+    // levelFlags como array crudo [0/1 x6]
+    string flags = "[";
+    for(int i = 0; i < 6; i++) {
+        if(i > 0) flags += ",";
+        flags += (currentTP.levelFlags[i] ? "1" : "0");
+    }
+    flags += "]";
+    jb.AddRaw("levelFlags", flags);
+
+    string json = jb.Build();
+
+    int h = FileOpen(StateFilePath(), FILE_WRITE|FILE_TXT|FILE_ANSI);
+    if(h == INVALID_HANDLE) {
+        Log(ERROR_LVL, "STATE", "No se pudo abrir state file para escritura: " + IntegerToString(GetLastError()));
+        return;
+    }
+    FileWriteString(h, json);
+    FileClose(h);
+    Log(DEBUG_LVL, "STATE", "Estado persistido: " + TruncLog(json));
+}
+
+// Devuelve true si habia un estado con trade (activo o pendiente) cargado.
+bool LoadState() {
+    if(!FileIsExist(StateFilePath())) return false;
+
+    int h = FileOpen(StateFilePath(), FILE_READ|FILE_TXT|FILE_ANSI);
+    if(h == INVALID_HANDLE) {
+        Log(ERROR_LVL, "STATE", "No se pudo abrir state file para lectura: " + IntegerToString(GetLastError()));
+        return false;
+    }
+    string json = "";
+    while(!FileIsEnding(h)) {
+        json += FileReadString(h);
+    }
+    FileClose(h);
+
+    if(StringLen(json) < 2) return false;
+
+    SimpleJSONParser parser(json);
+    currentTP.isActive          = (StringFind(json, "\"isActive\":true") > -1);
+    currentTP.signalId          = parser.GetInt("signalId", 0);
+    currentTP.ticket            = (ulong)StringToInteger(parser.GetString("ticket", "0"));
+    currentTP.positionID        = (ulong)StringToInteger(parser.GetString("positionID", "0"));
+    currentTP.direction         = parser.GetString("direction", "");
+    currentTP.originalVolume    = parser.GetDouble("originalVolume", 0);
+    currentTP.currentVolume     = parser.GetDouble("currentVolume", 0);
+    currentTP.totalClosedVolume = parser.GetDouble("totalClosedVolume", 0);
+    currentTP.closedPercent     = parser.GetDouble("closedPercent", 0);
+    currentTP.currentLevel      = parser.GetInt("currentLevel", -2);
+    currentTP.slMovedToBE       = (StringFind(json, "\"slMovedToBE\":true") > -1);
+    currentTP.entry             = parser.GetDouble("entry", 0);
+    currentTP.originalSL        = parser.GetDouble("originalSL", 0);
+    currentTP.currentSL         = parser.GetDouble("currentSL", 0);
+    currentTP.tp1               = parser.GetDouble("tp1", 0);
+    currentTP.tp2               = parser.GetDouble("tp2", 0);
+    currentTP.tp3               = parser.GetDouble("tp3", 0);
+    currentTP.tp4               = parser.GetDouble("tp4", 0);
+    currentTP.tp5               = parser.GetDouble("tp5", 0);
+    for(int i = 0; i < 6; i++) {
+        currentTP.levelFlags[i] = (parser.GetArrayDouble("levelFlags", i, 0) >= 0.5);
+    }
+
+    // signalId>0 indica que habia un trade trackeado (activo o pendiente)
+    return (currentTP.signalId > 0);
+}
+
+void ClearState() {
+    if(FileIsExist(StateFilePath())) {
+        FileDelete(StateFilePath());
+        Log(DEBUG_LVL, "STATE", "State file eliminado");
+    }
+}
+
+// ==========================================
 // INICIALIZACIÓN
 // ==========================================
 int OnInit() {
