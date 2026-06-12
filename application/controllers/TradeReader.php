@@ -893,7 +893,7 @@ PROMPT;
         $data_url = "data:image/png;base64,{$image_base64}";
 
         $payload = [
-            "model" => "gpt-4o",
+            "model" => ($this->config->item('openai_model') ?: "gpt-4o"),
             "messages" => [[
                 "role" => "user",
                 "content" => [
@@ -915,7 +915,7 @@ PROMPT;
 
         // Claude espera la imagen SIN el prefijo data:image
         $payload = [
-            "model" => "claude-sonnet-4-5-20250929",
+            "model" => ($this->config->item('claude_model') ?: "claude-sonnet-4-6"),
             "max_tokens" => 4096,
             "messages" => [[
                 "role" => "user",
