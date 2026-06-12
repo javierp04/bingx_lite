@@ -26,6 +26,12 @@ input double    MAX_SPREAD = 500.0;
 input int       PRICE_TOLERANCE_POINTS = 50;
 input double    PRICE_TOLERANCE_PERCENT = 0.0;  // 0.0 = usar points, > 0 = usar porcentaje (prioridad)
 
+input group "=== Gates asset-agnostic (anclados a TP1) ==="
+input double    K_STOP_RATIO   = 0.30;   // banda market lado favorable (STOP)
+input double    K_LIMIT_RATIO  = 0.15;   // banda market lado adverso (LIMIT) — debe ser > M_SLIP_RATIO
+input double    M_SLIP_RATIO   = 0.05;   // tope de slippage (deviation) — debe ser < K_LIMIT_RATIO
+input double    C_SPREAD_RATIO = 0.40;   // rechaza si spread > C_SPREAD_RATIO * T1
+
 input group "=== Price Correction ==="
 input bool      ENABLE_PRICE_CORRECTION = true;
 input double    MAX_PRICE_DEVIATION = 5.0;
