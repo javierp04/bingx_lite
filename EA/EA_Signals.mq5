@@ -1518,6 +1518,9 @@ bool ExecuteTrade(int userSignalId, string opType, double entryPrice, double sto
     double t1 = MathAbs(entryPrice - tp1);
     if(t1 <= 0) t1 = MathAbs(entryPrice - stopLoss);   // fallback a R si TP1 degenerado
 
+    Log(INFO_LVL, "GATES", StringFormat("#%d %s %s | entry=%.5f SL=%.5f TP1=%.5f | R=%.5f T1=%.5f",
+        userSignalId, TICKER_SYMBOL, opType, entryPrice, stopLoss, tp1, MathAbs(entryPrice - stopLoss), t1));
+
     // 2. Validar spread (fraccion de T1)
     if(!ValidateSpread(userSignalId, t1))
         return false;
@@ -1586,9 +1589,8 @@ bool ExecuteTrade(int userSignalId, string opType, double entryPrice, double sto
         if(isMarketOrder && FindOwnPosition()) {
             realEntryPrice = position.PriceOpen();
             positionID = position.Identifier();
-            if(realEntryPrice != entryPrice) {
-                Log(INFO_LVL, "REAL_ENTRY", StringFormat("Precio real: %.5f (vs señal: %.5f)", realEntryPrice, entryPrice));
-            }
+            double slipReal = MathAbs(realEntryPrice - currentPrice);
+            Log(INFO_LVL, "SLIPPAGE", StringFormat("real=%.5f | pedido=%.5f fill=%.5f", slipReal, currentPrice, realEntryPrice));
             entryPrice = realEntryPrice;
         }
 
