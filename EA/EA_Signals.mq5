@@ -1,6 +1,6 @@
 #property copyright "TelegramSignals"
-#property version   "10.00"
-#property description "Reliability (state persist + restart adoption) + gates asset-agnostic anclados a TP1"
+#property version   "10.10"
+#property description "Reliability + gates asset-agnostic (TP1) + CSV trade journal (dataset + live)"
 
 // LIBRERÍAS
 #include <Trade\Trade.mqh>
@@ -674,7 +674,7 @@ bool ValidateSymbol() {
 }
 
 void LogInitialization() {
-   Print("EA Signals v10.00 | User: ", USER_ID, " | Symbol: ", currentSymbol, " | BE Level: ", BE_LEVEL);
+   Print("EA Signals v10.10 | User: ", USER_ID, " | Symbol: ", currentSymbol, " | BE Level: ", BE_LEVEL);
    Log(INFO_LVL, "INIT", "Stop management: " + (ENABLE_CODE_STOP ? "CODE" : "MT5"));
 }
 
