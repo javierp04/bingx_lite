@@ -1,6 +1,6 @@
 #property copyright "TelegramSignals"
-#property version   "9.00"
-#property description "EA refactorizado - helpers, JsonBuilder, deteccion de cierre manual mejorada"
+#property version   "10.00"
+#property description "Reliability (state persist + restart adoption) + gates asset-agnostic anclados a TP1"
 
 // LIBRERÍAS
 #include <Trade\Trade.mqh>
@@ -550,7 +550,7 @@ bool ValidateSymbol() {
 }
 
 void LogInitialization() {
-   Print("EA Signals v9.00 | User: ", USER_ID, " | Symbol: ", currentSymbol, " | BE Level: ", BE_LEVEL);
+   Print("EA Signals v10.00 | User: ", USER_ID, " | Symbol: ", currentSymbol, " | BE Level: ", BE_LEVEL);
    Log(INFO_LVL, "INIT", "Stop management: " + (ENABLE_CODE_STOP ? "CODE" : "MT5"));
 }
 
