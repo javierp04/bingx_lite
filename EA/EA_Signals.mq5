@@ -397,6 +397,56 @@ void ClearState() {
     }
 }
 
+// Reconcilia el estado persistido contra la realidad de MT5 al arrancar.
+void AdoptStateOnInit() {
+    if(!LoadState()) {
+        ClearState();   // archivo vacio/corrupto: limpiar
+        return;
+    }
+
+    // Caso 1: hay una posicion viva nuestra (magic+symbol) -> re-adoptar
+    if(FindOwnPosition()) {
+        bool wasPending = !currentTP.isActive;   // estado guardado pendiente + ahora hay posicion => se ejecuto mientras estabamos caidos
+
+        currentTP.isActive      = true;
+        currentTP.ticket        = position.Ticket();
+        currentTP.positionID    = position.Identifier();
+        currentTP.currentVolume = position.Volume();
+        currentTP.currentSL     = position.StopLoss();
+        if(currentTP.currentLevel < 0) currentTP.currentLevel = 0;
+
+        Log(INFO_LVL, "ADOPT", StringFormat("Posición re-adoptada: SignalID=%d, Ticket=%d, PosID=%d, Vol=%.2f, %s",
+            currentTP.signalId, currentTP.ticket, currentTP.positionID, currentTP.currentVolume,
+            (wasPending ? "(pendiente ejecutada mientras EA caido)" : "")));
+
+        // Si la pendiente se ejecuto mientras el EA estaba caido, avisar ahora a la API
+        if(wasPending) {
+            ReportPendingExecuted(currentTP.signalId, currentTP.ticket, currentTP.entry,
+                                  currentTP.currentSL, currentTP.currentVolume);
+        }
+        SaveState();
+        return;
+    }
+
+    // Caso 2: la orden pendiente sigue viva (todavia no se ejecuto) -> seguir esperando
+    if(!currentTP.isActive && currentTP.ticket > 0 && OrderSelect(currentTP.ticket)) {
+        Log(INFO_LVL, "ADOPT", StringFormat("Orden pendiente aún viva re-adoptada: SignalID=%d, Ticket=%d",
+            currentTP.signalId, currentTP.ticket));
+        SaveState();
+        return;
+    }
+
+    // Caso 3: no hay posicion ni pendiente -> cerro/cancelo mientras estabamos caidos
+    Log(WARNING_LVL, "ADOPT", StringFormat("Trade SignalID=%d ya no existe en MT5: reconciliando cierre desde historial",
+        currentTP.signalId));
+    HistoryCloseResult closeResult = GetCloseReasonFromHistory(currentTP.positionID);
+    double reportPrice = closeResult.hasDealData ? closeResult.dealPrice : 0.0;
+    double finalPnl    = closeResult.hasDealData ? closeResult.dealProfit : 0.0;
+    ReportClose(currentTP.signalId, closeResult.exitLevel, closeResult.reason, reportPrice, finalPnl);
+    InitTPState();
+    ClearState();
+}
+
 // ==========================================
 // INICIALIZACIÓN
 // ==========================================
@@ -416,9 +466,15 @@ int OnInit() {
     trade.SetExpertMagicNumber(MAGIC_NUMBER);
     trade.SetDeviationInPoints(50);
 
+    AdoptStateOnInit();   // reconciliar estado persistido contra MT5 (sobrevive reinicios)
+
     LogInitialization();
     EventSetTimer(POLL_INTERVAL);
-    CheckForSignals();
+
+    // Solo pollear señales nuevas si NO quedamos con un trade adoptado
+    if(!currentTP.isActive && currentTP.ticket == 0) {
+        CheckForSignals();
+    }
 
     return INIT_SUCCEEDED;
 }
