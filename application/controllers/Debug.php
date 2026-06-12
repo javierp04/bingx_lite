@@ -528,8 +528,13 @@ class Debug extends CI_Controller
             if (!$api_key || strlen($api_key) < 20) {
                 return ['valid' => false, 'error' => 'Claude API key not configured in config.php'];
             }
+        } elseif ($provider === 'gemini') {
+            $api_key = $this->config->item('gemini_api_key');
+            if (!$api_key || strlen($api_key) < 20) {
+                return ['valid' => false, 'error' => 'Gemini API key not configured in config.php'];
+            }
         } else {
-            return ['valid' => false, 'error' => 'Invalid AI provider. Must be "openai" or "claude"'];
+            return ['valid' => false, 'error' => 'Invalid AI provider. Must be "openai", "claude" or "gemini"'];
         }
 
         return ['valid' => true];
@@ -555,18 +560,21 @@ class Debug extends CI_Controller
         }
 
         // Validate AI provider (for single mode)
-        if ($ai_mode === 'single' && !in_array($ai_provider, ['openai', 'claude'])) {
+        if ($ai_mode === 'single' && !in_array($ai_provider, ['openai', 'claude', 'gemini'])) {
             $ai_provider = 'claude';
         }
 
         // Validate API keys
         if ($ai_mode === 'dual') {
-            $val_openai = $this->_validate_ai_provider('openai');
-            $val_claude = $this->_validate_ai_provider('claude');
-            if (!$val_openai['valid'] || !$val_claude['valid']) {
+            // Dual usa el par configurado (ai_provider_a/b), no openai+claude fijo
+            $pa = $this->config->item('ai_provider_a') ?: 'gemini';
+            $pb = $this->config->item('ai_provider_b') ?: 'openai';
+            $val_a = $this->_validate_ai_provider($pa);
+            $val_b = $this->_validate_ai_provider($pb);
+            if (!$val_a['valid'] || !$val_b['valid']) {
                 $errors = [];
-                if (!$val_openai['valid']) $errors[] = 'OpenAI: ' . $val_openai['error'];
-                if (!$val_claude['valid']) $errors[] = 'Claude: ' . $val_claude['error'];
+                if (!$val_a['valid']) $errors[] = ucfirst($pa) . ': ' . $val_a['error'];
+                if (!$val_b['valid']) $errors[] = ucfirst($pb) . ': ' . $val_b['error'];
                 $this->_send_json_response(false, 'Dual mode requires both API keys. ' . implode('. ', $errors));
                 return;
             }

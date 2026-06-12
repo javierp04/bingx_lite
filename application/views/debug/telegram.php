@@ -112,8 +112,9 @@
                                 <div class="col-md-3">
                                     <label class="form-label small mb-1"><i class="fas fa-robot me-1"></i>AI Provider</label>
                                     <select class="form-select form-select-sm" id="webhook_ai_provider" name="ai_provider">
+                                        <option value="gemini" selected>Gemini (2.5 Flash)</option>
                                         <option value="openai">OpenAI (GPT-4o)</option>
-                                        <option value="claude" selected>Claude (Sonnet 4.5)</option>
+                                        <option value="claude">Claude (Sonnet 4.5)</option>
                                     </select>
                                 </div>
                                 <div class="col-md-3">
@@ -365,6 +366,8 @@ function simulateWebhook() {
             } else {
                 const aiProviderBadge = data.data.ai_provider === 'claude'
                     ? '<span class="badge bg-primary">Claude</span>'
+                    : data.data.ai_provider === 'gemini'
+                    ? '<span class="badge bg-warning text-dark">Gemini</span>'
                     : '<span class="badge bg-success">OpenAI</span>';
                 validationBadge = aiProviderBadge;
             }
