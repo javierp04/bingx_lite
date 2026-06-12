@@ -1,5 +1,5 @@
 #property copyright "TelegramSignals"
-#property version   "10.11"
+#property version   "10.12"
 #property description "Reliability + gates asset-agnostic (TP1) + CSV trade journal (dataset + live)"
 
 // LIBRERÍAS
@@ -8,6 +8,28 @@
 
 // CONSTANTES
 #define HTTP_TIMEOUT 5000
+
+// Exit-level codes reportados a la API (ver CLAUDE.md). >0 = cerro en TPn.
+#define EXIT_STOP      -1     // cerrado por Stop Loss (broker) o code-stop
+#define EXIT_INVALID   -998   // señal invalida (SL/TPs faltantes): nunca operó
+#define EXIT_ERROR     -999   // error de ejecucion/correccion/gate: nunca operó
+
+// close_reason: el server (Telegram_signals_model::is_failure_reason) matchea estos
+// strings EXACTOS para clasificar fallo vs cierre real. NO cambiar los valores.
+#define REASON_COMPLETE        "CLOSED_COMPLETE"
+#define REASON_STOPLOSS        "CLOSED_STOPLOSS"
+#define REASON_MANUAL          "CLOSED_MANUAL"
+#define REASON_EXTERNAL        "CLOSED_EXTERNAL"
+#define REASON_CODE_STOP       "CLOSED_CODE_STOP"
+#define REASON_SAFETY_STOP     "CLOSED_SAFETY_STOP"
+#define REASON_ORDER_CANCELLED "ORDER_CANCELLED"
+#define REASON_INVALID_SL      "INVALID_STOPLOSS"
+#define REASON_INVALID_TPS     "INVALID_TPS"
+#define REASON_PRICE_CORR_ERR  "PRICE_CORRECTION_ERROR"
+#define REASON_SPREAD_HIGH     "SPREAD_TOO_HIGH"
+#define REASON_VOLUME_ERR      "VOLUME_ERROR"
+#define REASON_SL_TOO_CLOSE    "SL_TOO_CLOSE"
+#define REASON_EXEC_FAILED     "EXECUTION_FAILED"
 
 // Enums
 enum LogLevel { DEBUG_LVL, INFO_LVL, WARNING_LVL, ERROR_LVL };
@@ -669,6 +691,18 @@ bool ValidateAllInputs() {
     if(BE_LEVEL < 0 || BE_LEVEL > 5) return false;
     if(SAFETY_FACTOR < 1.0 || SAFETY_FACTOR > 5.0) return false;
 
+    // Gates asset-agnostic: ratios positivos y el slippage permitido (m) DEBE ser menor que
+    // la banda LIMIT (k_limit); si no, el deviation de market supera la banda adversa.
+    if(K_STOP_RATIO <= 0 || K_LIMIT_RATIO <= 0 || M_SLIP_RATIO <= 0 || C_SPREAD_RATIO <= 0) {
+        Log(ERROR_LVL, "INIT", "Ratios de gates inválidos: deben ser > 0");
+        return false;
+    }
+    if(M_SLIP_RATIO >= K_LIMIT_RATIO) {
+        Log(ERROR_LVL, "INIT", StringFormat("Invariante de gates violado: M_SLIP_RATIO(%.2f) debe ser < K_LIMIT_RATIO(%.2f)",
+            M_SLIP_RATIO, K_LIMIT_RATIO));
+        return false;
+    }
+
     TPConfig tpConfig = ValidateTPConfig();
     return tpConfig.isValid;
 }
@@ -706,7 +740,7 @@ bool ValidateSymbol() {
 }
 
 void LogInitialization() {
-   Print("EA Signals v10.11 | User: ", USER_ID, " | Symbol: ", currentSymbol, " | BE Level: ", BE_LEVEL);
+   Print("EA Signals v10.12 | User: ", USER_ID, " | Symbol: ", currentSymbol, " | BE Level: ", BE_LEVEL);
    Log(INFO_LVL, "INIT", "Stop management: " + (ENABLE_CODE_STOP ? "CODE" : "MT5"));
 }
 
@@ -979,6 +1013,12 @@ double CalculatePriceCorrection(string symbol, string &errorMessage) {
 // ==========================================
 // FUNCIONES DE PNL Y VOLUMEN
 // ==========================================
+// Valor monetario de 1 punto por 1 lote. Centraliza el factor tickValue*(point/tickSize)
+// usado tanto en el PNL como en el sizing por riesgo.
+double PointValuePerLot(SymbolSpecs &specs) {
+    return specs.tickValue * (specs.point / specs.tickSize);
+}
+
 double CalculatePNL(double currentPrice, double volume = 0) {
     if(!currentTP.isActive) return 0.0;
 
@@ -989,7 +1029,7 @@ double CalculatePNL(double currentPrice, double volume = 0) {
                       (currentTP.entry - currentPrice);
 
     SymbolSpecs specs = GetSymbolSpecs();
-    return (priceDiff / specs.point) * volume * (specs.tickValue * (specs.point / specs.tickSize));
+    return (priceDiff / specs.point) * volume * PointValuePerLot(specs);
 }
 
 double NormalizeVolume(double volume, SymbolSpecs &specs) {
@@ -1002,12 +1042,6 @@ double NormalizeVolume(double volume, SymbolSpecs &specs) {
     return normalized;
 }
 
-double CalculateVolumeToClose(double percentOfOriginal) {
-    double rawVolume = (currentTP.originalVolume * percentOfOriginal) / 100.0;
-    SymbolSpecs specs = GetSymbolSpecs();
-    return NormalizeVolume(rawVolume, specs);
-}
-
 double CalculateVolumeOptimized(double entryPrice, double stopLoss) {
     SymbolSpecs specs = GetSymbolSpecs();
     if(!specs.isValid) return 0.0;
@@ -1015,7 +1049,7 @@ double CalculateVolumeOptimized(double entryPrice, double stopLoss) {
     double balance = AccountInfoDouble(ACCOUNT_BALANCE);
     double riskAmount = balance * (RISK_PERCENT / 100.0);
     double distancePoints = MathAbs(entryPrice - stopLoss) / specs.point;
-    double pointValuePerLot = specs.tickValue * (specs.point / specs.tickSize);
+    double pointValuePerLot = PointValuePerLot(specs);
 
     if(pointValuePerLot <= 0 || distancePoints <= 0) return 0.0;
 
@@ -1034,7 +1068,7 @@ double CalculateVolumeOptimized(double entryPrice, double stopLoss) {
 HistoryCloseResult GetCloseReasonFromHistory(ulong positionID) {
     HistoryCloseResult result;
     result.exitLevel = currentTP.currentLevel;
-    result.reason = "CLOSED_EXTERNAL";
+    result.reason = REASON_EXTERNAL;
     result.dealPrice = 0;
     result.dealProfit = 0;
     result.hasDealData = false;
@@ -1085,13 +1119,13 @@ HistoryCloseResult GetCloseReasonFromHistory(ulong positionID) {
 
         switch(dealReason) {
             case DEAL_REASON_SL:
-                result.exitLevel = -1;
-                result.reason = "CLOSED_STOPLOSS";
+                result.exitLevel = EXIT_STOP;
+                result.reason = REASON_STOPLOSS;
                 return result;
 
             case DEAL_REASON_TP:
                 result.exitLevel = currentTP.currentLevel;
-                result.reason = "CLOSED_COMPLETE";
+                result.reason = REASON_COMPLETE;
                 return result;
 
             case DEAL_REASON_CLIENT:
@@ -1100,18 +1134,18 @@ HistoryCloseResult GetCloseReasonFromHistory(ulong positionID) {
                 Log(INFO_LVL, "MANUAL_CLOSE", StringFormat("Cierre manual detectado! Reason=%s, Price=%.5f, Profit=%.2f",
                     EnumToString(dealReason), result.dealPrice, result.dealProfit));
                 result.exitLevel = currentTP.currentLevel;
-                result.reason = "CLOSED_MANUAL";
+                result.reason = REASON_MANUAL;
                 return result;
 
             case DEAL_REASON_EXPERT:
                 result.exitLevel = currentTP.currentLevel;
-                result.reason = "CLOSED_EXTERNAL";
+                result.reason = REASON_EXTERNAL;
                 return result;
 
             default:
                 Log(INFO_LVL, "HISTORY", StringFormat("Cierre por razón: %s(%d)", EnumToString(dealReason), dealReason));
                 result.exitLevel = currentTP.currentLevel;
-                result.reason = "CLOSED_EXTERNAL";
+                result.reason = REASON_EXTERNAL;
                 return result;
         }
     }
@@ -1181,7 +1215,7 @@ bool ClosePositionByCode(string reason) {
 
     if(trade.PositionClose(position.Ticket())) {
         double finalPnl = CalculatePNL(currentPrice);
-        int exitLevel = (reason == "CLOSED_CODE_STOP") ? -1 : currentTP.currentLevel;
+        int exitLevel = (reason == REASON_CODE_STOP) ? EXIT_STOP : currentTP.currentLevel;
 
         ReportClose(currentTP.signalId, exitLevel, reason, currentPrice, finalPnl);
         Log(INFO_LVL, "CODE_CLOSE", "Posición cerrada por código: " + reason);
@@ -1247,12 +1281,12 @@ void OnTick() {
     // Verificar stops por código si está habilitado
     if(ENABLE_CODE_STOP) {
         if(CheckCodeStopLoss()) {
-            ClosePositionByCode("CLOSED_CODE_STOP");
+            ClosePositionByCode(REASON_CODE_STOP);
             return;
         }
 
         if(CheckSafetyStop()) {
-            ClosePositionByCode("CLOSED_SAFETY_STOP");
+            ClosePositionByCode(REASON_SAFETY_STOP);
             return;
         }
     }
@@ -1289,11 +1323,11 @@ bool CheckAndExecuteTP(int tpLevel, double tpPrice, double tpPercent, double cur
             if(closeAll) {
                 volumeToClose = currentTP.currentVolume;
             } else {
+                SymbolSpecs specs = GetSymbolSpecs();
                 double rawVolume = (currentTP.originalVolume * tpPercent) / 100.0;
-                volumeToClose = CalculateVolumeToClose(tpPercent);
+                volumeToClose = NormalizeVolume(rawVolume, specs);
 
                 if(rawVolume != volumeToClose) {
-                    SymbolSpecs specs = GetSymbolSpecs();
                     Log(INFO_LVL, "VOLUME_NORM", StringFormat("TP%d: Volumen calculado=%.3f → normalizado=%.2f (step=%.2f)",
                         tpLevel, rawVolume, volumeToClose, specs.stepVolume));
                 }
@@ -1376,7 +1410,7 @@ bool ClosePartialPosition(double volume) {
         SaveState();
 
         if(currentTP.currentVolume <= specs.minVolume) {
-            ReportClose(currentTP.signalId, currentTP.currentLevel, "CLOSED_COMPLETE", currentPrice, 0.0);
+            ReportClose(currentTP.signalId, currentTP.currentLevel, REASON_COMPLETE, currentPrice, 0.0);
             EndTrade();
         }
         return true;
@@ -1420,7 +1454,7 @@ void CheckPendingOrderExecution() {
 
     if(!OrderSelect(currentTP.ticket)) {
         Log(WARNING_LVL, "PENDING", "Orden pendiente cancelada");
-        ReportClose(currentTP.signalId, -999, "ORDER_CANCELLED", 0, 0);
+        ReportClose(currentTP.signalId, EXIT_ERROR, REASON_ORDER_CANCELLED, 0, 0);
         EndTrade();
     }
 }
@@ -1483,7 +1517,7 @@ void ProcessSignalResponse(string jsonResponse) {
 
     if(sl1 <= 0) {
         Log(ERROR_LVL, "SIGNAL", StringFormat("Señal rechazada ID=%d: SL1 inválido", userSignalId));
-        ReportClose(userSignalId, -998, "INVALID_STOPLOSS", 0, 0);
+        ReportClose(userSignalId, EXIT_INVALID, REASON_INVALID_SL, 0, 0);
         return;
     }
 
@@ -1496,7 +1530,7 @@ void ProcessSignalResponse(string jsonResponse) {
             (tp4 <= 0 ? "TP4 " : ""),
             (tp5 <= 0 ? "TP5 " : "")
         ));
-        ReportClose(userSignalId, -998, "INVALID_TPS", 0, 0);
+        ReportClose(userSignalId, EXIT_INVALID, REASON_INVALID_TPS, 0, 0);
         return;
     }
 
@@ -1518,7 +1552,7 @@ bool ApplyPriceCorrection(double &entryPrice, double &stopLoss,
     correctionFactor = CalculatePriceCorrection(TICKER_SYMBOL, errorMessage);
 
     if(correctionFactor <= 0.0) {
-        ReportClose(userSignalId, -999, "PRICE_CORRECTION_ERROR", 0, 0);
+        ReportClose(userSignalId, EXIT_ERROR, REASON_PRICE_CORR_ERR, 0, 0);
         return false;
     }
 
@@ -1550,7 +1584,7 @@ bool ValidateSpread(int userSignalId, double t1) {
     if(spreadReal > 0 && spreadReal > spreadTol) {
         Log(ERROR_LVL, "SPREAD", StringFormat("real=%.5f | tol=%.5f (c=%.2f*T1) | %.1f%% T1 -> RECHAZA SPREAD_TOO_HIGH",
             spreadReal, spreadTol, C_SPREAD_RATIO, pctT1));
-        ReportClose(userSignalId, -999, "SPREAD_TOO_HIGH", 0, 0);
+        ReportClose(userSignalId, EXIT_ERROR, REASON_SPREAD_HIGH, 0, 0);
         return false;
     }
     Log(INFO_LVL, "SPREAD", StringFormat("real=%.5f | tol=%.5f (c=%.2f*T1) | %.1f%% T1 -> OK",
@@ -1648,7 +1682,7 @@ bool ExecuteTrade(int userSignalId, string opType, double entryPrice, double sto
         double balance = AccountInfoDouble(ACCOUNT_BALANCE);
         Log(ERROR_LVL, "VOLUME", StringFormat("Volumen=0: Balance=%.2f, Risk%%=%.1f, Entry=%.5f, SL=%.5f",
             balance, RISK_PERCENT, entryPrice, stopLoss));
-        ReportClose(userSignalId, -999, "VOLUME_ERROR", 0, 0);
+        ReportClose(userSignalId, EXIT_ERROR, REASON_VOLUME_ERR, 0, 0);
         return false;
     }
 
@@ -1671,7 +1705,7 @@ bool ExecuteTrade(int userSignalId, string opType, double entryPrice, double sto
     double slDistFinal = MathAbs(entryPrice - orderStopLoss);
     if(stopsMin > 0 && slDistFinal < stopsMin) {
         Log(ERROR_LVL, "STOPS", StringFormat("broker_min=%.5f | sl_dist=%.5f -> RECHAZA SL_TOO_CLOSE", stopsMin, slDistFinal));
-        ReportClose(userSignalId, -999, "SL_TOO_CLOSE", 0, 0);
+        ReportClose(userSignalId, EXIT_ERROR, REASON_SL_TOO_CLOSE, 0, 0);
         return false;
     }
     Log(INFO_LVL, "STOPS", StringFormat("broker_min=%.5f | sl_dist=%.5f -> OK", stopsMin, slDistFinal));
@@ -1742,7 +1776,7 @@ bool ExecuteTrade(int userSignalId, string opType, double entryPrice, double sto
         string retdesc = trade.ResultRetcodeDescription();
         Log(ERROR_LVL, "TRADE", StringFormat("Orden falló: %d (%s), Tipo=%s, Vol=%.2f, Entry=%.5f, SL=%.5f",
             retcode, retdesc, EnumToString(orderType), calculatedVolume, entryPrice, orderStopLoss));
-        ReportClose(userSignalId, -999, "EXECUTION_FAILED", 0, 0);
+        ReportClose(userSignalId, EXIT_ERROR, REASON_EXEC_FAILED, 0, 0);
         return false;
     }
 }
