@@ -362,6 +362,8 @@ void SaveState() {
     FileWriteString(h, json);
     FileClose(h);
     Log(DEBUG_LVL, "STATE", "Estado persistido: " + TruncLog(json));
+
+    JournalWriteLive();
 }
 
 // Devuelve true si habia un estado con trade (activo o pendiente) cargado.
@@ -414,6 +416,7 @@ void ClearState() {
         FileDelete(StateFilePath());
         Log(DEBUG_LVL, "STATE", "State file eliminado");
     }
+    JournalWriteLive();   // refresca el live (sin trade activo queda solo el header)
 }
 
 // ==========================================
@@ -876,6 +879,8 @@ void ReportClose(int userSignalId, int exitLevel, string closeReason,
     } else {
         Log(ERROR_LVL, "REPORT", StringFormat("Close FALLÓ: %s (HTTP %d) — Response: %s", response.message, response.httpCode, TruncLog(response.data)));
     }
+
+    JournalAppendClosed(exitLevel, closeReason, finalPnl, finalPrice);
 }
 
 // ==========================================
