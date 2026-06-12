@@ -205,8 +205,7 @@ class TradeReader extends CI_Controller
                 $this->Telegram_signals_model->complete_signal_dual(
                     $signal_id,
                     $final_analysis ? json_encode($final_analysis) : null,
-                    $analysis_result['analysis_openai'],
-                    $analysis_result['analysis_claude'],
+                    $analysis_result['analysis_by_provider'],
                     $ai_validated
                 );
 
@@ -292,8 +291,8 @@ class TradeReader extends CI_Controller
 
         $prompt = $this->build_prompt2($ticker_symbol);
 
-        // 3. Detectar modo: single o dual
-        $ai_mode = $this->input->get('ai_mode') ?: $this->config->item('ai_mode') ?: 'single';
+        // 3. Detectar modo: single o dual (settings → config → default)
+        $ai_mode = $this->input->get('ai_mode') ?: $this->settingGet('ai_mode', 'single');
 
         if ($ai_mode === 'dual') {
             return $this->createTradeAnalysisDual($image_base64, $prompt, $visual_op_type, $cropped_filename);
@@ -323,26 +322,49 @@ class TradeReader extends CI_Controller
         return $transformed_json;
     }
 
+    // Helper: lee un setting de system_settings, con fallback a config.php y a un default.
+    private function settingGet($key, $default = null)
+    {
+        $this->load->model('Setting_model');
+        $val = $this->Setting_model->get($key, null);
+        if ($val !== null && $val !== '') {
+            return $val;
+        }
+        $cfg = $this->config->item($key);
+        return ($cfg !== false && $cfg !== null && $cfg !== '') ? $cfg : $default;
+    }
+
+    // Devuelve el par de proveedores del consenso [A, B].
+    private function getProviderPair()
+    {
+        return [
+            $this->settingGet('ai_provider_a', 'gemini'),
+            $this->settingGet('ai_provider_b', 'openai')
+        ];
+    }
+
     private function createTradeAnalysisDual($image_base64, $prompt, $visual_op_type, $cropped_filename)
     {
+        list($providerA, $providerB) = $this->getProviderPair();
+
         // === RONDA 1 ===
-        $o1 = $this->analyzeWithProvider($image_base64, $prompt, 'openai');
-        $c1 = $this->analyzeWithProvider($image_base64, $prompt, 'claude');
+        $a1 = $this->analyzeWithProvider($image_base64, $prompt, $providerA);
+        $b1 = $this->analyzeWithProvider($image_base64, $prompt, $providerB);
 
         // Si ambas fallaron completamente
-        if ($o1 === null && $c1 === null) {
+        if ($a1 === null && $b1 === null) {
             $this->Log_model->add_log([
                 'user_id' => null,
                 'action' => 'dual_ai_both_failed',
-                'description' => "Ambas IAs fallaron para imagen: {$cropped_filename}"
+                'description' => "Ambas IAs ({$providerA}+{$providerB}) fallaron para imagen: {$cropped_filename}"
             ]);
             return null;
         }
 
         // Si solo una respondió: no validada, sin retry
-        if ($o1 === null || $c1 === null) {
-            $working_provider = $o1 !== null ? 'openai' : 'claude';
-            $working_raw = $o1 !== null ? $o1 : $c1;
+        if ($a1 === null || $b1 === null) {
+            $working_provider = $a1 !== null ? $providerA : $providerB;
+            $working_raw = $a1 !== null ? $a1 : $b1;
 
             $this->Log_model->add_log([
                 'user_id' => null,
@@ -350,18 +372,18 @@ class TradeReader extends CI_Controller
                 'description' => "Solo {$working_provider} respondió para imagen: {$cropped_filename}"
             ]);
 
-            return $this->buildDualResult($working_raw, $visual_op_type, $cropped_filename, $o1, $c1, false, "Solo {$working_provider} respondió");
+            return $this->buildDualResult($working_raw, $visual_op_type, $cropped_filename, $providerA, $a1, $providerB, $b1, false, "Solo {$working_provider} respondió");
         }
 
         // Resolver op_type de ambas
-        $this->prepareRawWithOpType($o1, $visual_op_type, $cropped_filename . '_O1');
-        $this->prepareRawWithOpType($c1, $visual_op_type, $cropped_filename . '_C1');
+        $this->prepareRawWithOpType($a1, $visual_op_type, $cropped_filename . '_A1');
+        $this->prepareRawWithOpType($b1, $visual_op_type, $cropped_filename . '_B1');
 
-        // Ronda 1: comparar O1 vs C1
-        $match = $this->findMatchingPair([[$o1, $c1]], $cropped_filename, 'R1');
+        // Ronda 1: comparar A1 vs B1
+        $match = $this->findMatchingPair([[$a1, $b1]], $cropped_filename, 'R1');
 
         if ($match) {
-            return $this->buildDualResult($match['winner'], $visual_op_type, $cropped_filename, $o1, $c1, true, $match['detail'], $match['matched_prices']);
+            return $this->buildDualResult($match['winner'], $visual_op_type, $cropped_filename, $providerA, $a1, $providerB, $b1, true, $match['detail'], $match['matched_prices']);
         }
 
         // === RONDA 2: retry ===
@@ -371,31 +393,31 @@ class TradeReader extends CI_Controller
             'description' => "Ronda 1 mismatch, ejecutando retry para imagen: {$cropped_filename}"
         ]);
 
-        $o2 = $this->analyzeWithProvider($image_base64, $prompt, 'openai');
-        $c2 = $this->analyzeWithProvider($image_base64, $prompt, 'claude');
+        $a2 = $this->analyzeWithProvider($image_base64, $prompt, $providerA);
+        $b2 = $this->analyzeWithProvider($image_base64, $prompt, $providerB);
 
         // Resolver op_type de las nuevas respuestas (si existen)
-        if ($o2 !== null) {
-            $this->prepareRawWithOpType($o2, $visual_op_type, $cropped_filename . '_O2');
+        if ($a2 !== null) {
+            $this->prepareRawWithOpType($a2, $visual_op_type, $cropped_filename . '_A2');
         }
-        if ($c2 !== null) {
-            $this->prepareRawWithOpType($c2, $visual_op_type, $cropped_filename . '_C2');
+        if ($b2 !== null) {
+            $this->prepareRawWithOpType($b2, $visual_op_type, $cropped_filename . '_B2');
         }
 
         // Armar pares cruzados para comparar (solo los que tienen ambas respuestas)
         $cross_pairs = [];
-        if ($o1 !== null && $c2 !== null) $cross_pairs[] = [$o1, $c2];
-        if ($o2 !== null && $c1 !== null) $cross_pairs[] = [$o2, $c1];
-        if ($o2 !== null && $c2 !== null) $cross_pairs[] = [$o2, $c2];
+        if ($a1 !== null && $b2 !== null) $cross_pairs[] = [$a1, $b2];
+        if ($a2 !== null && $b1 !== null) $cross_pairs[] = [$a2, $b1];
+        if ($a2 !== null && $b2 !== null) $cross_pairs[] = [$a2, $b2];
 
         $match = $this->findMatchingPair($cross_pairs, $cropped_filename, 'R2');
 
         // Consolidar todas las respuestas para guardar en DB
-        $all_openai = array_values(array_filter([$o1, $o2]));
-        $all_claude = array_values(array_filter([$c1, $c2]));
+        $all_a = array_values(array_filter([$a1, $a2]));
+        $all_b = array_values(array_filter([$b1, $b2]));
 
         if ($match) {
-            return $this->buildDualResult($match['winner'], $visual_op_type, $cropped_filename, $all_openai, $all_claude, true, $match['detail'] . ' (retry)', $match['matched_prices']);
+            return $this->buildDualResult($match['winner'], $visual_op_type, $cropped_filename, $providerA, $all_a, $providerB, $all_b, true, $match['detail'] . ' (retry)', $match['matched_prices']);
         }
 
         // Ningún par coincidió → pending_review
@@ -405,7 +427,7 @@ class TradeReader extends CI_Controller
             'description' => "Ningún par coincidió después de retry para imagen: {$cropped_filename}"
         ]);
 
-        return $this->buildDualResult($o1, $visual_op_type, $cropped_filename, $all_openai, $all_claude, false, 'Ningún par coincidió después de 2 rondas');
+        return $this->buildDualResult($a1, $visual_op_type, $cropped_filename, $providerA, $all_a, $providerB, $all_b, false, 'Ningún par coincidió después de 2 rondas');
     }
 
     private function prepareRawWithOpType(&$raw, $visual_op_type, $context)
@@ -443,7 +465,7 @@ class TradeReader extends CI_Controller
         return null;
     }
 
-    private function buildDualResult($raw_winner, $visual_op_type, $cropped_filename, $openai_data, $claude_data, $validated, $detail, $matched_prices = null)
+    private function buildDualResult($raw_winner, $visual_op_type, $cropped_filename, $provider_a, $a_data, $provider_b, $b_data, $validated, $detail, $matched_prices = null)
     {
         // Si matched_prices fue proporcionado, usarlo en el winner para la transformación
         if ($matched_prices !== null && $raw_winner !== null) {
@@ -461,8 +483,10 @@ class TradeReader extends CI_Controller
         return [
             'analysis' => $transformed,
             'ai_validated' => $validated,
-            'analysis_openai' => json_encode($openai_data),
-            'analysis_claude' => json_encode($claude_data),
+            'analysis_by_provider' => [
+                $provider_a => json_encode($a_data),
+                $provider_b => json_encode($b_data)
+            ],
             'discrepancy' => $validated ? null : $detail,
             'dual_mode' => true
         ];
