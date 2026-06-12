@@ -272,13 +272,15 @@ double GetCurrentPrice(string direction) {
         SymbolInfoDouble(currentSymbol, SYMBOL_ASK);
 }
 
-// Busca posicion propia por Magic+Comment+Symbol. Retorna true si encontro y deja position seleccionada.
+// Busca posicion propia por Magic+Symbol (SIN depender del comment:
+// muchos brokers reescriben el comment al ejecutar una pendiente).
+// El EA maneja una sola posicion a la vez, asi que magic+symbol es univoco.
+// Deja position seleccionada si la encuentra.
 bool FindOwnPosition() {
     for(int i = 0; i < PositionsTotal(); i++) {
         if(position.SelectByIndex(i)) {
             if(position.Symbol() == currentSymbol &&
-               position.Magic() == MAGIC_NUMBER &&
-               position.Comment() == TRADE_COMMENT) {
+               position.Magic() == MAGIC_NUMBER) {
                 return true;
             }
         }
