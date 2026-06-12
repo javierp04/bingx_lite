@@ -471,7 +471,7 @@ int OnInit() {
     SetupBaseUrls();
 
     trade.SetExpertMagicNumber(MAGIC_NUMBER);
-    trade.SetDeviationInPoints(50);
+    // deviation se setea por-trade en ExecuteTrade (m*T1), no fijo
 
     AdoptStateOnInit();   // reconciliar estado persistido contra MT5 (sobrevive reinicios)
 
@@ -1545,10 +1545,30 @@ bool ExecuteTrade(int userSignalId, string opType, double entryPrice, double sto
     Log(INFO_LVL, "SL_CALC", StringFormat("Original=%.5f, Distance=%.5f, Factor=%.2f, Final=%.5f",
             stopLoss, slDistance, ENABLE_CODE_STOP ? SAFETY_FACTOR : 1.0, orderStopLoss));
 
+    // 5.5 Validar distancia minima del broker (STOPS_LEVEL): si el SL queda mas cerca, el broker rechaza.
+    double point    = SymbolInfoDouble(currentSymbol, SYMBOL_POINT);
+    double stopsMin = (double)SymbolInfoInteger(currentSymbol, SYMBOL_TRADE_STOPS_LEVEL) * point;
+    double slDistFinal = MathAbs(entryPrice - orderStopLoss);
+    if(stopsMin > 0 && slDistFinal < stopsMin) {
+        Log(ERROR_LVL, "STOPS", StringFormat("broker_min=%.5f | sl_dist=%.5f -> RECHAZA SL_TOO_CLOSE", stopsMin, slDistFinal));
+        ReportClose(userSignalId, -999, "SL_TOO_CLOSE", 0, 0);
+        return false;
+    }
+    Log(INFO_LVL, "STOPS", StringFormat("broker_min=%.5f | sl_dist=%.5f -> OK", stopsMin, slDistFinal));
+
     // 6. Ejecutar orden
     bool success = false;
     ulong ticket = 0;
     bool isMarketOrder = (orderType == ORDER_TYPE_BUY || orderType == ORDER_TYPE_SELL);
+
+    // Slippage permitido solo para market: deviation = m*T1 (siempre < banda k por invariante m < k_limit)
+    if(isMarketOrder) {
+        double slipTol  = M_SLIP_RATIO * t1;
+        int    devPoints = (int)MathRound(slipTol / point);
+        if(devPoints < 1) devPoints = 1;
+        trade.SetDeviationInPoints(devPoints);
+        Log(INFO_LVL, "SLIPPAGE", StringFormat("tol=%.5f (m=%.2f*T1) = %d points", slipTol, M_SLIP_RATIO, devPoints));
+    }
 
     if(isMarketOrder) {
         success = trade.PositionOpen(currentSymbol, orderType, calculatedVolume, 0, orderStopLoss, 0, TRADE_COMMENT);
