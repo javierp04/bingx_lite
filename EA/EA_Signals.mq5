@@ -22,10 +22,6 @@ input group "=== Trading Settings ==="
 input string    TICKER_SYMBOL = "EURUSD";
 input double    RISK_PERCENT = 2.0;
 input int       POLL_INTERVAL = 10;
-input double    MAX_SPREAD = 500.0;
-input int       PRICE_TOLERANCE_POINTS = 50;
-input double    PRICE_TOLERANCE_PERCENT = 0.0;  // 0.0 = usar points, > 0 = usar porcentaje (prioridad)
-
 input group "=== Gates asset-agnostic (anclados a TP1) ==="
 input double    K_STOP_RATIO   = 0.30;   // banda market lado favorable (STOP)
 input double    K_LIMIT_RATIO  = 0.15;   // banda market lado adverso (LIMIT) — debe ser > M_SLIP_RATIO
