@@ -7,6 +7,12 @@ defined('BASEPATH') or exit('No direct script access allowed');
  */
 class Setting_model extends CI_Model
 {
+    // True si la tabla existe (migración aplicada). La UI la usa para no "guardar" en falso.
+    public function is_ready()
+    {
+        return $this->db->table_exists('system_settings');
+    }
+
     public function get($key, $default = null)
     {
         if (!$this->db->table_exists('system_settings')) {

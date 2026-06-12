@@ -29,6 +29,7 @@ class Settings extends CI_Controller
         $data['ai_mode']       = $this->Setting_model->get('ai_mode', $this->config->item('ai_mode') ?: 'dual');
         $data['ai_provider_a'] = $this->Setting_model->get('ai_provider_a', $this->config->item('ai_provider_a') ?: 'gemini');
         $data['ai_provider_b'] = $this->Setting_model->get('ai_provider_b', $this->config->item('ai_provider_b') ?: 'openai');
+        $data['settings_ready'] = $this->Setting_model->is_ready();
 
         $this->load->view('templates/header', $data);
         $this->load->view('settings/index', $data);
@@ -37,6 +38,13 @@ class Settings extends CI_Controller
 
     public function save()
     {
+        // Sin la tabla, no se puede persistir: avisar en vez de "guardar" en falso.
+        if (!$this->Setting_model->is_ready()) {
+            $this->session->set_flashdata('error', 'La tabla system_settings no existe. Aplicá la migración database/migrations/2026-06-13-ai-provider-gemini-and-settings.sql y volvé a intentar.');
+            redirect('settings');
+            return;
+        }
+
         $mode = $this->input->post('ai_mode');
         $a    = $this->input->post('ai_provider_a');
         $b    = $this->input->post('ai_provider_b');

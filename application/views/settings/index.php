@@ -11,6 +11,16 @@
     <div class="alert alert-danger"><?= $this->session->flashdata('error') ?></div>
 <?php endif; ?>
 
+<?php if (isset($settings_ready) && !$settings_ready): ?>
+    <div class="alert alert-warning">
+        <i class="fas fa-exclamation-triangle me-1"></i>
+        La tabla <code>system_settings</code> no existe todavía, así que <strong>los cambios acá no se guardan</strong>.
+        Aplicá la migración y recargá:
+        <br><code>mysql -u u_bingx -p bingx_lite &lt; database/migrations/2026-06-13-ai-provider-gemini-and-settings.sql</code>
+        <br>Mientras tanto, la selección de proveedores se toma de <code>config.php</code>.
+    </div>
+<?php endif; ?>
+
 <div class="row">
     <div class="col-md-6">
         <div class="card">
