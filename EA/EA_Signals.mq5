@@ -90,6 +90,22 @@ struct OptimizedTPState {
     double tp1, tp2, tp3, tp4, tp5;
 };
 
+struct JournalRecord {
+    string  ts_signal;
+    int     signal_id;
+    string  dir;
+    bool    corr_on;
+    double  corr_factor, entry_raw, sl_raw;
+    double  entry, sl, tp1, tp2, tp3, tp4, tp5, rdist, t1;
+    double  spread_real, spread_tol;
+    double  price_signal, dist_entry;
+    string  side;
+    double  k_band;
+    string  order_type;
+    double  real_entry, slip_real, slip_tol, real_volume;
+    double  stops_min, sl_dist;
+};
+
 struct TPConfig {
     double percents[5];
     bool enabled[5];
@@ -117,6 +133,7 @@ struct HistoryCloseResult {
 CTrade trade;
 CPositionInfo position;
 OptimizedTPState currentTP;
+JournalRecord currentJournal;
 string currentSymbol;
 
 // Cache para performance
@@ -397,6 +414,110 @@ void ClearState() {
         FileDelete(StateFilePath());
         Log(DEBUG_LVL, "STATE", "State file eliminado");
     }
+}
+
+// ==========================================
+// CSV JOURNAL (dataset + live)
+// ==========================================
+string JournalIsoTime() {
+    MqlDateTime t; TimeGMT(t);
+    return StringFormat("%04d-%02d-%02dT%02d:%02d:%02d", t.year, t.mon, t.day, t.hour, t.min, t.sec);
+}
+
+string JournalFilePath() { return "bxlite_journal_" + IntegerToString(USER_ID) + "_" + TICKER_SYMBOL + ".csv"; }
+string JournalLivePath() { return "bxlite_live_"    + IntegerToString(USER_ID) + "_" + TICKER_SYMBOL + ".csv"; }
+
+void JournalReset() {
+    currentJournal.ts_signal = "";  currentJournal.signal_id = 0;  currentJournal.dir = "";
+    currentJournal.corr_on = false; currentJournal.corr_factor = 1.0;
+    currentJournal.entry_raw = 0;   currentJournal.sl_raw = 0;
+    currentJournal.entry = 0; currentJournal.sl = 0;
+    currentJournal.tp1 = 0; currentJournal.tp2 = 0; currentJournal.tp3 = 0; currentJournal.tp4 = 0; currentJournal.tp5 = 0;
+    currentJournal.rdist = 0; currentJournal.t1 = 0;
+    currentJournal.spread_real = 0; currentJournal.spread_tol = 0;
+    currentJournal.price_signal = 0; currentJournal.dist_entry = 0;
+    currentJournal.side = ""; currentJournal.k_band = 0; currentJournal.order_type = "";
+    currentJournal.real_entry = 0; currentJournal.slip_real = 0; currentJournal.slip_tol = 0; currentJournal.real_volume = 0;
+    currentJournal.stops_min = 0; currentJournal.sl_dist = 0;
+}
+
+string JournalHeader() {
+    return "ts_signal,signal_id,symbol,dir,corr_on,corr_factor,entry_raw,sl_raw,"
+         + "entry,sl,tp1,tp2,tp3,tp4,tp5,R,T1,spread_real,spread_tol,"
+         + "price_signal,dist_entry,side,k_band,order_type,"
+         + "real_entry,slip_real,slip_tol,real_volume,stops_min,sl_dist,"
+         + "max_level,vol_closed_pct,be_on,exit_level,close_reason,gross_pnl,last_price,result";
+}
+
+string JournalRow(int exitLevel, string closeReason, double grossPnl, double lastPrice, string result) {
+    string r = "";
+    r += currentJournal.ts_signal + ",";
+    r += IntegerToString(currentJournal.signal_id) + ",";
+    r += TICKER_SYMBOL + ",";
+    r += currentJournal.dir + ",";
+    r += (currentJournal.corr_on ? "1" : "0") + ",";
+    r += DoubleToString(currentJournal.corr_factor, 6) + ",";
+    r += DoubleToString(currentJournal.entry_raw, 5) + ",";
+    r += DoubleToString(currentJournal.sl_raw, 5) + ",";
+    r += DoubleToString(currentJournal.entry, 5) + ",";
+    r += DoubleToString(currentJournal.sl, 5) + ",";
+    r += DoubleToString(currentJournal.tp1, 5) + ",";
+    r += DoubleToString(currentJournal.tp2, 5) + ",";
+    r += DoubleToString(currentJournal.tp3, 5) + ",";
+    r += DoubleToString(currentJournal.tp4, 5) + ",";
+    r += DoubleToString(currentJournal.tp5, 5) + ",";
+    r += DoubleToString(currentJournal.rdist, 5) + ",";
+    r += DoubleToString(currentJournal.t1, 5) + ",";
+    r += DoubleToString(currentJournal.spread_real, 5) + ",";
+    r += DoubleToString(currentJournal.spread_tol, 5) + ",";
+    r += DoubleToString(currentJournal.price_signal, 5) + ",";
+    r += DoubleToString(currentJournal.dist_entry, 5) + ",";
+    r += currentJournal.side + ",";
+    r += DoubleToString(currentJournal.k_band, 5) + ",";
+    r += currentJournal.order_type + ",";
+    r += DoubleToString(currentJournal.real_entry, 5) + ",";
+    r += DoubleToString(currentJournal.slip_real, 5) + ",";
+    r += DoubleToString(currentJournal.slip_tol, 5) + ",";
+    r += DoubleToString(currentJournal.real_volume, 2) + ",";
+    r += DoubleToString(currentJournal.stops_min, 5) + ",";
+    r += DoubleToString(currentJournal.sl_dist, 5) + ",";
+    r += IntegerToString(currentTP.currentLevel) + ",";
+    r += DoubleToString(currentTP.closedPercent, 2) + ",";
+    r += (currentTP.slMovedToBE ? "1" : "0") + ",";
+    r += IntegerToString(exitLevel) + ",";
+    r += closeReason + ",";
+    r += DoubleToString(grossPnl, 2) + ",";
+    r += DoubleToString(lastPrice, 5) + ",";
+    r += result;
+    return r;
+}
+
+// Sobrescribe el archivo live: header + 1 fila (si hay trade activo/pendiente).
+void JournalWriteLive() {
+    int h = FileOpen(JournalLivePath(), FILE_WRITE|FILE_TXT|FILE_ANSI);
+    if(h == INVALID_HANDLE) return;
+    FileWriteString(h, JournalHeader() + "\r\n");
+    if(currentTP.isActive || currentTP.ticket > 0) {
+        FileWriteString(h, JournalRow(currentTP.currentLevel, "OPEN", 0.0, 0.0, "OPEN") + "\r\n");
+    }
+    FileClose(h);
+}
+
+// Append de una fila final (cierre o rechazo) al journal.
+void JournalAppendClosed(int exitLevel, string closeReason, double grossPnl, double lastPrice) {
+    bool existed = FileIsExist(JournalFilePath());
+    int h;
+    if(existed) {
+        h = FileOpen(JournalFilePath(), FILE_READ|FILE_WRITE|FILE_TXT|FILE_ANSI);
+        if(h == INVALID_HANDLE) return;
+        FileSeek(h, 0, SEEK_END);
+    } else {
+        h = FileOpen(JournalFilePath(), FILE_WRITE|FILE_TXT|FILE_ANSI);
+        if(h == INVALID_HANDLE) return;
+        FileWriteString(h, JournalHeader() + "\r\n");
+    }
+    FileWriteString(h, JournalRow(exitLevel, closeReason, grossPnl, lastPrice, closeReason) + "\r\n");
+    FileClose(h);
 }
 
 // Reconcilia el estado persistido contra la realidad de MT5 al arrancar.
