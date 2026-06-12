@@ -1,5 +1,5 @@
 #property copyright "TelegramSignals"
-#property version   "10.10"
+#property version   "10.11"
 #property description "Reliability + gates asset-agnostic (TP1) + CSV trade journal (dataset + live)"
 
 // LIBRERÍAS
@@ -111,6 +111,13 @@ struct TPConfig {
     bool enabled[5];
     double totalPercent;
     bool isValid;
+};
+
+// Conjunto de precios de una señal (crudo o corregido). Evita firmas con 8+ doubles sueltos.
+struct PriceSet {
+    double entry;
+    double sl1, sl2;
+    double tp1, tp2, tp3, tp4, tp5;
 };
 
 struct APIResponse {
@@ -312,6 +319,18 @@ string TruncLog(string data, int maxLen = 500) {
     return StringSubstr(data, 0, maxLen);
 }
 
+// El EA esta ocupado: tiene posicion activa o una orden pendiente esperando ejecucion.
+bool HasTrade() {
+    return (currentTP.isActive || currentTP.ticket > 0);
+}
+
+// Cierre de ciclo de trade: resetea el estado en memoria y borra el archivo de estado.
+// InitTPState y ClearState siempre van juntos al terminar un trade.
+void EndTrade() {
+    InitTPState();
+    ClearState();
+}
+
 // ==========================================
 // STATE STORE (PERSISTENCIA EN DISCO)
 // ==========================================
@@ -500,7 +519,7 @@ void JournalWriteLive() {
     int h = FileOpen(JournalLivePath(), FILE_WRITE|FILE_TXT|FILE_ANSI);
     if(h == INVALID_HANDLE) return;
     FileWriteString(h, JournalHeader() + "\r\n");
-    if(currentTP.isActive || currentTP.ticket > 0) {
+    if(HasTrade()) {
         FileWriteString(h, JournalRow(currentTP.currentLevel, "OPEN", 0.0, 0.0, "OPEN") + "\r\n");
     }
     FileClose(h);
@@ -523,6 +542,38 @@ void JournalAppendClosed(int exitLevel, string closeReason, double grossPnl, dou
     FileClose(h);
 }
 
+// Adopta al estado del EA la posicion viva ya seleccionada (FindOwnPosition debe haber
+// retornado true antes de llamar). Reusa entre el arranque y el monitoreo de pendientes.
+void AdoptLivePosition(bool reportExecution) {
+    currentTP.isActive      = true;
+    currentTP.ticket        = position.Ticket();
+    currentTP.positionID    = position.Identifier();
+    currentTP.currentVolume = position.Volume();
+    currentTP.currentSL     = position.StopLoss();
+    currentTP.entry         = position.PriceOpen();   // precio REAL de ejecucion
+    if(currentTP.currentLevel < 0) currentTP.currentLevel = 0;
+
+    if(reportExecution) {
+        ReportPendingExecuted(currentTP.signalId, currentTP.ticket, currentTP.entry,
+                              currentTP.currentSL, currentTP.currentVolume);
+    }
+    SaveState();
+}
+
+// La posicion desaparecio: averigua el motivo en el historial, reporta el cierre y
+// finaliza el ciclo. fallbackPrice/Pnl se usan solo si el deal no trae datos.
+void FinalizeClosedFromHistory(double fallbackPrice, double fallbackPnl) {
+    HistoryCloseResult closeResult = GetCloseReasonFromHistory(currentTP.positionID);
+    double reportPrice = closeResult.hasDealData ? closeResult.dealPrice  : fallbackPrice;
+    double finalPnl    = closeResult.hasDealData ? closeResult.dealProfit : fallbackPnl;
+
+    Log(INFO_LVL, "POSITION", StringFormat("Posición cerrada: %s (Exit Level: %d, Price: %.5f, PNL: %.2f, FromDeal: %s)",
+        closeResult.reason, closeResult.exitLevel, reportPrice, finalPnl, closeResult.hasDealData ? "YES" : "NO"));
+
+    ReportClose(currentTP.signalId, closeResult.exitLevel, closeResult.reason, reportPrice, finalPnl);
+    EndTrade();
+}
+
 // Reconcilia el estado persistido contra la realidad de MT5 al arrancar.
 void AdoptStateOnInit() {
     if(!LoadState()) {
@@ -533,25 +584,11 @@ void AdoptStateOnInit() {
     // Caso 1: hay una posicion viva nuestra (magic+symbol) -> re-adoptar
     if(FindOwnPosition()) {
         bool wasPending = !currentTP.isActive;   // estado guardado pendiente + ahora hay posicion => se ejecuto mientras estabamos caidos
-
-        currentTP.isActive      = true;
-        currentTP.ticket        = position.Ticket();
-        currentTP.positionID    = position.Identifier();
-        currentTP.currentVolume = position.Volume();
-        currentTP.currentSL     = position.StopLoss();
-        currentTP.entry         = position.PriceOpen();   // precio REAL de ejecucion (no el intencional de la señal)
-        if(currentTP.currentLevel < 0) currentTP.currentLevel = 0;
+        AdoptLivePosition(wasPending);           // re-adopta campos + (si pendiente) avisa a la API + persiste
 
         Log(INFO_LVL, "ADOPT", StringFormat("Posición re-adoptada: SignalID=%d, Ticket=%d, PosID=%d, Vol=%.2f, %s",
             currentTP.signalId, currentTP.ticket, currentTP.positionID, currentTP.currentVolume,
             (wasPending ? "(pendiente ejecutada mientras EA caido)" : "")));
-
-        // Si la pendiente se ejecuto mientras el EA estaba caido, avisar ahora a la API
-        if(wasPending) {
-            ReportPendingExecuted(currentTP.signalId, currentTP.ticket, currentTP.entry,
-                                  currentTP.currentSL, currentTP.currentVolume);
-        }
-        SaveState();
         return;
     }
 
@@ -566,12 +603,7 @@ void AdoptStateOnInit() {
     // Caso 3: no hay posicion ni pendiente -> cerro/cancelo mientras estabamos caidos
     Log(WARNING_LVL, "ADOPT", StringFormat("Trade SignalID=%d ya no existe en MT5: reconciliando cierre desde historial",
         currentTP.signalId));
-    HistoryCloseResult closeResult = GetCloseReasonFromHistory(currentTP.positionID);
-    double reportPrice = closeResult.hasDealData ? closeResult.dealPrice : 0.0;
-    double finalPnl    = closeResult.hasDealData ? closeResult.dealProfit : 0.0;
-    ReportClose(currentTP.signalId, closeResult.exitLevel, closeResult.reason, reportPrice, finalPnl);
-    InitTPState();
-    ClearState();
+    FinalizeClosedFromHistory(0.0, 0.0);
 }
 
 // ==========================================
@@ -599,7 +631,7 @@ int OnInit() {
     EventSetTimer(POLL_INTERVAL);
 
     // Solo pollear señales nuevas si NO quedamos con un trade adoptado
-    if(!currentTP.isActive && currentTP.ticket == 0) {
+    if(!HasTrade()) {
         CheckForSignals();
     }
 
@@ -674,7 +706,7 @@ bool ValidateSymbol() {
 }
 
 void LogInitialization() {
-   Print("EA Signals v10.10 | User: ", USER_ID, " | Symbol: ", currentSymbol, " | BE Level: ", BE_LEVEL);
+   Print("EA Signals v10.11 | User: ", USER_ID, " | Symbol: ", currentSymbol, " | BE Level: ", BE_LEVEL);
    Log(INFO_LVL, "INIT", "Stop management: " + (ENABLE_CODE_STOP ? "CODE" : "MT5"));
 }
 
@@ -762,14 +794,35 @@ APIResponse SendAPIRequest(string method, string url, string jsonData = "", bool
 // ==========================================
 // FUNCIONES DE REPORTE (usando JsonBuilder)
 // ==========================================
+
+// Arma el objeto JSON {op_type, entry, stoploss[], tps[]} usado en signal_data y mt_corrected_data.
+string BuildSignalDataJson(string opType, PriceSet &p) {
+    string j = "{";
+    j += "\"op_type\":\"" + opType + "\",";
+    j += "\"entry\":" + DoubleToString(p.entry, 5) + ",";
+    j += "\"stoploss\":[" + DoubleToString(p.sl1, 5) + "," + DoubleToString(p.sl2, 5) + "],";
+    j += "\"tps\":[" + DoubleToString(p.tp1, 5) + "," + DoubleToString(p.tp2, 5) + ","
+       + DoubleToString(p.tp3, 5) + "," + DoubleToString(p.tp4, 5) + ","
+       + DoubleToString(p.tp5, 5) + "]";
+    j += "}";
+    return j;
+}
+
+// Envia un POST de reporte y loguea OK/FALLO de forma uniforme. Retorna true si HTTP 200.
+bool PostReport(string url, string json, string label) {
+    APIResponse response = SendAPIRequest("POST", url, json);
+    if(response.result == API_SUCCESS) {
+        Log(INFO_LVL, "REPORT", label + " reportado OK");
+        return true;
+    }
+    Log(ERROR_LVL, "REPORT", StringFormat("%s FALLÓ: %s (HTTP %d) — Response: %s",
+        label, response.message, response.httpCode, TruncLog(response.data)));
+    return false;
+}
+
 void ReportOpen(int userSignalId, bool isMarketOrder, ENUM_ORDER_TYPE orderType,
                 double entryPrice, double stopLoss, double volume, ulong ticket,
-                string opType = "", double signalEntry = 0, double signalSL1 = 0, double signalSL2 = 0,
-                double signalTP1 = 0, double signalTP2 = 0, double signalTP3 = 0,
-                double signalTP4 = 0, double signalTP5 = 0,
-                double correctedEntry = 0, double correctedSL = 0, double correctedSL2 = 0,
-                double correctedTP1 = 0, double correctedTP2 = 0, double correctedTP3 = 0,
-                double correctedTP4 = 0, double correctedTP5 = 0) {
+                string opType, PriceSet &raw, PriceSet &corrected) {
 
     string url = BuildAPIUrl("open", userSignalId);
 
@@ -784,47 +837,21 @@ void ReportOpen(int userSignalId, bool isMarketOrder, ENUM_ORDER_TYPE orderType,
     }
     jb.AddDouble("real_volume", volume, 2);
 
-    // Agregar signal_data con precios originales (pre-corrección)
-    if(signalEntry > 0 && opType != "") {
-        string signalJson = "{";
-        signalJson += "\"op_type\":\"" + opType + "\",";
-        signalJson += "\"entry\":" + DoubleToString(signalEntry, 5) + ",";
-        signalJson += "\"stoploss\":[" + DoubleToString(signalSL1, 5) + "," + DoubleToString(signalSL2, 5) + "],";
-        signalJson += "\"tps\":[" + DoubleToString(signalTP1, 5) + "," + DoubleToString(signalTP2, 5) + ","
-                + DoubleToString(signalTP3, 5) + "," + DoubleToString(signalTP4, 5) + ","
-                + DoubleToString(signalTP5, 5) + "]";
-        signalJson += "}";
-        jb.AddRaw("signal_data", signalJson);
-    }
-
-    // NUEVO: Agregar mt_corrected_data con precios post-corrección (lo que realmente usa MT5)
-    if(correctedEntry > 0 && opType != "") {
-        string correctedJson = "{";
-        correctedJson += "\"op_type\":\"" + opType + "\",";
-        correctedJson += "\"entry\":" + DoubleToString(correctedEntry, 5) + ",";
-        correctedJson += "\"stoploss\":[" + DoubleToString(correctedSL, 5) + "," + DoubleToString(correctedSL2, 5) + "],";
-        correctedJson += "\"tps\":[" + DoubleToString(correctedTP1, 5) + "," + DoubleToString(correctedTP2, 5) + ","
-                + DoubleToString(correctedTP3, 5) + "," + DoubleToString(correctedTP4, 5) + ","
-                + DoubleToString(correctedTP5, 5) + "]";
-        correctedJson += "}";
-        jb.AddRaw("mt_corrected_data", correctedJson);
-    }
+    // signal_data: precios originales (pre-corrección). mt_corrected_data: lo que realmente usa MT5.
+    if(raw.entry > 0 && opType != "")
+        jb.AddRaw("signal_data", BuildSignalDataJson(opType, raw));
+    if(corrected.entry > 0 && opType != "")
+        jb.AddRaw("mt_corrected_data", BuildSignalDataJson(opType, corrected));
 
     jb.AddString("symbol", TICKER_SYMBOL);
     jb.AddString("execution_time", TimeToString(TimeGMT(), TIME_DATE|TIME_SECONDS));
 
-    string json = jb.Build();
-    APIResponse response = SendAPIRequest("POST", url, json);
-    if(response.result == API_SUCCESS) {
-        Log(INFO_LVL, "REPORT", "Open reportado exitosamente");
-    } else {
-        Log(ERROR_LVL, "REPORT", StringFormat("Open FALLÓ: %s (HTTP %d) — Response: %s", response.message, response.httpCode, TruncLog(response.data)));
-    }
+    PostReport(url, jb.Build(), "Open");
 }
 
 void ReportProgress(int userSignalId, int level, double volumeClosedPercent,
                     double remainingVolume, double currentPrice, double pnl,
-                    string message, bool nowOpen = false, double newStopLoss = 0.0) {
+                    string message, double newStopLoss = 0.0) {
 
     string url = BuildAPIUrl("progress", userSignalId);
 
@@ -838,24 +865,12 @@ void ReportProgress(int userSignalId, int level, double volumeClosedPercent,
     jb.AddString("message", message);
     jb.AddString("execution_time", TimeToString(TimeGMT(), TIME_DATE|TIME_SECONDS));
 
-    // Solo para cuando pending order se ejecuta (una sola vez)
-    if(nowOpen) {
-        jb.AddBool("now_open", true);
-        jb.AddDouble("real_entry_price", currentTP.entry);
-    }
-
     // Solo cuando se mueve SL a BE
     if(newStopLoss > 0.0) {
         jb.AddDouble("new_stop_loss", newStopLoss);
     }
 
-    string json = jb.Build();
-    APIResponse response = SendAPIRequest("POST", url, json);
-    if(response.result == API_SUCCESS) {
-        Log(INFO_LVL, "REPORT", "Progress reportado: " + message);
-    } else {
-        Log(ERROR_LVL, "REPORT", StringFormat("Progress FALLÓ: %s (HTTP %d) — Response: %s", response.message, response.httpCode, TruncLog(response.data)));
-    }
+    PostReport(url, jb.Build(), "Progress: " + message);
 }
 
 void ReportClose(int userSignalId, int exitLevel, string closeReason,
@@ -872,13 +887,7 @@ void ReportClose(int userSignalId, int exitLevel, string closeReason,
     jb.AddString("symbol", TICKER_SYMBOL);
     jb.AddString("execution_time", TimeToString(TimeGMT(), TIME_DATE|TIME_SECONDS));
 
-    string json = jb.Build();
-    APIResponse response = SendAPIRequest("POST", url, json);
-    if(response.result == API_SUCCESS) {
-        Log(INFO_LVL, "REPORT", "Close reportado: " + closeReason);
-    } else {
-        Log(ERROR_LVL, "REPORT", StringFormat("Close FALLÓ: %s (HTTP %d) — Response: %s", response.message, response.httpCode, TruncLog(response.data)));
-    }
+    PostReport(url, jb.Build(), "Close: " + closeReason);
 
     JournalAppendClosed(exitLevel, closeReason, finalPnl, finalPrice);
 }
@@ -1176,8 +1185,7 @@ bool ClosePositionByCode(string reason) {
 
         ReportClose(currentTP.signalId, exitLevel, reason, currentPrice, finalPnl);
         Log(INFO_LVL, "CODE_CLOSE", "Posición cerrada por código: " + reason);
-        InitTPState();
-        ClearState();
+        EndTrade();
         return true;
     }
     return false;
@@ -1211,7 +1219,7 @@ void OnDeinit(const int reason) {
 void OnTimer() {
     if(ENABLE_TIME_FILTER && !IsWithinTradingHours()) return;
 
-    if(currentTP.isActive || currentTP.ticket > 0) return;
+    if(HasTrade()) return;
 
     CheckForSignals();
 }
@@ -1228,21 +1236,8 @@ void OnTick() {
 
     // Verificar si la posición sigue existiendo
     if(!position.SelectByTicket(currentTP.ticket)) {
-        // Posición desaparecio - analizar historial para determinar causa
-        HistoryCloseResult closeResult = GetCloseReasonFromHistory(currentTP.positionID);
-
-        // Usar precio del deal si disponible, sino precio actual
-        double reportPrice = closeResult.hasDealData ? closeResult.dealPrice : currentPrice;
-
-        // Usar profit del deal si disponible, sino calcular
-        double finalPnl = closeResult.hasDealData ? closeResult.dealProfit : CalculatePNL(currentPrice);
-
-        Log(INFO_LVL, "POSITION", StringFormat("Posición cerrada: %s (Exit Level: %d, Price: %.5f, PNL: %.2f, FromDeal: %s)",
-            closeResult.reason, closeResult.exitLevel, reportPrice, finalPnl, closeResult.hasDealData ? "YES" : "NO"));
-
-        ReportClose(currentTP.signalId, closeResult.exitLevel, closeResult.reason, reportPrice, finalPnl);
-        InitTPState();
-        ClearState();
+        // Posición desaparecio - reconciliar cierre desde historial
+        FinalizeClosedFromHistory(currentPrice, CalculatePNL(currentPrice));
         return;
     }
 
@@ -1347,7 +1342,7 @@ void SetBreakeven() {
 
             ReportProgress(currentTP.signalId, currentTP.currentLevel, currentTP.closedPercent,
                           currentTP.currentVolume, currentPrice, 0.0,
-                          "Stop Loss movido a Breakeven", false, newSL);
+                          "Stop Loss movido a Breakeven", newSL);
         }
     }
 }
@@ -1382,8 +1377,7 @@ bool ClosePartialPosition(double volume) {
 
         if(currentTP.currentVolume <= specs.minVolume) {
             ReportClose(currentTP.signalId, currentTP.currentLevel, "CLOSED_COMPLETE", currentPrice, 0.0);
-            InitTPState();
-            ClearState();
+            EndTrade();
         }
         return true;
     }
@@ -1411,13 +1405,7 @@ void ReportPendingExecuted(int userSignalId, ulong ticket, double entryPrice,
     jb.AddString("symbol", TICKER_SYMBOL);
     jb.AddString("execution_time", TimeToString(TimeGMT(), TIME_DATE|TIME_SECONDS));
     
-    string json = jb.Build();
-    APIResponse response = SendAPIRequest("POST", url, json);
-    if(response.result == API_SUCCESS) {
-        Log(INFO_LVL, "REPORT", "Pending execution reportada exitosamente con datos completos");
-    } else {
-        Log(ERROR_LVL, "REPORT", StringFormat("Pending execution FALLÓ: %s (HTTP %d)", response.message, response.httpCode));
-    }
+    PostReport(url, jb.Build(), "Pending execution");
 }
 
 // ==========================================
@@ -1426,30 +1414,14 @@ void ReportPendingExecuted(int userSignalId, ulong ticket, double entryPrice,
 void CheckPendingOrderExecution() {
     if(FindOwnPosition()) {
         Log(INFO_LVL, "PENDING", "Orden pendiente ejecutada");
-
-        currentTP.isActive = true;
-        currentTP.ticket = position.Ticket();
-        currentTP.positionID = position.Identifier();
-        currentTP.currentVolume = position.Volume();
-        currentTP.entry = position.PriceOpen();
-        currentTP.currentLevel = 0;
-        currentTP.currentSL = position.StopLoss();
-
-        double currentPrice = GetCurrentPrice(currentTP.direction);
-        double pnl = CalculatePNL(currentPrice);
-        
-        // Reportar ejecución completa de la pending order
-        ReportPendingExecuted(currentTP.signalId, currentTP.ticket, currentTP.entry, 
-                              currentTP.currentSL, currentTP.currentVolume);
-        SaveState();
+        AdoptLivePosition(true);   // adopta campos + reporta ejecución + persiste
         return;
     }
 
     if(!OrderSelect(currentTP.ticket)) {
         Log(WARNING_LVL, "PENDING", "Orden pendiente cancelada");
         ReportClose(currentTP.signalId, -999, "ORDER_CANCELLED", 0, 0);
-        InitTPState();
-        ClearState();
+        EndTrade();
     }
 }
 
@@ -1753,10 +1725,17 @@ bool ExecuteTrade(int userSignalId, string opType, double entryPrice, double sto
         Log(INFO_LVL, "TRADE_OPEN", StringFormat("%s %s, Ticket=%d, PosID=%d, Vol=%.2f, Entry=%.5f, Corrección=%.4f",
             (isMarketOrder ? "MARKET" : "PENDING"), opType, ticket, positionID, calculatedVolume, entryPrice, correctionFactor));
 
+        PriceSet rawPrices;
+        rawPrices.entry = originalEntry; rawPrices.sl1 = originalSL1; rawPrices.sl2 = originalSL2;
+        rawPrices.tp1 = originalTP1; rawPrices.tp2 = originalTP2; rawPrices.tp3 = originalTP3;
+        rawPrices.tp4 = originalTP4; rawPrices.tp5 = originalTP5;
+
+        PriceSet corrPrices;
+        corrPrices.entry = entryPrice; corrPrices.sl1 = orderStopLoss; corrPrices.sl2 = originalSL2;
+        corrPrices.tp1 = tp1; corrPrices.tp2 = tp2; corrPrices.tp3 = tp3; corrPrices.tp4 = tp4; corrPrices.tp5 = tp5;
+
         ReportOpen(userSignalId, isMarketOrder, orderType, entryPrice, orderStopLoss, calculatedVolume, ticket,
-                   opType, originalEntry, originalSL1, originalSL2,
-                   originalTP1, originalTP2, originalTP3, originalTP4, originalTP5,
-                   entryPrice, orderStopLoss, originalSL2, tp1, tp2, tp3, tp4, tp5);
+                   opType, rawPrices, corrPrices);
         return true;
     } else {
         uint retcode = trade.ResultRetcode();
