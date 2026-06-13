@@ -675,6 +675,7 @@ class Debug extends CI_Controller
                         'users_distributed' => $this->db->where('telegram_signal_id', $signal_id)->count_all_results('user_telegram_signals'),
                         'ai_provider' => $ai_provider,
                         'ai_mode' => $ai_mode,
+                        'ai_pair' => ($ai_mode === 'dual') ? $this->Setting_model->get_provider_pair() : null,
                         'ai_validated' => isset($final_signal->ai_validated) ? (bool)$final_signal->ai_validated : null,
                         'signal_status' => $final_signal->status
                     ]

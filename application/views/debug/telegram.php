@@ -358,18 +358,22 @@ function simulateWebhook() {
     .then(r => r.json())
     .then(data => {
         if (data.success) {
+            const providerBadge = (p) =>
+                p === 'claude' ? '<span class="badge bg-primary">Claude</span>'
+                : p === 'gemini' ? '<span class="badge bg-warning text-dark">Gemini</span>'
+                : p === 'openai' ? '<span class="badge bg-success">OpenAI</span>'
+                : `<span class="badge bg-secondary">${p}</span>`;
+
             let validationBadge = '';
             if (data.data.ai_mode === 'dual') {
-                validationBadge = data.data.ai_validated
-                    ? '<span class="badge bg-success"><i class="fas fa-check me-1"></i>Dual Validated</span>'
+                const pair = data.data.ai_pair || [];
+                const pairBadges = pair.map(providerBadge).join(' + ');
+                const statusBadge = data.data.ai_validated
+                    ? '<span class="badge bg-success"><i class="fas fa-check me-1"></i>Validated</span>'
                     : '<span class="badge bg-danger"><i class="fas fa-times me-1"></i>Mismatch</span>';
+                validationBadge = (pairBadges ? pairBadges + ' ' : '') + statusBadge;
             } else {
-                const aiProviderBadge = data.data.ai_provider === 'claude'
-                    ? '<span class="badge bg-primary">Claude</span>'
-                    : data.data.ai_provider === 'gemini'
-                    ? '<span class="badge bg-warning text-dark">Gemini</span>'
-                    : '<span class="badge bg-success">OpenAI</span>';
-                validationBadge = aiProviderBadge;
+                validationBadge = providerBadge(data.data.ai_provider);
             }
 
             const isMismatch = data.data.ai_mode === 'dual' && !data.data.ai_validated;
