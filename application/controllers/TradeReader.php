@@ -303,7 +303,8 @@ class TradeReader extends CI_Controller
 
     private function createTradeAnalysisSingle($image_base64, $prompt, $visual_op_type, $cropped_filename)
     {
-        $provider = $this->input->get('ai_provider') ?: $this->config->item('ai_provider') ?: 'openai';
+        // Single usa el proveedor A de AI Settings (system_settings); ya no depende de config.
+        $provider = $this->input->get('ai_provider') ?: $this->getProviderPair()[0];
 
         $raw_json = $this->analyzeWithProvider($image_base64, $prompt, $provider);
         if ($raw_json === null) {

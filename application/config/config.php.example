@@ -15,15 +15,14 @@ $config['base_url'] = $root;
 $config['openai_api_key'] = '';   // https://platform.openai.com/api-keys
 $config['claude_api_key'] = '';   // https://console.anthropic.com/
 $config['gemini_api_key'] = '';   // https://aistudio.google.com/apikey
-$config['gemini_model']   = 'gemini-2.5-flash';
-$config['openai_model']   = 'gpt-4o';
-$config['claude_model']   = 'claude-sonnet-4-6'; // 4.6 (mejor que 4.5) | opus: 'claude-opus-4-8'
 
-// --- Análisis de señales (se puede sobreescribir desde Admin > AI Settings) ---
-$config['ai_mode']       = 'dual';   // 'single' (un proveedor) o 'dual' (consenso de 2)
-$config['ai_provider']   = 'claude'; // proveedor para modo single
-$config['ai_provider_a'] = 'gemini'; // par del consenso (fallback si no hay en system_settings)
-$config['ai_provider_b'] = 'openai'; // valores válidos: openai | claude | gemini
+// --- Modelo de cada proveedor ---
+$config['openai_model'] = 'gpt-4o';
+$config['claude_model'] = 'claude-sonnet-4-6'; // o 'claude-opus-4-8'
+$config['gemini_model'] = 'gemini-2.5-flash';
+
+// El modo (single/dual) y el par de proveedores se eligen en Admin > AI Settings
+// (tabla system_settings). NO se configuran acá.
 
 $config['index_page'] = '';
 $config['uri_protocol'] = 'REQUEST_URI';
