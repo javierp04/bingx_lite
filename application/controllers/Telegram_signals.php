@@ -138,13 +138,13 @@ class Telegram_signals extends CI_Controller
             return;
         }
 
-        if (!in_array($provider, ['openai', 'claude'])) {
+        if (!in_array($provider, ['openai', 'claude', 'gemini'], true)) {
             $this->session->set_flashdata('error', 'Invalid provider');
             redirect('telegram_signals/view/' . $id);
             return;
         }
 
-        $raw_field = ($provider === 'openai') ? $signal->analysis_openai : $signal->analysis_claude;
+        $raw_field = $signal->{'analysis_' . $provider};
 
         if (!$raw_field) {
             $this->session->set_flashdata('error', 'No analysis data for selected provider');
