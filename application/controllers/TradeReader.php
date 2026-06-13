@@ -251,11 +251,6 @@ class TradeReader extends CI_Controller
         }
     }
 
-    private function transformAnalysisData($raw_json)
-    {
-        return transform_analysis_data($raw_json);
-    }
-
     /**
      * Análisis IA que devuelve JSON transformado o null si falló
      * Soporta OpenAI y Claude según configuración
@@ -294,33 +289,18 @@ class TradeReader extends CI_Controller
         // 3. Detectar modo: single o dual (settings → config → default)
         $ai_mode = $this->input->get('ai_mode') ?: $this->settingGet('ai_mode', 'single');
 
+        // La logica de IA (dispatch + consenso) vive en la library Ai_analysis.
+        // Este controller solo resuelve modo y proveedor(es) y delega.
+        $this->load->library('ai_analysis');
+
         if ($ai_mode === 'dual') {
-            return $this->createTradeAnalysisDual($image_base64, $prompt, $visual_op_type, $cropped_filename);
-        } else {
-            return $this->createTradeAnalysisSingle($image_base64, $prompt, $visual_op_type, $cropped_filename);
+            list($providerA, $providerB) = $this->getProviderPair();
+            return $this->ai_analysis->dual($image_base64, $prompt, $visual_op_type, $cropped_filename, $providerA, $providerB);
         }
-    }
 
-    private function createTradeAnalysisSingle($image_base64, $prompt, $visual_op_type, $cropped_filename)
-    {
-        // Single usa el proveedor A de AI Settings (system_settings); ya no depende de config.
+        // Single usa el proveedor A de AI Settings, salvo override por query (?ai_provider=)
         $provider = $this->input->get('ai_provider') ?: $this->getProviderPair()[0];
-
-        $raw_json = $this->analyzeWithProvider($image_base64, $prompt, $provider);
-        if ($raw_json === null) {
-            return null;
-        }
-
-        // Determinar op_type: primero de la IA (leyendas), luego fallback visual
-        $op_type_final = $this->resolveOpType($raw_json, $visual_op_type, $cropped_filename);
-        $raw_json['op_type'] = $op_type_final;
-
-        $transformed_json = $this->transformAnalysisData($raw_json);
-        if ($transformed_json === null) {
-            return null;
-        }
-
-        return $transformed_json;
+        return $this->ai_analysis->single($image_base64, $prompt, $visual_op_type, $cropped_filename, $provider);
     }
 
     // Helper: lee un setting de system_settings, con fallback a config.php y a un default.
@@ -336,275 +316,6 @@ class TradeReader extends CI_Controller
         return [
             $this->settingGet('ai_provider_a', 'gemini'),
             $this->settingGet('ai_provider_b', 'openai')
-        ];
-    }
-
-    private function createTradeAnalysisDual($image_base64, $prompt, $visual_op_type, $cropped_filename)
-    {
-        list($providerA, $providerB) = $this->getProviderPair();
-
-        // === RONDA 1 ===
-        $a1 = $this->analyzeWithProvider($image_base64, $prompt, $providerA);
-        $b1 = $this->analyzeWithProvider($image_base64, $prompt, $providerB);
-
-        // Si ambas fallaron completamente
-        if ($a1 === null && $b1 === null) {
-            $this->Log_model->add_log([
-                'user_id' => null,
-                'action' => 'dual_ai_both_failed',
-                'description' => "Ambas IAs ({$providerA}+{$providerB}) fallaron para imagen: {$cropped_filename}"
-            ]);
-            return null;
-        }
-
-        // Si solo una respondió: no validada, sin retry
-        if ($a1 === null || $b1 === null) {
-            $working_provider = $a1 !== null ? $providerA : $providerB;
-            $working_raw = $a1 !== null ? $a1 : $b1;
-
-            $this->Log_model->add_log([
-                'user_id' => null,
-                'action' => 'dual_ai_one_failed',
-                'description' => "Solo {$working_provider} respondió para imagen: {$cropped_filename}"
-            ]);
-
-            return $this->buildDualResult($working_raw, $visual_op_type, $cropped_filename, [$providerA => $a1, $providerB => $b1], false, "Solo {$working_provider} respondió");
-        }
-
-        // Resolver op_type de ambas
-        $this->prepareRawWithOpType($a1, $visual_op_type, $cropped_filename . '_A1');
-        $this->prepareRawWithOpType($b1, $visual_op_type, $cropped_filename . '_B1');
-
-        // Ronda 1: comparar A1 vs B1
-        $match = $this->findMatchingPair([[$a1, $b1]], $cropped_filename, 'R1');
-
-        if ($match) {
-            return $this->buildDualResult($match['winner'], $visual_op_type, $cropped_filename, [$providerA => $a1, $providerB => $b1], true, $match['detail'], $match['matched_prices']);
-        }
-
-        // === RONDA 2: retry ===
-        $this->Log_model->add_log([
-            'user_id' => null,
-            'action' => 'dual_ai_retry',
-            'description' => "Ronda 1 mismatch, ejecutando retry para imagen: {$cropped_filename}"
-        ]);
-
-        $a2 = $this->analyzeWithProvider($image_base64, $prompt, $providerA);
-        $b2 = $this->analyzeWithProvider($image_base64, $prompt, $providerB);
-
-        // Resolver op_type de las nuevas respuestas (si existen)
-        if ($a2 !== null) {
-            $this->prepareRawWithOpType($a2, $visual_op_type, $cropped_filename . '_A2');
-        }
-        if ($b2 !== null) {
-            $this->prepareRawWithOpType($b2, $visual_op_type, $cropped_filename . '_B2');
-        }
-
-        // Armar pares cruzados para comparar (solo los que tienen ambas respuestas)
-        $cross_pairs = [];
-        if ($a1 !== null && $b2 !== null) $cross_pairs[] = [$a1, $b2];
-        if ($a2 !== null && $b1 !== null) $cross_pairs[] = [$a2, $b1];
-        if ($a2 !== null && $b2 !== null) $cross_pairs[] = [$a2, $b2];
-
-        $match = $this->findMatchingPair($cross_pairs, $cropped_filename, 'R2');
-
-        // Consolidar todas las respuestas para guardar en DB
-        $all_a = array_values(array_filter([$a1, $a2]));
-        $all_b = array_values(array_filter([$b1, $b2]));
-
-        if ($match) {
-            return $this->buildDualResult($match['winner'], $visual_op_type, $cropped_filename, [$providerA => $all_a, $providerB => $all_b], true, $match['detail'] . ' (retry)', $match['matched_prices']);
-        }
-
-        // Ningún par coincidió → pending_review
-        $this->Log_model->add_log([
-            'user_id' => null,
-            'action' => 'dual_ai_all_mismatch',
-            'description' => "Ningún par coincidió después de retry para imagen: {$cropped_filename}"
-        ]);
-
-        return $this->buildDualResult($a1, $visual_op_type, $cropped_filename, [$providerA => $all_a, $providerB => $all_b], false, 'Ningún par coincidió después de 2 rondas');
-    }
-
-    private function prepareRawWithOpType(&$raw, $visual_op_type, $context)
-    {
-        $raw['op_type'] = $this->resolveOpType($raw, $visual_op_type, $context);
-    }
-
-    private function findMatchingPair($pairs, $cropped_filename, $round_label)
-    {
-        foreach ($pairs as $idx => $pair) {
-            list($rawA, $rawB) = $pair;
-            $comparison = $this->compareAnalysisResults($rawA, $rawB);
-
-            $pair_label = "{$round_label}_par{$idx}";
-            $this->Log_model->add_log([
-                'user_id' => null,
-                'action' => 'dual_ai_comparison',
-                'description' => "{$pair_label}: " . ($comparison['match'] ? 'MATCH' : 'NO') .
-                    " | {$comparison['detail']} | Imagen: {$cropped_filename}"
-            ]);
-
-            if ($comparison['match']) {
-                // Usar rawA como ganador, con precios truncados al subset validado si aplica
-                $winner = $rawA;
-                if (isset($comparison['matched_prices'])) {
-                    $winner['label_prices'] = $comparison['matched_prices'];
-                }
-                return [
-                    'winner' => $winner,
-                    'detail' => $comparison['detail'],
-                    'matched_prices' => isset($comparison['matched_prices']) ? $comparison['matched_prices'] : $rawA['label_prices']
-                ];
-            }
-        }
-        return null;
-    }
-
-    /**
-     * Construye el resultado del analisis dual.
-     * @param array      $by_provider     Mapa [proveedor => respuesta_cruda] de las IAs comparadas
-     * @param bool       $validated       true si las IAs coincidieron en los precios ancla
-     * @param string     $detail          Detalle del match/mismatch (logs + campo discrepancy)
-     * @param array|null $matched_prices  Subset de precios validados a aplicar al winner
-     */
-    private function buildDualResult($raw_winner, $visual_op_type, $cropped_filename, $by_provider, $validated, $detail, $matched_prices = null)
-    {
-        // Si matched_prices fue proporcionado, usarlo en el winner para la transformación
-        if ($matched_prices !== null && $raw_winner !== null) {
-            $raw_winner['label_prices'] = $matched_prices;
-        }
-
-        $transformed = null;
-        if ($raw_winner !== null) {
-            if (!isset($raw_winner['op_type'])) {
-                $raw_winner['op_type'] = $this->resolveOpType($raw_winner, $visual_op_type, $cropped_filename);
-            }
-            $transformed = $this->transformAnalysisData($raw_winner);
-        }
-
-        return [
-            'analysis' => $transformed,
-            'ai_validated' => $validated,
-            'analysis_by_provider' => array_map('json_encode', $by_provider),
-            'discrepancy' => $validated ? null : $detail,
-            'dual_mode' => true
-        ];
-    }
-
-    private function analyzeWithProvider($image_base64, $prompt, $provider)
-    {
-        $this->load->library('ai_provider');
-
-        // El registry del proveedor define URL, headers y forma del payload.
-        $req = $this->ai_provider->build_request($provider, $prompt, $image_base64);
-        if (isset($req['error'])) {
-            $this->Log_model->add_log([
-                'user_id' => null,
-                'action' => 'ai_analysis_error',
-                'description' => 'AI request build failed (' . $provider . '): ' . $req['error']
-            ]);
-            return null;
-        }
-
-        $response = $this->http_post_json($req['url'], $req['headers'], $req['payload']);
-
-        if (isset($response['error'])) {
-            $this->Log_model->add_log([
-                'user_id' => null,
-                'action' => 'ai_analysis_error',
-                'description' => 'AI analysis failed with ' . $provider . ': ' . json_encode($response['error'])
-            ]);
-            return null;
-        }
-
-        $text = $this->ai_provider->extract_text($provider, $response);
-        if (!$text) {
-            return null;
-        }
-
-        $raw_json = json_decode($text, true);
-        if ($raw_json === null) {
-            $json_candidate = $this->extract_json($text);
-            if ($json_candidate !== null) {
-                $raw_json = $json_candidate;
-            } else {
-                return null;
-            }
-        }
-
-        if (empty($raw_json)) {
-            return null;
-        }
-
-        return $raw_json;
-    }
-
-    private function resolveOpType($raw_json, $visual_op_type, $context)
-    {
-        if (isset($raw_json['op_type']) && in_array(strtoupper($raw_json['op_type']), ['LONG', 'SHORT'])) {
-            $op_type_final = strtoupper($raw_json['op_type']);
-            $detection_method = 'IA (leyendas)';
-        } else {
-            $op_type_final = $visual_op_type;
-            $detection_method = 'Visual (cajas)';
-        }
-
-        $this->Log_model->add_log([
-            'user_id' => null,
-            'action' => 'op_type_detection',
-            'description' => "Método: {$detection_method} | Resultado: {$op_type_final} | Contexto: {$context}"
-        ]);
-
-        return $op_type_final;
-    }
-
-    // Precios "ancla" que deben coincidir entre las dos IAs para validar el consenso:
-    // entry + 2 stop-loss + 4 take-profits cercanos. En LONG estan al FINAL del array; en SHORT al INICIO.
-    private const DUAL_ANCHOR_PRICES = 7;
-
-    private function compareAnalysisResults($rawA, $rawB)
-    {
-        $op_a = isset($rawA['op_type']) ? strtoupper($rawA['op_type']) : 'UNKNOWN';
-        $op_b = isset($rawB['op_type']) ? strtoupper($rawB['op_type']) : 'UNKNOWN';
-
-        if ($op_a !== $op_b) {
-            return ['match' => false, 'detail' => "op_type mismatch: A={$op_a} vs B={$op_b}"];
-        }
-
-        $prices_a = isset($rawA['label_prices']) ? array_map('floatval', $rawA['label_prices']) : [];
-        $prices_b = isset($rawB['label_prices']) ? array_map('floatval', $rawB['label_prices']) : [];
-        $count_a = count($prices_a);
-        $count_b = count($prices_b);
-        $required = self::DUAL_ANCHOR_PRICES;
-
-        if ($count_a < $required || $count_b < $required) {
-            return ['match' => false, 'detail' => "Insuficientes precios para comparar: A={$count_a}, B={$count_b} (mín {$required})"];
-        }
-
-        // LONG mira la cola del array; SHORT la cabeza. Resto de la logica identico.
-        $isLong   = ($op_a === 'LONG');
-        $anchor_a = $isLong ? array_slice($prices_a, -$required) : array_slice($prices_a, 0, $required);
-        $anchor_b = $isLong ? array_slice($prices_b, -$required) : array_slice($prices_b, 0, $required);
-
-        for ($i = 0; $i < $required; $i++) {
-            if ($anchor_a[$i] !== $anchor_b[$i]) {
-                $pos_a = $isLong ? ($count_a - $required + $i + 1) : ($i + 1);
-                $pos_b = $isLong ? ($count_b - $required + $i + 1) : ($i + 1);
-                return [
-                    'match' => false,
-                    'detail' => "{$op_a} ancla#" . ($i + 1) . ": A[{$pos_a}]={$anchor_a[$i]} vs B[{$pos_b}]={$anchor_b[$i]}"
-                ];
-            }
-        }
-
-        // Match: usar el set completo del proveedor con mas precios
-        $matched = $count_a >= $count_b ? $prices_a : $prices_b;
-
-        return [
-            'match' => true,
-            'detail' => "{$op_a} match: {$required} ancla coinciden (A={$count_a}, B={$count_b}), usando set completo de " . count($matched),
-            'matched_prices' => $matched
         ];
     }
 
@@ -803,40 +514,6 @@ PROMPT;
 
     // POST JSON generico para las APIs de IA. Lo unico que cambia entre proveedores
     // son los headers (auth); el resto del manejo (timeout, errores, status) es identico.
-    private function http_post_json($url, $headers, $payload)
-    {
-        $ch = curl_init($url);
-        curl_setopt_array($ch, [
-            CURLOPT_POST => true,
-            CURLOPT_HTTPHEADER => $headers,
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT => 120,
-            CURLOPT_POSTFIELDS => json_encode($payload)
-        ]);
-        $raw = curl_exec($ch);
-        if ($raw === false) {
-            $err = curl_error($ch);
-            curl_close($ch);
-            return ['error' => "cURL error: {$err}"];
-        }
-        $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-        $json = json_decode($raw, true);
-        if ($code >= 400) {
-            return ['error' => $json ?: $raw, 'status' => $code];
-        }
-        return $json ?: ['error' => 'Respuesta no JSON', 'raw' => $raw];
-    }
-
-    private function extract_json($text)
-    {
-        if (preg_match('/\{(?:[^{}]|(?R))*\}/s', $text, $m)) {
-            $candidate = json_decode($m[0], true);
-            return $candidate;
-        }
-        return null;
-    }
-
     private function findRightmostGreenBox($image, $width, $height)
     {
         $targetGreens = [
