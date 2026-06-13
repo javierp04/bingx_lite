@@ -83,4 +83,10 @@ class Setting_model extends CI_Model
             $this->resolve('ai_provider_b', 'openai'),
         ];
     }
+
+    // Proveedores de IA soportados. Fuente unica para validacion (single y par dual).
+    public function supported_providers()
+    {
+        return ['gemini', 'openai', 'claude'];
+    }
 }

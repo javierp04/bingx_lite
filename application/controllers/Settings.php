@@ -26,9 +26,8 @@ class Settings extends CI_Controller
             'openai' => 'OpenAI GPT-4o',
             'claude' => 'Claude'
         ];
-        $data['ai_mode']       = $this->Setting_model->get('ai_mode', $this->config->item('ai_mode') ?: 'dual');
-        $data['ai_provider_a'] = $this->Setting_model->get('ai_provider_a', $this->config->item('ai_provider_a') ?: 'gemini');
-        $data['ai_provider_b'] = $this->Setting_model->get('ai_provider_b', $this->config->item('ai_provider_b') ?: 'openai');
+        $data['ai_mode'] = $this->Setting_model->get_ai_mode('dual');
+        list($data['ai_provider_a'], $data['ai_provider_b']) = $this->Setting_model->get_provider_pair();
         $data['settings_ready'] = $this->Setting_model->is_ready();
 
         $this->load->view('templates/header', $data);
@@ -48,7 +47,7 @@ class Settings extends CI_Controller
         $mode = $this->input->post('ai_mode');
         $a    = $this->input->post('ai_provider_a');
         $b    = $this->input->post('ai_provider_b');
-        $valid = ['gemini', 'openai', 'claude'];
+        $valid = $this->Setting_model->supported_providers();
 
         if (!in_array($mode, ['single', 'dual'], true) || !in_array($a, $valid, true) || !in_array($b, $valid, true)) {
             $this->session->set_flashdata('error', 'Valores inválidos.');

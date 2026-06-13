@@ -554,13 +554,16 @@ class Debug extends CI_Controller
             return;
         }
 
+        $this->load->model('Setting_model');
+        $supported = $this->Setting_model->supported_providers();
+
         // Validate AI mode
         if (!in_array($ai_mode, ['single', 'dual'])) {
             $ai_mode = 'single';
         }
 
         // Validate AI provider (for single mode)
-        if ($ai_mode === 'single' && !in_array($ai_provider, ['openai', 'claude', 'gemini'])) {
+        if ($ai_mode === 'single' && !in_array($ai_provider, $supported)) {
             $ai_provider = 'claude';
         }
 
@@ -568,7 +571,6 @@ class Debug extends CI_Controller
         if ($ai_mode === 'dual') {
             // Dual valida EXACTAMENTE el par que el webhook va a ejecutar:
             // system_settings -> config -> default (misma resolucion que TradeReader).
-            $this->load->model('Setting_model');
             $pair = $this->Setting_model->get_provider_pair();
             $pa = $pair[0];
             $pb = $pair[1];
@@ -621,14 +623,8 @@ class Debug extends CI_Controller
             // 2. POST to real webhook endpoint
             $webhook_url = base_url('tradereader/run') . '?ai_provider=' . $ai_provider . '&ai_mode=' . $ai_mode;
 
-            // DEBUG: Log URL construction
-            error_log('[Debug] base_url result: ' . base_url());
-            error_log('[Debug] Full webhook URL: ' . $webhook_url);
-
             $ch = curl_init($webhook_url);
             $json_payload = json_encode($telegram_payload);
-            error_log('[Debug] cURL URL: ' . $webhook_url);
-            error_log('[Debug] cURL payload length: ' . strlen($json_payload));
             curl_setopt_array($ch, [
                 CURLOPT_POST => true,
                 CURLOPT_POSTFIELDS => $json_payload,
@@ -638,14 +634,12 @@ class Debug extends CI_Controller
             ]);
 
             $response = curl_exec($ch);
-            $curl_error = curl_error($ch);
             $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
             curl_close($ch);
-            error_log('[Debug] cURL response code: ' . $http_code . ' error: ' . $curl_error);
-            error_log('[Debug] cURL response: ' . substr($response, 0, 500));
 
-            // Restore original AI provider
+            // Restore original AI provider + mode
             $this->config->set_item('ai_provider', $original_provider);
+            $this->config->set_item('ai_mode', $original_mode);
 
             // 3. Parse response
             $result = json_decode($response, true);
@@ -690,9 +684,12 @@ class Debug extends CI_Controller
                 ]);
             }
         } catch (Exception $e) {
-            // Restore original provider on error
+            // Restore original provider + mode on error
             if (isset($original_provider)) {
                 $this->config->set_item('ai_provider', $original_provider);
+            }
+            if (isset($original_mode)) {
+                $this->config->set_item('ai_mode', $original_mode);
             }
 
             $this->_send_json_response(false, 'Simulation error: ' . $e->getMessage(), [

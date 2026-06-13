@@ -522,7 +522,7 @@ class TradeReader extends CI_Controller
             }
         }
 
-        if (empty($raw_json) || (count($raw_json) == 0)) {
+        if (empty($raw_json)) {
             return null;
         }
 
@@ -534,11 +534,9 @@ class TradeReader extends CI_Controller
         if (isset($raw_json['op_type']) && in_array(strtoupper($raw_json['op_type']), ['LONG', 'SHORT'])) {
             $op_type_final = strtoupper($raw_json['op_type']);
             $detection_method = 'IA (leyendas)';
-            error_log('[TradeReader] op_type detectado por IA (leyendas): ' . $op_type_final . ' [' . $context . ']');
         } else {
             $op_type_final = $visual_op_type;
             $detection_method = 'Visual (cajas)';
-            error_log('[TradeReader] op_type por fallback visual (cajas): ' . $op_type_final . ' [' . $context . ']');
         }
 
         $this->Log_model->add_log([
@@ -819,43 +817,11 @@ PROMPT;
     }
 
 
-    private function openai_post_json($url, $apiKey, $payload)
+    // POST JSON generico para las APIs de IA. Lo unico que cambia entre proveedores
+    // son los headers (auth); el resto del manejo (timeout, errores, status) es identico.
+    private function http_post_json($url, $headers, $payload)
     {
         $ch = curl_init($url);
-        $headers = [
-            "Authorization: Bearer {$apiKey}",
-            "Content-Type: application/json"
-        ];
-        curl_setopt_array($ch, [
-            CURLOPT_POST => true,
-            CURLOPT_HTTPHEADER => $headers,
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT => 120,
-            CURLOPT_POSTFIELDS => json_encode($payload)
-        ]);
-        $raw = curl_exec($ch);
-        if ($raw === false) {
-            $err = curl_error($ch);
-            curl_close($ch);
-            return ['error' => "cURL error: {$err}"];
-        }
-        $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-        $json = json_decode($raw, true);
-        if ($code >= 400) {
-            return ['error' => $json ?: $raw, 'status' => $code];
-        }
-        return $json ?: ['error' => 'Respuesta no JSON', 'raw' => $raw];
-    }
-
-    private function claude_post_json($url, $apiKey, $payload)
-    {
-        $ch = curl_init($url);
-        $headers = [
-            "x-api-key: {$apiKey}",
-            "anthropic-version: 2023-06-01",
-            "Content-Type: application/json"
-        ];
         curl_setopt_array($ch, [
             CURLOPT_POST => true,
             CURLOPT_HTTPHEADER => $headers,
@@ -899,7 +865,11 @@ PROMPT;
             ]]
         ];
 
-        return $this->openai_post_json("https://api.openai.com/v1/chat/completions", $apiKey, $payload);
+        return $this->http_post_json(
+            "https://api.openai.com/v1/chat/completions",
+            ["Authorization: Bearer {$apiKey}", "Content-Type: application/json"],
+            $payload
+        );
     }
 
     private function call_claude_api($image_base64, $prompt)
@@ -929,7 +899,11 @@ PROMPT;
             ]]
         ];
 
-        return $this->claude_post_json("https://api.anthropic.com/v1/messages", $apiKey, $payload);
+        return $this->http_post_json(
+            "https://api.anthropic.com/v1/messages",
+            ["x-api-key: {$apiKey}", "anthropic-version: 2023-06-01", "Content-Type: application/json"],
+            $payload
+        );
     }
 
     private function call_gemini_api($image_base64, $prompt)
@@ -952,33 +926,8 @@ PROMPT;
         ];
 
         $url = "https://generativelanguage.googleapis.com/v1beta/models/{$model}:generateContent?key=" . urlencode($apiKey);
-        return $this->gemini_post_json($url, $payload);
-    }
-
-    private function gemini_post_json($url, $payload)
-    {
-        $ch = curl_init($url);
-        $headers = ["Content-Type: application/json"]; // Gemini lleva la API key en la URL
-        curl_setopt_array($ch, [
-            CURLOPT_POST => true,
-            CURLOPT_HTTPHEADER => $headers,
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT => 120,
-            CURLOPT_POSTFIELDS => json_encode($payload)
-        ]);
-        $raw = curl_exec($ch);
-        if ($raw === false) {
-            $err = curl_error($ch);
-            curl_close($ch);
-            return ['error' => "cURL error: {$err}"];
-        }
-        $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-        $json = json_decode($raw, true);
-        if ($code >= 400) {
-            return ['error' => $json ?: $raw, 'status' => $code];
-        }
-        return $json ?: ['error' => 'Respuesta no JSON', 'raw' => $raw];
+        // Gemini lleva la API key en la URL, no en headers
+        return $this->http_post_json($url, ["Content-Type: application/json"], $payload);
     }
 
     private function extract_ai_response($response, $provider)
