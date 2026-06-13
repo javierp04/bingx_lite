@@ -56,4 +56,31 @@ class Setting_model extends CI_Model
         }
         return $out;
     }
+
+    // Resuelve un setting con la MISMA precedencia que usa el webhook real:
+    // system_settings (DB) -> config.php -> default. Asi validacion y ejecucion coinciden.
+    public function resolve($key, $default = null)
+    {
+        $val = $this->get($key, null);
+        if ($val !== null && $val !== '') {
+            return $val;
+        }
+        $cfg = $this->config->item($key);
+        return ($cfg !== false && $cfg !== null && $cfg !== '') ? $cfg : $default;
+    }
+
+    // Modo de analisis IA: 'single' o 'dual'.
+    public function get_ai_mode($default = 'single')
+    {
+        return $this->resolve('ai_mode', $default);
+    }
+
+    // Par de proveedores del consenso dual: [A, B]. Dinamico segun lo seleccionado en Settings.
+    public function get_provider_pair()
+    {
+        return [
+            $this->resolve('ai_provider_a', 'gemini'),
+            $this->resolve('ai_provider_b', 'openai'),
+        ];
+    }
 }

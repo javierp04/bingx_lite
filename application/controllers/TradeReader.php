@@ -326,12 +326,7 @@ class TradeReader extends CI_Controller
     private function settingGet($key, $default = null)
     {
         $this->load->model('Setting_model');
-        $val = $this->Setting_model->get($key, null);
-        if ($val !== null && $val !== '') {
-            return $val;
-        }
-        $cfg = $this->config->item($key);
-        return ($cfg !== false && $cfg !== null && $cfg !== '') ? $cfg : $default;
+        return $this->Setting_model->resolve($key, $default);
     }
 
     // Devuelve el par de proveedores del consenso [A, B].

@@ -566,9 +566,12 @@ class Debug extends CI_Controller
 
         // Validate API keys
         if ($ai_mode === 'dual') {
-            // Dual usa el par configurado (ai_provider_a/b), no openai+claude fijo
-            $pa = $this->config->item('ai_provider_a') ?: 'gemini';
-            $pb = $this->config->item('ai_provider_b') ?: 'openai';
+            // Dual valida EXACTAMENTE el par que el webhook va a ejecutar:
+            // system_settings -> config -> default (misma resolucion que TradeReader).
+            $this->load->model('Setting_model');
+            $pair = $this->Setting_model->get_provider_pair();
+            $pa = $pair[0];
+            $pb = $pair[1];
             $val_a = $this->_validate_ai_provider($pa);
             $val_b = $this->_validate_ai_provider($pb);
             if (!$val_a['valid'] || !$val_b['valid']) {
