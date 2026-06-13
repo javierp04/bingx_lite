@@ -1,6 +1,7 @@
 #property copyright "TelegramSignals"
-#property version   "10.12"
+#property version   "10.13"
 #property description "Reliability + gates asset-agnostic (TP1) + CSV trade journal (dataset + live)"
+// v10.13: fix cierre parcial — el remanente <= min lot ahora se cierra (antes quedaba huerfano al reportar COMPLETE)
 
 // LIBRERÍAS
 #include <Trade\Trade.mqh>
@@ -740,7 +741,7 @@ bool ValidateSymbol() {
 }
 
 void LogInitialization() {
-   Print("EA Signals v10.12 | User: ", USER_ID, " | Symbol: ", currentSymbol, " | BE Level: ", BE_LEVEL);
+   Print("EA Signals v10.13 | User: ", USER_ID, " | Symbol: ", currentSymbol, " | BE Level: ", BE_LEVEL);
    Log(INFO_LVL, "INIT", "Stop management: " + (ENABLE_CODE_STOP ? "CODE" : "MT5"));
 }
 
@@ -1396,26 +1397,48 @@ bool ClosePartialPosition(double volume) {
     double currentPrice = GetCurrentPrice(currentTP.direction);
     double closedPnl = CalculatePNL(currentPrice, volume);
 
-    if(trade.PositionClosePartial(position.Ticket(), volume)) {
-        currentTP.totalClosedVolume += volume;
-        currentTP.closedPercent = (currentTP.totalClosedVolume / currentTP.originalVolume) * 100.0;
-        currentTP.currentVolume = position.Volume() - volume;
+    if(!trade.PositionClosePartial(position.Ticket(), volume))
+        return false;
 
-        ReportProgress(currentTP.signalId, currentTP.currentLevel, currentTP.closedPercent,
-                      currentTP.currentVolume, currentPrice, closedPnl, "TP parcial");
+    currentTP.totalClosedVolume += volume;
+    currentTP.closedPercent = (currentTP.totalClosedVolume / currentTP.originalVolume) * 100.0;
 
-        Log(INFO_LVL, "PARTIAL_CLOSE", StringFormat("TP%d: Cerrado %.2f lots (%.1f%%) a %.5f, PNL=%.2f, Restante=%.2f",
-            currentTP.currentLevel, volume, (volume/currentTP.originalVolume)*100, currentPrice, closedPnl, currentTP.currentVolume));
+    // Releer el volumen REAL tras el cierre (no inferirlo de un snapshot previo a la operacion):
+    // si la posicion ya no existe, el remanente es 0.
+    double remaining = position.SelectByTicket(currentTP.ticket) ? position.Volume() : 0.0;
+    currentTP.currentVolume = remaining;
 
-        SaveState();
+    ReportProgress(currentTP.signalId, currentTP.currentLevel, currentTP.closedPercent,
+                  remaining, currentPrice, closedPnl, "TP parcial");
 
-        if(currentTP.currentVolume <= specs.minVolume) {
-            ReportClose(currentTP.signalId, currentTP.currentLevel, REASON_COMPLETE, currentPrice, 0.0);
-            EndTrade();
+    Log(INFO_LVL, "PARTIAL_CLOSE", StringFormat("TP%d: Cerrado %.2f lots (%.1f%%) a %.5f, PNL=%.2f, Restante=%.2f",
+        currentTP.currentLevel, volume, (volume/currentTP.originalVolume)*100, currentPrice, closedPnl, remaining));
+
+    SaveState();
+
+    // Remanente "dust": >0 pero ya no escalable (<= min lot). DEBE cerrarse: nunca dejar una
+    // posicion abierta al reportar COMPLETE (si no, queda huerfana, sin trackear, contaminando
+    // la proxima señal). Antes esta rama reportaba COMPLETE sin cerrar el remanente.
+    if(remaining > 0 && remaining <= specs.minVolume) {
+        if(trade.PositionClose(currentTP.ticket)) {
+            Log(INFO_LVL, "DUST_CLOSE", StringFormat("Remanente %.2f <= min lot %.2f cerrado completo", remaining, specs.minVolume));
+            remaining = 0.0;
+            currentTP.currentVolume = 0.0;
+        } else {
+            // No se pudo cerrar (requote/mercado cerrado): NO reportar COMPLETE. El remanente
+            // queda trackeado (isActive sigue true) y protegido por su SL; se reintenta en el
+            // proximo tick (TP5 closeAll) o cierra por SL y se reconcilia desde historial.
+            Log(ERROR_LVL, "DUST_CLOSE", StringFormat("No se pudo cerrar remanente %.2f (retcode %d): se reintentara",
+                remaining, trade.ResultRetcode()));
         }
-        return true;
     }
-    return false;
+
+    // Cierre total confirmado (remanente 0) -> reportar COMPLETE una sola vez y finalizar.
+    if(remaining <= 0) {
+        ReportClose(currentTP.signalId, currentTP.currentLevel, REASON_COMPLETE, currentPrice, 0.0);
+        EndTrade();
+    }
+    return true;
 }
 
 // NUEVO: Reportar ejecución completa cuando pending order se convierte en posición
@@ -1580,6 +1603,10 @@ bool ValidateSpread(int userSignalId, double t1) {
     double spreadTol  = C_SPREAD_RATIO * t1;
     double pctT1      = (t1 > 0) ? (spreadReal / t1 * 100.0) : 0.0;
 
+    // Registrar en el journal SIEMPRE, antes de decidir: si se rechaza, este es justo el dato que lo explica.
+    currentJournal.spread_real = spreadReal;
+    currentJournal.spread_tol  = spreadTol;
+
     // spreadReal <= 0: dato no disponible (algunos brokers reportan 0 un instante) -> no rechazar por 0
     if(spreadReal > 0 && spreadReal > spreadTol) {
         Log(ERROR_LVL, "SPREAD", StringFormat("real=%.5f | tol=%.5f (c=%.2f*T1) | %.1f%% T1 -> RECHAZA SPREAD_TOO_HIGH",
@@ -1589,8 +1616,6 @@ bool ValidateSpread(int userSignalId, double t1) {
     }
     Log(INFO_LVL, "SPREAD", StringFormat("real=%.5f | tol=%.5f (c=%.2f*T1) | %.1f%% T1 -> OK",
         spreadReal, spreadTol, C_SPREAD_RATIO, pctT1));
-    currentJournal.spread_real = spreadReal;
-    currentJournal.spread_tol  = spreadTol;
     return true;
 }
 
@@ -1703,14 +1728,14 @@ bool ExecuteTrade(int userSignalId, string opType, double entryPrice, double sto
     double point    = SymbolInfoDouble(currentSymbol, SYMBOL_POINT);
     double stopsMin = (double)SymbolInfoInteger(currentSymbol, SYMBOL_TRADE_STOPS_LEVEL) * point;
     double slDistFinal = MathAbs(entryPrice - orderStopLoss);
+    currentJournal.stops_min = stopsMin;   // journal SIEMPRE, antes de decidir (tambien si se rechaza)
+    currentJournal.sl_dist   = slDistFinal;
     if(stopsMin > 0 && slDistFinal < stopsMin) {
         Log(ERROR_LVL, "STOPS", StringFormat("broker_min=%.5f | sl_dist=%.5f -> RECHAZA SL_TOO_CLOSE", stopsMin, slDistFinal));
         ReportClose(userSignalId, EXIT_ERROR, REASON_SL_TOO_CLOSE, 0, 0);
         return false;
     }
     Log(INFO_LVL, "STOPS", StringFormat("broker_min=%.5f | sl_dist=%.5f -> OK", stopsMin, slDistFinal));
-    currentJournal.stops_min = stopsMin;
-    currentJournal.sl_dist   = slDistFinal;
 
     // 6. Ejecutar orden
     bool success = false;
