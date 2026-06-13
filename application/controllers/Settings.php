@@ -16,16 +16,13 @@ class Settings extends CI_Controller
         }
 
         $this->load->model('Setting_model');
+        $this->load->library('ai_provider');
     }
 
     public function index()
     {
         $data['title'] = 'AI Settings';
-        $data['providers'] = [
-            'gemini' => 'Gemini 2.5 Flash',
-            'openai' => 'OpenAI GPT-4o',
-            'claude' => 'Claude'
-        ];
+        $data['providers'] = $this->ai_provider->labels();
         $data['ai_mode'] = $this->Setting_model->get_ai_mode('dual');
         list($data['ai_provider_a'], $data['ai_provider_b']) = $this->Setting_model->get_provider_pair();
         $data['settings_ready'] = $this->Setting_model->is_ready();
@@ -47,7 +44,7 @@ class Settings extends CI_Controller
         $mode = $this->input->post('ai_mode');
         $a    = $this->input->post('ai_provider_a');
         $b    = $this->input->post('ai_provider_b');
-        $valid = $this->Setting_model->supported_providers();
+        $valid = $this->ai_provider->names();
 
         if (!in_array($mode, ['single', 'dual'], true) || !in_array($a, $valid, true) || !in_array($b, $valid, true)) {
             $this->session->set_flashdata('error', 'Valores inválidos.');

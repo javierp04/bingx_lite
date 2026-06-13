@@ -341,6 +341,10 @@ class Debug extends CI_Controller
         // Get users for reference
         $data['users'] = $this->User_model->get_all_users();
 
+        // Proveedores para el <select> (dinamico desde el registry)
+        $this->load->library('ai_provider');
+        $data['ai_providers'] = $this->ai_provider->labels();
+
         $this->load->view('templates/header', $data);
         $this->load->view('debug/telegram', $data);
         $this->load->view('templates/footer');
@@ -518,25 +522,15 @@ class Debug extends CI_Controller
      */
     private function _validate_ai_provider($provider)
     {
-        if ($provider === 'openai') {
-            $api_key = $this->config->item('openai_api_key');
-            if (!$api_key || strlen($api_key) < 20) {
-                return ['valid' => false, 'error' => 'OpenAI API key not configured in config.php'];
-            }
-        } elseif ($provider === 'claude') {
-            $api_key = $this->config->item('claude_api_key');
-            if (!$api_key || strlen($api_key) < 20) {
-                return ['valid' => false, 'error' => 'Claude API key not configured in config.php'];
-            }
-        } elseif ($provider === 'gemini') {
-            $api_key = $this->config->item('gemini_api_key');
-            if (!$api_key || strlen($api_key) < 20) {
-                return ['valid' => false, 'error' => 'Gemini API key not configured in config.php'];
-            }
-        } else {
-            return ['valid' => false, 'error' => 'Invalid AI provider. Must be "openai", "claude" or "gemini"'];
-        }
+        $this->load->library('ai_provider');
 
+        if (!$this->ai_provider->has($provider)) {
+            return ['valid' => false, 'error' => 'Invalid AI provider: ' . $provider];
+        }
+        $api_key = $this->ai_provider->api_key($provider);
+        if (!$api_key || strlen($api_key) < 20) {
+            return ['valid' => false, 'error' => ucfirst($provider) . ' API key not configured in config.php'];
+        }
         return ['valid' => true];
     }
 
@@ -555,7 +549,8 @@ class Debug extends CI_Controller
         }
 
         $this->load->model('Setting_model');
-        $supported = $this->Setting_model->supported_providers();
+        $this->load->library('ai_provider');
+        $supported = $this->ai_provider->names();
 
         // Validate AI mode
         if (!in_array($ai_mode, ['single', 'dual'])) {

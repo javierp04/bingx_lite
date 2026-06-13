@@ -494,13 +494,20 @@ class TradeReader extends CI_Controller
 
     private function analyzeWithProvider($image_base64, $prompt, $provider)
     {
-        if ($provider === 'claude') {
-            $response = $this->call_claude_api($image_base64, $prompt);
-        } elseif ($provider === 'gemini') {
-            $response = $this->call_gemini_api($image_base64, $prompt);
-        } else {
-            $response = $this->call_openai_api($image_base64, $prompt);
+        $this->load->library('ai_provider');
+
+        // El registry del proveedor define URL, headers y forma del payload.
+        $req = $this->ai_provider->build_request($provider, $prompt, $image_base64);
+        if (isset($req['error'])) {
+            $this->Log_model->add_log([
+                'user_id' => null,
+                'action' => 'ai_analysis_error',
+                'description' => 'AI request build failed (' . $provider . '): ' . $req['error']
+            ]);
+            return null;
         }
+
+        $response = $this->http_post_json($req['url'], $req['headers'], $req['payload']);
 
         if (isset($response['error'])) {
             $this->Log_model->add_log([
@@ -511,7 +518,7 @@ class TradeReader extends CI_Controller
             return null;
         }
 
-        $text = $this->extract_ai_response($response, $provider);
+        $text = $this->ai_provider->extract_text($provider, $response);
         if (!$text) {
             return null;
         }
@@ -819,120 +826,6 @@ PROMPT;
             return ['error' => $json ?: $raw, 'status' => $code];
         }
         return $json ?: ['error' => 'Respuesta no JSON', 'raw' => $raw];
-    }
-
-    private function call_openai_api($image_base64, $prompt)
-    {
-        $apiKey = $this->config->item('openai_api_key');
-        if (!$apiKey) {
-            return ['error' => 'OpenAI API key not configured'];
-        }
-
-        // OpenAI espera la imagen con el prefijo data:image
-        $data_url = "data:image/png;base64,{$image_base64}";
-
-        $payload = [
-            "model" => ($this->config->item('openai_model') ?: "gpt-4o"),
-            "messages" => [[
-                "role" => "user",
-                "content" => [
-                    ["type" => "text", "text" => $prompt],
-                    ["type" => "image_url", "image_url" => ["url" => $data_url]]
-                ]
-            ]]
-        ];
-
-        return $this->http_post_json(
-            "https://api.openai.com/v1/chat/completions",
-            ["Authorization: Bearer {$apiKey}", "Content-Type: application/json"],
-            $payload
-        );
-    }
-
-    private function call_claude_api($image_base64, $prompt)
-    {
-        $apiKey = $this->config->item('claude_api_key');
-        if (!$apiKey) {
-            return ['error' => 'Claude API key not configured'];
-        }
-
-        // Claude espera la imagen SIN el prefijo data:image
-        $payload = [
-            "model" => ($this->config->item('claude_model') ?: "claude-sonnet-4-6"),
-            "max_tokens" => 4096,
-            "messages" => [[
-                "role" => "user",
-                "content" => [
-                    ["type" => "text", "text" => $prompt],
-                    [
-                        "type" => "image",
-                        "source" => [
-                            "type" => "base64",
-                            "media_type" => "image/png",
-                            "data" => $image_base64
-                        ]
-                    ]
-                ]
-            ]]
-        ];
-
-        return $this->http_post_json(
-            "https://api.anthropic.com/v1/messages",
-            ["x-api-key: {$apiKey}", "anthropic-version: 2023-06-01", "Content-Type: application/json"],
-            $payload
-        );
-    }
-
-    private function call_gemini_api($image_base64, $prompt)
-    {
-        $apiKey = $this->config->item('gemini_api_key');
-        if (!$apiKey) {
-            return ['error' => 'Gemini API key not configured'];
-        }
-        $model = $this->config->item('gemini_model') ?: 'gemini-2.5-flash';
-
-        // Gemini: imagen como inline_data base64 (sin prefijo data:)
-        $payload = [
-            "contents" => [[
-                "parts" => [
-                    ["text" => $prompt],
-                    ["inline_data" => ["mime_type" => "image/png", "data" => $image_base64]]
-                ]
-            ]],
-            "generationConfig" => ["response_mime_type" => "application/json"]
-        ];
-
-        $url = "https://generativelanguage.googleapis.com/v1beta/models/{$model}:generateContent?key=" . urlencode($apiKey);
-        // Gemini lleva la API key en la URL, no en headers
-        return $this->http_post_json($url, ["Content-Type: application/json"], $payload);
-    }
-
-    private function extract_ai_response($response, $provider)
-    {
-        if (isset($response['error'])) {
-            return null;
-        }
-
-        $text = '';
-
-        if ($provider === 'claude') {
-            // Claude: response.content[0].text
-            if (isset($response['content'][0]['text'])) {
-                $text = $response['content'][0]['text'];
-            }
-        } elseif ($provider === 'gemini') {
-            // Gemini: response.candidates[0].content.parts[0].text
-            if (isset($response['candidates'][0]['content']['parts'][0]['text'])) {
-                $text = $response['candidates'][0]['content']['parts'][0]['text'];
-            }
-        } else {
-            // OpenAI: response.choices[0].message.content
-            if (isset($response['choices'][0]['message']['content'])) {
-                $text = $response['choices'][0]['message']['content'];
-            }
-        }
-
-        return $text ?: null;
     }
 
     private function extract_json($text)

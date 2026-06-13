@@ -112,9 +112,10 @@
                                 <div class="col-md-3">
                                     <label class="form-label small mb-1"><i class="fas fa-robot me-1"></i>AI Provider</label>
                                     <select class="form-select form-select-sm" id="webhook_ai_provider" name="ai_provider">
-                                        <option value="gemini" selected>Gemini (2.5 Flash)</option>
-                                        <option value="openai">OpenAI (GPT-4o)</option>
-                                        <option value="claude">Claude (Sonnet 4.5)</option>
+                                        <?php $__first = true; foreach ($ai_providers as $__val => $__label): ?>
+                                        <option value="<?= $__val ?>" <?= $__first ? 'selected' : '' ?>><?= $__label ?></option>
+                                        <?php $__first = false;
+                                        endforeach; ?>
                                     </select>
                                 </div>
                                 <div class="col-md-3">
