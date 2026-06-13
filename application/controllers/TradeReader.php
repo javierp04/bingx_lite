@@ -368,7 +368,7 @@ class TradeReader extends CI_Controller
                 'description' => "Solo {$working_provider} respondió para imagen: {$cropped_filename}"
             ]);
 
-            return $this->buildDualResult($working_raw, $visual_op_type, $cropped_filename, $providerA, $a1, $providerB, $b1, false, "Solo {$working_provider} respondió");
+            return $this->buildDualResult($working_raw, $visual_op_type, $cropped_filename, [$providerA => $a1, $providerB => $b1], false, "Solo {$working_provider} respondió");
         }
 
         // Resolver op_type de ambas
@@ -379,7 +379,7 @@ class TradeReader extends CI_Controller
         $match = $this->findMatchingPair([[$a1, $b1]], $cropped_filename, 'R1');
 
         if ($match) {
-            return $this->buildDualResult($match['winner'], $visual_op_type, $cropped_filename, $providerA, $a1, $providerB, $b1, true, $match['detail'], $match['matched_prices']);
+            return $this->buildDualResult($match['winner'], $visual_op_type, $cropped_filename, [$providerA => $a1, $providerB => $b1], true, $match['detail'], $match['matched_prices']);
         }
 
         // === RONDA 2: retry ===
@@ -413,7 +413,7 @@ class TradeReader extends CI_Controller
         $all_b = array_values(array_filter([$b1, $b2]));
 
         if ($match) {
-            return $this->buildDualResult($match['winner'], $visual_op_type, $cropped_filename, $providerA, $all_a, $providerB, $all_b, true, $match['detail'] . ' (retry)', $match['matched_prices']);
+            return $this->buildDualResult($match['winner'], $visual_op_type, $cropped_filename, [$providerA => $all_a, $providerB => $all_b], true, $match['detail'] . ' (retry)', $match['matched_prices']);
         }
 
         // Ningún par coincidió → pending_review
@@ -423,7 +423,7 @@ class TradeReader extends CI_Controller
             'description' => "Ningún par coincidió después de retry para imagen: {$cropped_filename}"
         ]);
 
-        return $this->buildDualResult($a1, $visual_op_type, $cropped_filename, $providerA, $all_a, $providerB, $all_b, false, 'Ningún par coincidió después de 2 rondas');
+        return $this->buildDualResult($a1, $visual_op_type, $cropped_filename, [$providerA => $all_a, $providerB => $all_b], false, 'Ningún par coincidió después de 2 rondas');
     }
 
     private function prepareRawWithOpType(&$raw, $visual_op_type, $context)
@@ -461,7 +461,14 @@ class TradeReader extends CI_Controller
         return null;
     }
 
-    private function buildDualResult($raw_winner, $visual_op_type, $cropped_filename, $provider_a, $a_data, $provider_b, $b_data, $validated, $detail, $matched_prices = null)
+    /**
+     * Construye el resultado del analisis dual.
+     * @param array      $by_provider     Mapa [proveedor => respuesta_cruda] de las IAs comparadas
+     * @param bool       $validated       true si las IAs coincidieron en los precios ancla
+     * @param string     $detail          Detalle del match/mismatch (logs + campo discrepancy)
+     * @param array|null $matched_prices  Subset de precios validados a aplicar al winner
+     */
+    private function buildDualResult($raw_winner, $visual_op_type, $cropped_filename, $by_provider, $validated, $detail, $matched_prices = null)
     {
         // Si matched_prices fue proporcionado, usarlo en el winner para la transformación
         if ($matched_prices !== null && $raw_winner !== null) {
@@ -479,10 +486,7 @@ class TradeReader extends CI_Controller
         return [
             'analysis' => $transformed,
             'ai_validated' => $validated,
-            'analysis_by_provider' => [
-                $provider_a => json_encode($a_data),
-                $provider_b => json_encode($b_data)
-            ],
+            'analysis_by_provider' => array_map('json_encode', $by_provider),
             'discrepancy' => $validated ? null : $detail,
             'dual_mode' => true
         ];
@@ -548,80 +552,53 @@ class TradeReader extends CI_Controller
         return $op_type_final;
     }
 
+    // Precios "ancla" que deben coincidir entre las dos IAs para validar el consenso:
+    // entry + 2 stop-loss + 4 take-profits cercanos. En LONG estan al FINAL del array; en SHORT al INICIO.
+    private const DUAL_ANCHOR_PRICES = 7;
+
     private function compareAnalysisResults($rawA, $rawB)
     {
         $op_a = isset($rawA['op_type']) ? strtoupper($rawA['op_type']) : 'UNKNOWN';
         $op_b = isset($rawB['op_type']) ? strtoupper($rawB['op_type']) : 'UNKNOWN';
 
         if ($op_a !== $op_b) {
-            return [
-                'match' => false,
-                'detail' => "op_type mismatch: A={$op_a} vs B={$op_b}"
-            ];
+            return ['match' => false, 'detail' => "op_type mismatch: A={$op_a} vs B={$op_b}"];
         }
 
         $prices_a = isset($rawA['label_prices']) ? array_map('floatval', $rawA['label_prices']) : [];
         $prices_b = isset($rawB['label_prices']) ? array_map('floatval', $rawB['label_prices']) : [];
         $count_a = count($prices_a);
         $count_b = count($prices_b);
+        $required = self::DUAL_ANCHOR_PRICES;
 
-        if ($count_a < 7 || $count_b < 7) {
-            return [
-                'match' => false,
-                'detail' => "Insuficientes precios para comparar: A={$count_a}, B={$count_b} (mín 7)"
-            ];
+        if ($count_a < $required || $count_b < $required) {
+            return ['match' => false, 'detail' => "Insuficientes precios para comparar: A={$count_a}, B={$count_b} (mín {$required})"];
         }
 
-        $required = 7;
+        // LONG mira la cola del array; SHORT la cabeza. Resto de la logica identico.
+        $isLong   = ($op_a === 'LONG');
+        $anchor_a = $isLong ? array_slice($prices_a, -$required) : array_slice($prices_a, 0, $required);
+        $anchor_b = $isLong ? array_slice($prices_b, -$required) : array_slice($prices_b, 0, $required);
 
-        if ($op_a === 'LONG') {
-            // LONG: comparar las últimas 7 (entry + stops + TPs cercanos)
-            $tail_a = array_slice($prices_a, -$required);
-            $tail_b = array_slice($prices_b, -$required);
-
-            for ($i = 0; $i < $required; $i++) {
-                if ($tail_a[$i] !== $tail_b[$i]) {
-                    $pos_a = $count_a - $required + $i + 1;
-                    $pos_b = $count_b - $required + $i + 1;
-                    return [
-                        'match' => false,
-                        'detail' => "LONG tail#{$i}: A[{$pos_a}]={$tail_a[$i]} vs B[{$pos_b}]={$tail_b[$i]}"
-                    ];
-                }
+        for ($i = 0; $i < $required; $i++) {
+            if ($anchor_a[$i] !== $anchor_b[$i]) {
+                $pos_a = $isLong ? ($count_a - $required + $i + 1) : ($i + 1);
+                $pos_b = $isLong ? ($count_b - $required + $i + 1) : ($i + 1);
+                return [
+                    'match' => false,
+                    'detail' => "{$op_a} ancla#" . ($i + 1) . ": A[{$pos_a}]={$anchor_a[$i]} vs B[{$pos_b}]={$anchor_b[$i]}"
+                ];
             }
-
-            // Match: usar el set completo del proveedor con más precios
-            $matched = $count_a >= $count_b ? $prices_a : $prices_b;
-
-            return [
-                'match' => true,
-                'detail' => "LONG match: últimas {$required} coinciden (A={$count_a}, B={$count_b}), usando set completo de " . count($matched),
-                'matched_prices' => $matched
-            ];
-        } else {
-            // SHORT: comparar las primeras 7 (SL1, SL2, entry + TPs cercanos)
-            $head_a = array_slice($prices_a, 0, $required);
-            $head_b = array_slice($prices_b, 0, $required);
-
-            for ($i = 0; $i < $required; $i++) {
-                if ($head_a[$i] !== $head_b[$i]) {
-                    $pos = $i + 1;
-                    return [
-                        'match' => false,
-                        'detail' => "SHORT head#{$pos}: A={$head_a[$i]} vs B={$head_b[$i]}"
-                    ];
-                }
-            }
-
-            // Match: usar el set completo del proveedor con más precios
-            $matched = $count_a >= $count_b ? $prices_a : $prices_b;
-
-            return [
-                'match' => true,
-                'detail' => "SHORT match: primeras {$required} coinciden (A={$count_a}, B={$count_b}), usando set completo de " . count($matched),
-                'matched_prices' => $matched
-            ];
         }
+
+        // Match: usar el set completo del proveedor con mas precios
+        $matched = $count_a >= $count_b ? $prices_a : $prices_b;
+
+        return [
+            'match' => true,
+            'detail' => "{$op_a} match: {$required} ancla coinciden (A={$count_a}, B={$count_b}), usando set completo de " . count($matched),
+            'matched_prices' => $matched
+        ];
     }
 
     /**
