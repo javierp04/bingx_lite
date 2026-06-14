@@ -1,6 +1,8 @@
 #property copyright "TelegramSignals"
-#property version   "10.15"
+#property version   "10.16"
 #property description "Reliability + gates asset-agnostic (TP1) + CSV trade journal (dataset + live)"
+// v10.16: valida op_type (LONG/SHORT exacto) y entry>0 antes de operar. Rechaza señal malformada
+//         (INVALID_OPTYPE / INVALID_ENTRY) en vez de abrir al reves o con entry=0.
 // v10.15: reparto de salidas en lotes ENTEROS calculado al abrir (metodo de mayor resto). Cada TP
 //         cierra un tramo fijo >= 1 step y el ultimo lleva el remanente a 0: el "puchito" sub-minimo
 //         NO nace (se elimina dust-close, reintentos y recalculo en caliente). COMPLETE solo con
@@ -29,6 +31,8 @@
 #define REASON_ORDER_CANCELLED "ORDER_CANCELLED"
 #define REASON_INVALID_SL      "INVALID_STOPLOSS"
 #define REASON_INVALID_TPS     "INVALID_TPS"
+#define REASON_INVALID_OPTYPE  "INVALID_OPTYPE"
+#define REASON_INVALID_ENTRY   "INVALID_ENTRY"
 #define REASON_PRICE_CORR_ERR  "PRICE_CORRECTION_ERROR"
 #define REASON_SPREAD_HIGH     "SPREAD_TOO_HIGH"
 #define REASON_VOLUME_ERR      "VOLUME_ERROR"
@@ -766,7 +770,7 @@ bool ValidateSymbol() {
 }
 
 void LogInitialization() {
-   Print("EA Signals v10.15 | User: ", USER_ID, " | Symbol: ", currentSymbol, " | BE Level: ", BE_LEVEL);
+   Print("EA Signals v10.16 | User: ", USER_ID, " | Symbol: ", currentSymbol, " | BE Level: ", BE_LEVEL);
    Log(INFO_LVL, "INIT", "Stop management: " + (ENABLE_CODE_STOP ? "CODE" : "MT5"));
 }
 
@@ -1586,6 +1590,20 @@ void ProcessSignalResponse(string jsonResponse) {
     currentJournal.ts_signal = JournalIsoTime();
     currentJournal.signal_id = userSignalId;
     currentJournal.dir       = opType;
+
+    // Direccion: el EA decide LONG vs SHORT con (opType == "LONG"); cualquier otro valor caeria en
+    // la rama SHORT y abriria al reves. Exigir el string exacto y rechazar si no.
+    if(opType != "LONG" && opType != "SHORT") {
+        Log(ERROR_LVL, "SIGNAL", StringFormat("Señal rechazada ID=%d: op_type inválido '%s' (esperado LONG o SHORT)", userSignalId, opType));
+        ReportClose(userSignalId, EXIT_INVALID, REASON_INVALID_OPTYPE, 0, 0);
+        return;
+    }
+
+    if(entry <= 0) {
+        Log(ERROR_LVL, "SIGNAL", StringFormat("Señal rechazada ID=%d: entry inválido (%.5f)", userSignalId, entry));
+        ReportClose(userSignalId, EXIT_INVALID, REASON_INVALID_ENTRY, 0, 0);
+        return;
+    }
 
     if(sl1 <= 0) {
         Log(ERROR_LVL, "SIGNAL", StringFormat("Señal rechazada ID=%d: SL1 inválido", userSignalId));

@@ -99,9 +99,9 @@ http://localhost/bingx_lite/
 ### MetaTrader Expert Advisor (EA_Signals.mq5)
 
 **Location:** `EA/EA_Signals.mq5`
-**Version:** 10.15
+**Version:** 10.16
 **Language:** MQL5 (MetaTrader 5)
-**Lines:** ~1,890
+**Lines:** ~1,900
 
 Polls the backend for Telegram-derived signals, executes them on the chart symbol, manages multi-TP partial closes + breakeven, persists state to disk (survives EA/terminal restarts), reports execution back to the API, and writes a CSV trade journal (dataset + live). **Asset-agnostic:** every entry/cost gate is scaled to the signal's own size (`T1 = |entry − TP1|`), so it works across FX, indices, oil, etc. without per-symbol tuning.
 
@@ -249,7 +249,9 @@ Real closes (the trade ran):
 
 Failure reasons (never operated → server status `failed_execution`):
 
-- `INVALID_STOPLOSS`, `INVALID_TPS`, `PRICE_CORRECTION_ERROR`, `SPREAD_TOO_HIGH`, `VOLUME_ERROR`, `SL_TOO_CLOSE`, `EXECUTION_FAILED`
+- `INVALID_STOPLOSS`, `INVALID_TPS`, `INVALID_OPTYPE`, `INVALID_ENTRY`, `PRICE_CORRECTION_ERROR`, `SPREAD_TOO_HIGH`, `VOLUME_ERROR`, `SL_TOO_CLOSE`, `EXECUTION_FAILED`
+
+  (`op_type` must be exactly `LONG`/`SHORT` and `entry` > 0, else the signal is rejected without operating — v10.16. These plus `SL_TOO_CLOSE` are matched by `Telegram_signals_model::is_failure_reason`.)
 
 #### State Persistence & Restart Reconciliation
 

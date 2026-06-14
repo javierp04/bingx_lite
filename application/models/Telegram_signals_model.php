@@ -398,9 +398,12 @@ class Telegram_signals_model extends CI_Model
             'ORDER_CANCELLED',
             'INVALID_TPS',
             'INVALID_STOPLOSS',
+            'INVALID_OPTYPE',
+            'INVALID_ENTRY',
             'PRICE_CORRECTION_ERROR',
             'SPREAD_TOO_HIGH',
             'VOLUME_ERROR',
+            'SL_TOO_CLOSE',
             'EXECUTION_FAILED',
         ];
         return in_array($close_reason, $failure_reasons);
