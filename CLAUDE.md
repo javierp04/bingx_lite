@@ -99,9 +99,9 @@ http://localhost/bingx_lite/
 ### MetaTrader Expert Advisor (EA_Signals.mq5)
 
 **Location:** `EA/EA_Signals.mq5`
-**Version:** 10.16
+**Version:** 10.17
 **Language:** MQL5 (MetaTrader 5)
-**Lines:** ~1,900
+**Lines:** ~1,910
 
 Polls the backend for Telegram-derived signals, executes them on the chart symbol, manages multi-TP partial closes + breakeven, persists state to disk (survives EA/terminal restarts), reports execution back to the API, and writes a CSV trade journal (dataset + live). **Asset-agnostic:** every entry/cost gate is scaled to the signal's own size (`T1 = |entry − TP1|`), so it works across FX, indices, oil, etc. without per-symbol tuning.
 
@@ -241,7 +241,8 @@ Distance between current market price and signal entry, measured in units of T1:
 Real closes (the trade ran):
 
 - `CLOSED_COMPLETE` - all volume closed / final TP
-- `CLOSED_STOPLOSS` - stop loss hit
+- `CLOSED_STOPLOSS` - stop loss hit (SL still at its original/losing level)
+- `CLOSED_BREAKEVEN` - SL hit after it was moved to breakeven (`slMovedToBE`); a TP was reached first, so it is **not** a losing stop (v10.17)
 - `CLOSED_MANUAL` - manual close detected in history
 - `CLOSED_EXTERNAL` - closed by expert/other (default)
 - `CLOSED_CODE_STOP` / `CLOSED_SAFETY_STOP` - code-based / safety stop

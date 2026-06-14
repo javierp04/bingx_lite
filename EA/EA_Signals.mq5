@@ -1,6 +1,8 @@
 #property copyright "TelegramSignals"
-#property version   "10.16"
+#property version   "10.17"
 #property description "Reliability + gates asset-agnostic (TP1) + CSV trade journal (dataset + live)"
+// v10.17: cierre con SL ya en breakeven se reporta CLOSED_BREAKEVEN (no CLOSED_STOPLOSS perdedor);
+//         no se recrea un state file fantasma (signalId=0) al completar el trade.
 // v10.16: valida op_type (LONG/SHORT exacto) y entry>0 antes de operar. Rechaza señal malformada
 //         (INVALID_OPTYPE / INVALID_ENTRY) en vez de abrir al reves o con entry=0.
 // v10.15: reparto de salidas en lotes ENTEROS calculado al abrir (metodo de mayor resto). Cada TP
@@ -24,6 +26,7 @@
 // strings EXACTOS para clasificar fallo vs cierre real. NO cambiar los valores.
 #define REASON_COMPLETE        "CLOSED_COMPLETE"
 #define REASON_STOPLOSS        "CLOSED_STOPLOSS"
+#define REASON_BREAKEVEN       "CLOSED_BREAKEVEN"
 #define REASON_MANUAL          "CLOSED_MANUAL"
 #define REASON_EXTERNAL        "CLOSED_EXTERNAL"
 #define REASON_CODE_STOP       "CLOSED_CODE_STOP"
@@ -770,7 +773,7 @@ bool ValidateSymbol() {
 }
 
 void LogInitialization() {
-   Print("EA Signals v10.16 | User: ", USER_ID, " | Symbol: ", currentSymbol, " | BE Level: ", BE_LEVEL);
+   Print("EA Signals v10.17 | User: ", USER_ID, " | Symbol: ", currentSymbol, " | BE Level: ", BE_LEVEL);
    Log(INFO_LVL, "INIT", "Stop management: " + (ENABLE_CODE_STOP ? "CODE" : "MT5"));
 }
 
@@ -1199,8 +1202,15 @@ HistoryCloseResult GetCloseReasonFromHistory(ulong positionID) {
 
         switch(dealReason) {
             case DEAL_REASON_SL:
-                result.exitLevel = EXIT_STOP;
-                result.reason = REASON_STOPLOSS;
+                // Un SL ya movido a breakeven/profit (tras alcanzar un TP) NO es una pérdida: se
+                // distingue del SL original para no contaminar las stats con un falso stop perdedor.
+                if(currentTP.slMovedToBE) {
+                    result.exitLevel = currentTP.currentLevel;   // TP máximo alcanzado antes de volver al BE
+                    result.reason = REASON_BREAKEVEN;
+                } else {
+                    result.exitLevel = EXIT_STOP;
+                    result.reason = REASON_STOPLOSS;
+                }
                 return result;
 
             case DEAL_REASON_TP:
@@ -1404,6 +1414,11 @@ bool CheckAndExecuteTP(int tpLevel, double tpPrice, double currentPrice, bool cl
             double volumeToClose = closeAll ? currentTP.currentVolume : levelVolume;
             ClosePartialPosition(volumeToClose);
         }
+
+        // Si ese cierre completó el trade, ClosePartialPosition ya hizo ReportClose + EndTrade
+        // (estado reseteado y state file borrado). No seguir: marcar flags/SaveState aquí recrearía
+        // un state file fantasma con signalId=0.
+        if(!currentTP.isActive) return true;
 
         if(shouldActivateBE) {
             SetBreakeven();
