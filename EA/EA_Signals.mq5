@@ -1,6 +1,8 @@
 #property copyright "TelegramSignals"
-#property version   "10.18"
+#property version   "10.19"
 #property description "Reliability + gates asset-agnostic (TP1) + CSV trade journal (dataset + live)"
+// v10.19: recalibra bandas de order type: K_STOP 0.30->0.02 (no adelantarse al breakout, respeta el
+//         stop del analista) y K_LIMIT 0.15->0.10 (cubre latencia señal->ejecucion). stop-estricto/limit-laxo.
 // v10.18: validacion de spread ahora OPCIONAL (ENABLE_SPREAD_CHECK, OFF por defecto) y coeficiente
 //         recalibrado 0.40 -> 0.05. El spread se sigue registrando en el journal aunque no valide.
 // v10.17: cierre con SL ya en breakeven se reporta CLOSED_BREAKEVEN (no CLOSED_STOPLOSS perdedor);
@@ -58,8 +60,8 @@ input string    TICKER_SYMBOL = "EURUSD";
 input double    RISK_PERCENT = 2.0;
 input int       POLL_INTERVAL = 10;
 input group "=== Gates asset-agnostic (anclados a TP1) ==="
-input double    K_STOP_RATIO   = 0.30;   // banda market lado favorable (STOP)
-input double    K_LIMIT_RATIO  = 0.15;   // banda market lado adverso (LIMIT) — debe ser > M_SLIP_RATIO
+input double    K_STOP_RATIO   = 0.02;   // banda market lado STOP (favorable): chica = respeta la confirmacion del analista
+input double    K_LIMIT_RATIO  = 0.10;   // banda market lado LIMIT (adverso): cubre latencia señal->ejecucion — debe ser > M_SLIP_RATIO
 input double    M_SLIP_RATIO   = 0.05;   // tope de slippage (deviation) — debe ser < K_LIMIT_RATIO
 input bool      ENABLE_SPREAD_CHECK = false; // OFF por defecto (brokers/horarios de alta liquidez)
 input double    C_SPREAD_RATIO = 0.05;   // si ENABLE_SPREAD_CHECK: rechaza si spread > C_SPREAD_RATIO * T1
@@ -776,7 +778,7 @@ bool ValidateSymbol() {
 }
 
 void LogInitialization() {
-   Print("EA Signals v10.18 | User: ", USER_ID, " | Symbol: ", currentSymbol, " | BE Level: ", BE_LEVEL);
+   Print("EA Signals v10.19 | User: ", USER_ID, " | Symbol: ", currentSymbol, " | BE Level: ", BE_LEVEL);
    Log(INFO_LVL, "INIT", "Stop management: " + (ENABLE_CODE_STOP ? "CODE" : "MT5"));
 }
 

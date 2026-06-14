@@ -99,7 +99,7 @@ http://localhost/bingx_lite/
 ### MetaTrader Expert Advisor (EA_Signals.mq5)
 
 **Location:** `EA/EA_Signals.mq5`
-**Version:** 10.18
+**Version:** 10.19
 **Language:** MQL5 (MetaTrader 5)
 **Lines:** ~1,920
 
@@ -144,8 +144,8 @@ position vanished   → GetCloseReasonFromHistory() → ReportClose()
 
 **Asset-Agnostic Gates** (all anchored to `T1 = |entry − TP1|`):
 
-- `K_STOP_RATIO` = 0.30 - Market band on the favorable side (→ STOP)
-- `K_LIMIT_RATIO` = 0.15 - Market band on the adverse side (→ LIMIT); must be > `M_SLIP_RATIO`
+- `K_STOP_RATIO` = 0.02 - Market band on the favorable side (→ STOP). Small on purpose: don't front-run the breakout, respect the analyst's stop entry (wait for confirmation).
+- `K_LIMIT_RATIO` = 0.10 - Market band on the adverse side (→ LIMIT). Wider than STOP to absorb signal→execution latency (price drifted past entry); must be > `M_SLIP_RATIO`.
 - `M_SLIP_RATIO` = 0.05 - Slippage/deviation cap, market only; must be < `K_LIMIT_RATIO`
 - `ENABLE_SPREAD_CHECK` = false - Spread gate is **off by default** (built for high-liquidity brokers/hours). The spread is still recorded in the journal; it just doesn't reject.
 - `C_SPREAD_RATIO` = 0.05 - When `ENABLE_SPREAD_CHECK` is on: reject if spread > `C_SPREAD_RATIO · T1` (recalibrated from 0.40 — a spread that big would eat ~40% of TP1)
