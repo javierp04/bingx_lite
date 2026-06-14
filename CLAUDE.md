@@ -99,9 +99,9 @@ http://localhost/bingx_lite/
 ### MetaTrader Expert Advisor (EA_Signals.mq5)
 
 **Location:** `EA/EA_Signals.mq5`
-**Version:** 10.17
+**Version:** 10.18
 **Language:** MQL5 (MetaTrader 5)
-**Lines:** ~1,910
+**Lines:** ~1,920
 
 Polls the backend for Telegram-derived signals, executes them on the chart symbol, manages multi-TP partial closes + breakeven, persists state to disk (survives EA/terminal restarts), reports execution back to the API, and writes a CSV trade journal (dataset + live). **Asset-agnostic:** every entry/cost gate is scaled to the signal's own size (`T1 = |entry − TP1|`), so it works across FX, indices, oil, etc. without per-symbol tuning.
 
@@ -147,7 +147,8 @@ position vanished   → GetCloseReasonFromHistory() → ReportClose()
 - `K_STOP_RATIO` = 0.30 - Market band on the favorable side (→ STOP)
 - `K_LIMIT_RATIO` = 0.15 - Market band on the adverse side (→ LIMIT); must be > `M_SLIP_RATIO`
 - `M_SLIP_RATIO` = 0.05 - Slippage/deviation cap, market only; must be < `K_LIMIT_RATIO`
-- `C_SPREAD_RATIO` = 0.40 - Reject if spread > `C_SPREAD_RATIO · T1`
+- `ENABLE_SPREAD_CHECK` = false - Spread gate is **off by default** (built for high-liquidity brokers/hours). The spread is still recorded in the journal; it just doesn't reject.
+- `C_SPREAD_RATIO` = 0.05 - When `ENABLE_SPREAD_CHECK` is on: reject if spread > `C_SPREAD_RATIO · T1` (recalibrated from 0.40 — a spread that big would eat ~40% of TP1)
 
 **Price Correction:**
 

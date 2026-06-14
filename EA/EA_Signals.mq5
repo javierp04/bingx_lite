@@ -1,6 +1,8 @@
 #property copyright "TelegramSignals"
-#property version   "10.17"
+#property version   "10.18"
 #property description "Reliability + gates asset-agnostic (TP1) + CSV trade journal (dataset + live)"
+// v10.18: validacion de spread ahora OPCIONAL (ENABLE_SPREAD_CHECK, OFF por defecto) y coeficiente
+//         recalibrado 0.40 -> 0.05. El spread se sigue registrando en el journal aunque no valide.
 // v10.17: cierre con SL ya en breakeven se reporta CLOSED_BREAKEVEN (no CLOSED_STOPLOSS perdedor);
 //         no se recrea un state file fantasma (signalId=0) al completar el trade.
 // v10.16: valida op_type (LONG/SHORT exacto) y entry>0 antes de operar. Rechaza señal malformada
@@ -59,7 +61,8 @@ input group "=== Gates asset-agnostic (anclados a TP1) ==="
 input double    K_STOP_RATIO   = 0.30;   // banda market lado favorable (STOP)
 input double    K_LIMIT_RATIO  = 0.15;   // banda market lado adverso (LIMIT) — debe ser > M_SLIP_RATIO
 input double    M_SLIP_RATIO   = 0.05;   // tope de slippage (deviation) — debe ser < K_LIMIT_RATIO
-input double    C_SPREAD_RATIO = 0.40;   // rechaza si spread > C_SPREAD_RATIO * T1
+input bool      ENABLE_SPREAD_CHECK = false; // OFF por defecto (brokers/horarios de alta liquidez)
+input double    C_SPREAD_RATIO = 0.05;   // si ENABLE_SPREAD_CHECK: rechaza si spread > C_SPREAD_RATIO * T1
 
 input group "=== Price Correction ==="
 input bool      ENABLE_PRICE_CORRECTION = true;
@@ -773,7 +776,7 @@ bool ValidateSymbol() {
 }
 
 void LogInitialization() {
-   Print("EA Signals v10.17 | User: ", USER_ID, " | Symbol: ", currentSymbol, " | BE Level: ", BE_LEVEL);
+   Print("EA Signals v10.18 | User: ", USER_ID, " | Symbol: ", currentSymbol, " | BE Level: ", BE_LEVEL);
    Log(INFO_LVL, "INIT", "Stop management: " + (ENABLE_CODE_STOP ? "CODE" : "MT5"));
 }
 
@@ -1688,6 +1691,13 @@ bool ValidateSpread(int userSignalId, double t1) {
     // Registrar en el journal SIEMPRE, antes de decidir: si se rechaza, este es justo el dato que lo explica.
     currentJournal.spread_real = spreadReal;
     currentJournal.spread_tol  = spreadTol;
+
+    // Check OPCIONAL: OFF por defecto (alta liquidez). El spread queda registrado arriba para el
+    // journal/analisis, pero no rechaza la señal.
+    if(!ENABLE_SPREAD_CHECK) {
+        Log(DEBUG_LVL, "SPREAD", StringFormat("check OFF | real=%.5f | %.1f%% T1 (informativo)", spreadReal, pctT1));
+        return true;
+    }
 
     // spreadReal <= 0: dato no disponible (algunos brokers reportan 0 un instante) -> no rechazar por 0
     if(spreadReal > 0 && spreadReal > spreadTol) {
