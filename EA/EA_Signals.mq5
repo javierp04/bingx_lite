@@ -1,7 +1,8 @@
 #property copyright "TelegramSignals"
-#property version   "10.13"
+#property version   "10.14"
 #property description "Reliability + gates asset-agnostic (TP1) + CSV trade journal (dataset + live)"
-// v10.13: fix cierre parcial — el remanente <= min lot ahora se cierra (antes quedaba huerfano al reportar COMPLETE)
+// v10.14: cada TP cierra su tramo; TP5 (closeAll) cierra el remanente min-lot y reporta COMPLETE.
+//         Se completa SOLO con la posicion ya cerrada (remaining 0) -> sin huerfanos, sin cierre prematuro en TP4.
 
 // LIBRERÍAS
 #include <Trade\Trade.mqh>
@@ -741,7 +742,7 @@ bool ValidateSymbol() {
 }
 
 void LogInitialization() {
-   Print("EA Signals v10.13 | User: ", USER_ID, " | Symbol: ", currentSymbol, " | BE Level: ", BE_LEVEL);
+   Print("EA Signals v10.14 | User: ", USER_ID, " | Symbol: ", currentSymbol, " | BE Level: ", BE_LEVEL);
    Log(INFO_LVL, "INIT", "Stop management: " + (ENABLE_CODE_STOP ? "CODE" : "MT5"));
 }
 
@@ -1388,8 +1389,6 @@ void SetBreakeven() {
 bool ClosePartialPosition(double volume) {
     if(!position.SelectByTicket(currentTP.ticket)) return false;
 
-    SymbolSpecs specs = GetSymbolSpecs();
-
     if(volume > position.Volume()) {
         volume = position.Volume();
     }
@@ -1416,24 +1415,10 @@ bool ClosePartialPosition(double volume) {
 
     SaveState();
 
-    // Remanente "dust": >0 pero ya no escalable (<= min lot). DEBE cerrarse: nunca dejar una
-    // posicion abierta al reportar COMPLETE (si no, queda huerfana, sin trackear, contaminando
-    // la proxima señal). Antes esta rama reportaba COMPLETE sin cerrar el remanente.
-    if(remaining > 0 && remaining <= specs.minVolume) {
-        if(trade.PositionClose(currentTP.ticket)) {
-            Log(INFO_LVL, "DUST_CLOSE", StringFormat("Remanente %.2f <= min lot %.2f cerrado completo", remaining, specs.minVolume));
-            remaining = 0.0;
-            currentTP.currentVolume = 0.0;
-        } else {
-            // No se pudo cerrar (requote/mercado cerrado): NO reportar COMPLETE. El remanente
-            // queda trackeado (isActive sigue true) y protegido por su SL; se reintenta en el
-            // proximo tick (TP5 closeAll) o cierra por SL y se reconcilia desde historial.
-            Log(ERROR_LVL, "DUST_CLOSE", StringFormat("No se pudo cerrar remanente %.2f (retcode %d): se reintentara",
-                remaining, trade.ResultRetcode()));
-        }
-    }
-
-    // Cierre total confirmado (remanente 0) -> reportar COMPLETE una sola vez y finalizar.
+    // COMPLETE solo cuando la posicion ya NO existe (remaining 0). El remanente min-lot
+    // (ej: el ~10% de TP5 que redondea a 1 lote minimo) NO se completa aca: queda trackeado
+    // y lo cierra TP5 (closeAll) a SU precio — o el SL. Asi cada TP cierra su tramo y el ultimo
+    // reporta el cierre, sin huerfanos y respetando la distribucion de TPs.
     if(remaining <= 0) {
         ReportClose(currentTP.signalId, currentTP.currentLevel, REASON_COMPLETE, currentPrice, 0.0);
         EndTrade();
