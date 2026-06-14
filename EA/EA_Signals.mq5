@@ -1,8 +1,10 @@
 #property copyright "TelegramSignals"
-#property version   "10.14"
+#property version   "10.15"
 #property description "Reliability + gates asset-agnostic (TP1) + CSV trade journal (dataset + live)"
-// v10.14: cada TP cierra su tramo; TP5 (closeAll) cierra el remanente min-lot y reporta COMPLETE.
-//         Se completa SOLO con la posicion ya cerrada (remaining 0) -> sin huerfanos, sin cierre prematuro en TP4.
+// v10.15: reparto de salidas en lotes ENTEROS calculado al abrir (metodo de mayor resto). Cada TP
+//         cierra un tramo fijo >= 1 step y el ultimo lleva el remanente a 0: el "puchito" sub-minimo
+//         NO nace (se elimina dust-close, reintentos y recalculo en caliente). COMPLETE solo con
+//         posicion cerrada (heredado de v10.14). Cualquier cierre por SL/BE liquida todo el remanente.
 
 // LIBRERÍAS
 #include <Trade\Trade.mqh>
@@ -105,6 +107,7 @@ struct OptimizedTPState {
     // LEVELS
     int currentLevel;
     bool levelFlags[6];
+    double levelVolumes[6];   // lotes a cerrar en cada TP (1..5), calculados en lotes enteros al abrir
     bool slMovedToBE;
 
     // PRICES
@@ -395,6 +398,15 @@ void SaveState() {
     flags += "]";
     jb.AddRaw("levelFlags", flags);
 
+    // levelVolumes como array crudo [v0..v5] (lotes por TP pre-calculados al abrir)
+    string vols = "[";
+    for(int i = 0; i < 6; i++) {
+        if(i > 0) vols += ",";
+        vols += DoubleToString(currentTP.levelVolumes[i], 2);
+    }
+    vols += "]";
+    jb.AddRaw("levelVolumes", vols);
+
     string json = jb.Build();
 
     int h = FileOpen(StateFilePath(), FILE_WRITE|FILE_TXT|FILE_ANSI);
@@ -448,6 +460,18 @@ bool LoadState() {
     currentTP.tp5               = parser.GetDouble("tp5", 0);
     for(int i = 0; i < 6; i++) {
         currentTP.levelFlags[i] = (parser.GetArrayDouble("levelFlags", i, 0) >= 0.5);
+    }
+    for(int i = 0; i < 6; i++) {
+        currentTP.levelVolumes[i] = parser.GetArrayDouble("levelVolumes", i, 0);
+    }
+
+    // Fallback: estado de una version previa (sin levelVolumes) -> recalcular el reparto desde el
+    // volumen original para no quedar con todos los tramos en 0 tras adoptar el trade al reiniciar.
+    bool hasVols = false;
+    for(int i = 1; i <= 5; i++) if(currentTP.levelVolumes[i] > 0) { hasVols = true; break; }
+    if(!hasVols && currentTP.originalVolume > 0) {
+        SymbolSpecs fbSpecs = GetSymbolSpecs();
+        ComputeLevelVolumes(currentTP.originalVolume, fbSpecs, currentTP.levelVolumes);
     }
 
     // signalId>0 indica que habia un trade trackeado (activo o pendiente)
@@ -742,7 +766,7 @@ bool ValidateSymbol() {
 }
 
 void LogInitialization() {
-   Print("EA Signals v10.14 | User: ", USER_ID, " | Symbol: ", currentSymbol, " | BE Level: ", BE_LEVEL);
+   Print("EA Signals v10.15 | User: ", USER_ID, " | Symbol: ", currentSymbol, " | BE Level: ", BE_LEVEL);
    Log(INFO_LVL, "INIT", "Stop management: " + (ENABLE_CODE_STOP ? "CODE" : "MT5"));
 }
 
@@ -1044,6 +1068,56 @@ double NormalizeVolume(double volume, SymbolSpecs &specs) {
     return normalized;
 }
 
+// Reparte 'volume' entre los 5 niveles de TP segun sus porcentajes, en multiplos ENTEROS de
+// stepVolume que suman exactamente el volumen original (metodo de mayor resto / Hare). Asi cada
+// TP cierra un tramo >= 1 step (nunca sub-minimo) y no nace ningun remanente huerfano: se elimina
+// de raiz el "puchito". outVolumes[1..5] = lotes por TP; outVolumes[0] sin usar.
+// Nota: si la config suma < 100%, los steps no repartidos los cierra TP5 (closeAll) como remanente.
+void ComputeLevelVolumes(double volume, SymbolSpecs &specs, double &outVolumes[]) {
+    ArrayInitialize(outVolumes, 0.0);
+
+    if(!specs.isValid || specs.stepVolume <= 0) {
+        outVolumes[1] = volume;   // fallback degenerado: sin specs validas, todo al primer nivel
+        return;
+    }
+
+    int totalSteps = (int)MathRound(volume / specs.stepVolume);
+    if(totalSteps <= 0) return;
+
+    double percents[6];
+    percents[0] = 0;
+    percents[1] = TP1_PERCENT; percents[2] = TP2_PERCENT; percents[3] = TP3_PERCENT;
+    percents[4] = TP4_PERCENT; percents[5] = TP5_PERCENT;
+
+    int    baseSteps[6];
+    double frac[6];
+    int    assigned = 0;
+    for(int i = 1; i <= 5; i++) {
+        double quota = (percents[i] / 100.0) * totalSteps;
+        baseSteps[i] = (int)MathFloor(quota);
+        frac[i]      = quota - baseSteps[i];
+        assigned    += baseSteps[i];
+    }
+
+    // Los steps sobrantes van al nivel con mayor parte fraccionaria (solo niveles con peso > 0).
+    int remainder = totalSteps - assigned;
+    while(remainder > 0) {
+        int    best = -1;
+        double bestFrac = -1.0;
+        for(int i = 1; i <= 5; i++) {
+            if(percents[i] <= 0) continue;
+            if(frac[i] > bestFrac) { bestFrac = frac[i]; best = i; }
+        }
+        if(best == -1) break;   // config suma < 100%: el resto lo barre TP5 closeAll
+        baseSteps[best] += 1;
+        frac[best] = -1.0;      // ya no elegible
+        remainder--;
+    }
+
+    for(int i = 1; i <= 5; i++)
+        outVolumes[i] = baseSteps[i] * specs.stepVolume;
+}
+
 double CalculateVolumeOptimized(double entryPrice, double stopLoss) {
     SymbolSpecs specs = GetSymbolSpecs();
     if(!specs.isValid) return 0.0;
@@ -1300,7 +1374,7 @@ void OnTick() {
 // ==========================================
 // GESTIÓN DE TPs (unificada - TP5 ya no es caso especial)
 // ==========================================
-bool CheckAndExecuteTP(int tpLevel, double tpPrice, double tpPercent, double currentPrice, bool closeAll = false) {
+bool CheckAndExecuteTP(int tpLevel, double tpPrice, double currentPrice, bool closeAll = false) {
     if(tpPrice <= 0.0) {
         Log(DEBUG_LVL, "TP_SKIP", StringFormat("TP%d saltado: precio no válido (%.5f)", tpLevel, tpPrice));
         return false;
@@ -1312,28 +1386,18 @@ bool CheckAndExecuteTP(int tpLevel, double tpPrice, double tpPercent, double cur
     if(!currentTP.levelFlags[tpLevel] && priceReached) {
         currentTP.currentLevel = MathMax(currentTP.currentLevel, tpLevel);
 
-        bool hasVolumeToClose = closeAll || (tpPercent > 0);
+        // Tramo pre-calculado al abrir (lotes enteros). closeAll (TP5) barre todo el remanente.
+        double levelVolume = currentTP.levelVolumes[tpLevel];
+        bool hasVolumeToClose = closeAll || (levelVolume > 0);
         bool shouldActivateBE = (BE_LEVEL == tpLevel && !currentTP.slMovedToBE);
 
         Log(INFO_LVL, "TP_HIT", StringFormat("TP%d alcanzado! Precio=%.5f, Target=%.5f, %s, BE=%s",
             tpLevel, currentPrice, tpPrice,
-            (closeAll ? "Cerrando TODO" : StringFormat("Volumen=%.2f%%", tpPercent)),
+            (closeAll ? "Cerrando TODO" : StringFormat("Lotes=%.2f", levelVolume)),
             (shouldActivateBE ? "SÍ" : "NO")));
 
         if(hasVolumeToClose) {
-            double volumeToClose;
-            if(closeAll) {
-                volumeToClose = currentTP.currentVolume;
-            } else {
-                SymbolSpecs specs = GetSymbolSpecs();
-                double rawVolume = (currentTP.originalVolume * tpPercent) / 100.0;
-                volumeToClose = NormalizeVolume(rawVolume, specs);
-
-                if(rawVolume != volumeToClose) {
-                    Log(INFO_LVL, "VOLUME_NORM", StringFormat("TP%d: Volumen calculado=%.3f → normalizado=%.2f (step=%.2f)",
-                        tpLevel, rawVolume, volumeToClose, specs.stepVolume));
-                }
-            }
+            double volumeToClose = closeAll ? currentTP.currentVolume : levelVolume;
             ClosePartialPosition(volumeToClose);
         }
 
@@ -1349,14 +1413,14 @@ bool CheckAndExecuteTP(int tpLevel, double tpPrice, double tpPercent, double cur
 }
 
 void ManageTPs(double currentPrice) {
-    CheckAndExecuteTP(1, currentTP.tp1, TP1_PERCENT, currentPrice);
-    CheckAndExecuteTP(2, currentTP.tp2, TP2_PERCENT, currentPrice);
-    CheckAndExecuteTP(3, currentTP.tp3, TP3_PERCENT, currentPrice);
-    CheckAndExecuteTP(4, currentTP.tp4, TP4_PERCENT, currentPrice);
+    CheckAndExecuteTP(1, currentTP.tp1, currentPrice);
+    CheckAndExecuteTP(2, currentTP.tp2, currentPrice);
+    CheckAndExecuteTP(3, currentTP.tp3, currentPrice);
+    CheckAndExecuteTP(4, currentTP.tp4, currentPrice);
 
-    // TP5: cierra todo el volumen restante
+    // TP5: cierra TODO el volumen restante (incluye cualquier sobrante de config < 100%)
     if(currentTP.currentVolume > 0) {
-        CheckAndExecuteTP(5, currentTP.tp5, TP5_PERCENT, currentPrice, true);
+        CheckAndExecuteTP(5, currentTP.tp5, currentPrice, true);
     }
 }
 
@@ -1810,6 +1874,14 @@ void SetupTPState(int signalId, string direction, double entry, double originalS
     currentTP.slMovedToBE = false;
 
     ArrayInitialize(currentTP.levelFlags, false);
+
+    // Reparto de salidas en lotes ENTEROS, calculado UNA sola vez al abrir: cada TP cierra un
+    // tramo fijo y el ultimo lleva el remanente a 0. Mata el "puchito" de raiz (no nace sub-minimo).
+    SymbolSpecs specs = GetSymbolSpecs();
+    ComputeLevelVolumes(volume, specs, currentTP.levelVolumes);
+    Log(INFO_LVL, "TP_SPLIT", StringFormat("Reparto (vol=%.2f): TP1=%.2f TP2=%.2f TP3=%.2f TP4=%.2f TP5=%.2f",
+        volume, currentTP.levelVolumes[1], currentTP.levelVolumes[2], currentTP.levelVolumes[3],
+        currentTP.levelVolumes[4], currentTP.levelVolumes[5]));
 
     currentTP.entry = entry;
     currentTP.originalSL = originalStopLoss;

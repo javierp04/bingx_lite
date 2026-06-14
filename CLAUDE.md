@@ -98,201 +98,208 @@ http://localhost/bingx_lite/
 
 ### MetaTrader Expert Advisor (EA_Signals.mq5)
 
-**Location:** `EA_Signals.mq5` (root directory)
-**Version:** 8.04
+**Location:** `EA/EA_Signals.mq5`
+**Version:** 10.15
 **Language:** MQL5 (MetaTrader 5)
-**Lines:** 1,312
+**Lines:** ~1,890
+
+Polls the backend for Telegram-derived signals, executes them on the chart symbol, manages multi-TP partial closes + breakeven, persists state to disk (survives EA/terminal restarts), reports execution back to the API, and writes a CSV trade journal (dataset + live). **Asset-agnostic:** every entry/cost gate is scaled to the signal's own size (`T1 = |entry − TP1|`), so it works across FX, indices, oil, etc. without per-symbol tuning.
 
 #### EA Architecture Overview
 
-**Signal Acquisition Flow:**
+**Signal → Execution Flow:**
 
 ```
-OnInit() → EventSetTimer(POLL_INTERVAL)
+OnInit() → AdoptStateOnInit() (reconcile persisted state vs MT5) → EventSetTimer(POLL_INTERVAL)
     ↓
-OnTimer() → CheckForSignals()
+OnTimer() → (idle?) CheckForSignals() → GET /api/signals/{USER_ID}/{TICKER_SYMBOL}
     ↓
-GET /api/signals/{USER_ID}/{TICKER_SYMBOL}
+ProcessSignalResponse() → parse {user_signal_id, op_type, entry, stoploss[], tps[]} → validate SL + TP1..5
     ↓
-ProcessSignalResponse() → Parse JSON (user_signal_id, op_type, entry, stoploss[], tps[])
+ExecuteTrade():
+    price correction → T1/R scale → spread gate → risk volume →
+    order type MARKET/STOP/LIMIT (by k·T1) → broker STOPS_LEVEL gate → place order
     ↓
-ExecuteTrade() → Apply price correction → Calculate volume → Execute order
+ReportOpen() → POST /api/signals/{id}/open   (raw + corrected price sets)
     ↓
-ReportOpen() → POST /api/signals/{id}/open
+OnTick():  pending → CheckPendingOrderExecution() → ReportPendingExecuted()
+           live    → ManageTPs() → partial close → ReportProgress() → POST .../progress
     ↓
-OnTick() Loop → ManageTPs() → ReportProgress() → POST /api/signals/{id}/progress
-    ↓
-Position Closed → ReportClose() → POST /api/signals/{id}/close
+TP tranche (integer lots, pre-split at open) brings remaining → 0 ⇒ ReportClose(COMPLETE) → POST .../close
+position vanished   → GetCloseReasonFromHistory() → ReportClose()
 ```
 
-#### Key Configuration Parameters
+#### Key Configuration Parameters (`input`s)
 
-**API Settings:**
+**API:**
 
-- `API_URL` = "http://bxlite.local/api/" - Base API endpoint
-- `USER_ID` - User ID for signal queries
-- `TICKER_SYMBOL` - Symbol to trade (e.g., "EURUSD")
+- `API_URL` = "http://bx-trade.local/api/" - Base API endpoint
+- `USER_ID` = 1 - User id for signal queries
+- `TICKER_SYMBOL` = "EURUSD" - Server-side symbol sent in API requests/reports (the EA trades the chart symbol)
 
-**Trading Settings:**
+**Trading:**
 
-- `RISK_PERCENT` = 2.0 - Risk per trade as % of balance
-- `POLL_INTERVAL` = 30 - Seconds between signal checks
-- `MAX_SPREAD` = 500.0 - Maximum spread in points
+- `RISK_PERCENT` = 2.0 - Risk per trade as % of balance (max 10)
+- `POLL_INTERVAL` = 10 - Seconds between signal polls (min 5)
 
-**Take Profit Distribution:**
+**Asset-Agnostic Gates** (all anchored to `T1 = |entry − TP1|`):
 
-- `TP1_PERCENT` = 0.0 - % of volume to close at TP1
-- `TP2_PERCENT` = 40.0 - % of volume to close at TP2
-- `TP3_PERCENT` = 30.0 - % of volume to close at TP3
-- `TP4_PERCENT` = 20.0 - % of volume to close at TP4
-- `TP5_PERCENT` = 10.0 - % of volume to close at TP5 (closes ALL remaining)
-- `BE_LEVEL` = 1 - TP level at which to move SL to breakeven (0=never)
-
-**Stop Loss Management:**
-
-- `ENABLE_CODE_STOP` = false - Close by code if price crosses SL (don't wait for broker)
-- `SAFETY_FACTOR` = 1.5 - Emergency stop multiplier
+- `K_STOP_RATIO` = 0.30 - Market band on the favorable side (→ STOP)
+- `K_LIMIT_RATIO` = 0.15 - Market band on the adverse side (→ LIMIT); must be > `M_SLIP_RATIO`
+- `M_SLIP_RATIO` = 0.05 - Slippage/deviation cap, market only; must be < `K_LIMIT_RATIO`
+- `C_SPREAD_RATIO` = 0.40 - Reject if spread > `C_SPREAD_RATIO · T1`
 
 **Price Correction:**
 
-- `ENABLE_PRICE_CORRECTION` = true - Adjust prices using Yahoo Finance futures data
-- `MAX_PRICE_DEVIATION` = 5.0 - Maximum allowed deviation %
-- `MAX_TIMESTAMP_HOURS` = 4 - Maximum age of futures price data
+- `ENABLE_PRICE_CORRECTION` = true - Align signal prices to the real futures market
+- `MAX_PRICE_DEVIATION` = 5.0 - Max allowed deviation %
+- `MAX_TIMESTAMP_HOURS` = 4 - Max age of futures price data
 
-**Debug Mode:**
+**Take Profit Distribution:**
 
-- `DEBUG_MODE` = false - Use synthetic signals instead of API
-- `DEBUG_USER_SIGNAL_ID` = 999 - Signal ID for debug mode
-- `DEBUG_FIXED_VOLUME` = 0.1 - Fixed volume for debug trades
+- `TP1_PERCENT` = 0.0 / `TP2` = 40 / `TP3` = 30 / `TP4` = 20 / `TP5` = 10 - % of volume closed at each TP. The volume is split into **integer lots at open** (largest-remainder) so each tranche is ≥ 1 lot step; a TP with 0% (or whose share rounds to 0 lots) closes nothing, and TP5 (closeAll) sweeps any remainder.
+- `BE_LEVEL` = 1 - TP level at which SL moves to breakeven (0 = never)
+
+**Trading Hours / Order / Stop / Logging:**
+
+- `ENABLE_TIME_FILTER` = false, `START_HOUR` = 11, `END_HOUR` = 13 (GMT, skips weekends)
+- `MAGIC_NUMBER` = 12345, `TRADE_COMMENT` = "TelegramSignal"
+- `ENABLE_CODE_STOP` = false (close by code if price crosses SL), `SAFETY_FACTOR` = 1.5
+- `MIN_LOG_LEVEL` = INFO_LVL (DEBUG_LVL / INFO_LVL / WARNING_LVL / ERROR_LVL)
+
+> Legacy `MAX_SPREAD` and `DEBUG_MODE`/`DEBUG_*` inputs no longer exist — spread is gated by `C_SPREAD_RATIO · T1`.
+
+#### Order Type Decision (`DetermineOrderType`)
+
+Distance between current market price and signal entry, measured in units of T1:
+
+- distance ≤ `k · T1` → **MARKET** (`k` = `K_STOP_RATIO` if price is on the favorable side of entry, else `K_LIMIT_RATIO`)
+- otherwise: favorable side → **STOP** order at entry; adverse side → **LIMIT** order at entry
+- Market orders set deviation = `M_SLIP_RATIO · T1` (always < the `k` band, by the `M < K_LIMIT` invariant)
+
+`R = |entry − SL|` is used for volume sizing; `T1` for the entry/cost gates. Both use post-correction prices.
 
 #### EA Reporting Callbacks
 
-**ReportOpen (POST /api/signals/{id}/open):**
+**ReportOpen** (`POST /api/signals/{id}/open`) — sends raw pre-correction prices as `signal_data` and the corrected prices MT5 actually used as `mt_corrected_data`:
 
 ```json
 {
-	"success": true,
-	"trade_id": "12345",
-	"order_type": "ORDER_TYPE_BUY",
-	"real_entry_price": 1.085,
-	"real_stop_loss": 1.08,
-	"real_volume": 0.1,
-	"symbol": "EURUSD",
-	"execution_time": "2025-10-03 14:30:00"
+  "success": true,
+  "trade_id": "12345",
+  "order_type": "ORDER_TYPE_BUY",
+  "real_entry_price": 1.085,
+  "real_stop_loss": 1.08,
+  "real_volume": 0.1,
+  "signal_data": { "op_type": "LONG", "entry": 1.085, "stoploss": [1.08, 0.0], "tps": [1.09, 1.092, 1.095, 1.098, 1.10] },
+  "mt_corrected_data": { "op_type": "LONG", "entry": 1.0849, "stoploss": [1.0799, 0.0], "tps": [/* ... */] },
+  "symbol": "EURUSD",
+  "execution_time": "2026-06-14 14:30:00"
 }
 ```
 
-**ReportProgress (POST /api/signals/{id}/progress):**
+`real_entry_price` / `real_stop_loss` are sent only for market orders; for STOP/LIMIT orders the fill is reported later via ReportProgress (`now_open`).
+
+**ReportProgress** (`POST /api/signals/{id}/progress`) — only dynamic fields; `new_stop_loss` only when moving to breakeven. A pending order that fills adds `now_open`, `trade_id`, `real_entry_price`, `real_stop_loss`:
 
 ```json
 {
-	"success": true,
-	"current_level": 2,
-	"volume_closed_percent": 40.0,
-	"remaining_volume": 0.06,
-	"gross_pnl": 125.5,
-	"last_price": 1.092,
-	"message": "TP2 reached",
-	"new_stop_loss": 1.085,
-	"symbol": "EURUSD",
-	"execution_time": "2025-10-03 15:45:00"
+  "current_level": 2,
+  "volume_closed_percent": 40.0,
+  "remaining_volume": 0.06,
+  "gross_pnl": 125.5,
+  "last_price": 1.092,
+  "message": "TP parcial",
+  "new_stop_loss": 1.085,
+  "execution_time": "2026-06-14 15:45:00"
 }
 ```
 
-**ReportClose (POST /api/signals/{id}/close):**
+**ReportClose** (`POST /api/signals/{id}/close`):
 
 ```json
 {
-	"success": true,
-	"exit_level": 5,
-	"close_reason": "CLOSED_COMPLETE",
-	"gross_pnl": 248.75,
-	"last_price": 1.0985,
-	"symbol": "EURUSD",
-	"execution_time": "2025-10-03 18:22:00"
+  "success": true,
+  "exit_level": 5,
+  "close_reason": "CLOSED_COMPLETE",
+  "gross_pnl": 248.75,
+  "last_price": 1.0985,
+  "symbol": "EURUSD",
+  "execution_time": "2026-06-14 18:22:00"
 }
 ```
 
 **Exit Level Codes:**
 
-- `1-5`: Closed at TP1-TP5
-- `0`: Closed by Stop Loss
-- `-1`: Safety stop triggered
-- `-998`: Invalid TPs (missing TP data)
-- `-999`: Execution/price correction error
+- `1`–`5`: closed at TP1–TP5
+- `-1` (EXIT_STOP): closed by Stop Loss (broker or code-stop)
+- `-998` (EXIT_INVALID): invalid signal (missing SL/TPs) — never operated
+- `-999` (EXIT_ERROR): execution / price-correction / gate error — never operated
 
-**Close Reason Codes:**
+**Close Reason Codes** — the server matches these **exact strings** (`Telegram_signals_model::is_failure_reason`); do NOT change the values.
 
-- `CLOSED_COMPLETE`: All TPs reached
-- `CLOSED_BY_SL`: Stop loss hit
-- `CLOSED_CODE_STOP`: Code-based stop triggered
-- `CLOSED_SAFETY_STOP`: Emergency safety stop
-- `CLOSED_MANUAL`: Manual close detected in history
-- `INVALID_TPS`: Missing or incomplete TP data
-- `PRICE_CORRECTION_ERROR`: Yahoo Finance API failed
-- `SPREAD_TOO_HIGH`: Spread exceeded MAX_SPREAD
+Real closes (the trade ran):
 
-#### EA State Management
+- `CLOSED_COMPLETE` - all volume closed / final TP
+- `CLOSED_STOPLOSS` - stop loss hit
+- `CLOSED_MANUAL` - manual close detected in history
+- `CLOSED_EXTERNAL` - closed by expert/other (default)
+- `CLOSED_CODE_STOP` / `CLOSED_SAFETY_STOP` - code-based / safety stop
+- `ORDER_CANCELLED` - pending order cancelled (server status → cancelled)
 
-**OptimizedTPState Structure:**
+Failure reasons (never operated → server status `failed_execution`):
 
-- Tracks single active position (EA handles one trade at a time)
-- Stores: ticket, positionID, direction, volumes, TP levels, prices
-- `levelFlags[6]`: Boolean array tracking which TPs have been hit
-- `slMovedToBE`: Flag indicating breakeven activation
+- `INVALID_STOPLOSS`, `INVALID_TPS`, `PRICE_CORRECTION_ERROR`, `SPREAD_TOO_HIGH`, `VOLUME_ERROR`, `SL_TOO_CLOSE`, `EXECUTION_FAILED`
 
-**Position Lifecycle:**
+#### State Persistence & Restart Reconciliation
 
-1. Signal received → ExecuteTrade() → Position opened
-2. OnTick() monitors price → ManageTPs() checks each TP level
-3. TP reached → Partial close → ReportProgress()
-4. Breakeven triggered at configured BE_LEVEL
-5. Final TP or SL hit → Full close → ReportClose() → InitTPState()
+- `OptimizedTPState` tracks the single active trade (or pending order): ticket, positionID, direction, volumes, currentLevel, `levelFlags[6]`, `slMovedToBE`, entry/SL/TP prices.
+- `SaveState` / `LoadState` / `ClearState` persist it as one JSON line in `MQL5/Files/bxlite_state_{USER_ID}_{TICKER}.json`, so a trade survives EA/terminal restarts.
+- On startup, `AdoptStateOnInit` reconciles the saved state against MT5:
+  1. live own position (magic+symbol) found → re-adopt (and, if it had been pending, report the fill that happened while down);
+  2. pending order still alive → keep waiting;
+  3. neither → trade closed/cancelled while down → reconcile the close from history and report it.
+
+#### Pending Order Handling
+
+STOP/LIMIT orders are monitored in `OnTick` via `CheckPendingOrderExecution`:
+
+- filled → `AdoptLivePosition` + `ReportPendingExecuted` (`now_open`);
+- cancelled (e.g. `ORDER_TIME_DAY` expiry) → `ReportClose(ORDER_CANCELLED)`.
+
+#### CSV Trade Journal
+
+Two files in `MQL5/Files/`:
+
+- `bxlite_journal_{USER_ID}_{TICKER}.csv` — dataset: one row appended per closed **or rejected** trade.
+- `bxlite_live_{USER_ID}_{TICKER}.csv` — header + the current trade row, overwritten on each state change.
+
+Each row captures the full feature vector: raw vs corrected prices, R, T1, real/tolerated spread, entry distance & side, order-type decision, real entry/slippage, broker stops level, max level reached, % closed, exit level, close reason, gross PnL. Intended for offline analysis/ML.
 
 #### Price Correction Mechanism
 
-**Flow:**
-
-1. EA calls `/api/fut_price/{symbol}` (Yahoo Finance proxy)
-2. Gets `last_close` price from futures market
-3. Calculates `correctionFactor = futurePrice / cfdPrice`
-4. Validates deviation is < MAX_PRICE_DEVIATION
-5. Multiplies all TPs and SL by correctionFactor
-6. Ensures timestamp is fresh (< MAX_TIMESTAMP_HOURS)
-
-**Purpose:** Aligns CFD broker prices with real futures market to prevent slippage
+1. EA calls `/api/fut_price/{symbol}` (Yahoo Finance proxy) → `last_close` + `ts_epoch`.
+2. `correctionFactor = futurePrice / cfdPrice` (CFD price from the M1 bar matching the futures timestamp, after applying the broker-time offset).
+3. Validates deviation < `MAX_PRICE_DEVIATION` and timestamp freshness < `MAX_TIMESTAMP_HOURS`.
+4. Divides entry / SL / all TPs by the factor (signal prices are in futures space; MT5 trades CFD space).
+5. Any failure → `ReportClose(PRICE_CORRECTION_ERROR)`; the trade is not taken.
 
 #### Important EA Behaviors
 
-**Signal Validation:**
+**Signal validation:** SL1 and all of TP1–TP5 must be > 0, else the signal is rejected (`INVALID_STOPLOSS` / `INVALID_TPS`) without operating.
 
-- EA validates ALL TPs (TP1-TP5) must be > 0
-- If any TP is missing/invalid → ReportClose(-998, "INVALID_TPS")
-- This prevents partial signal execution
+**Volume management:**
 
-**Volume Management:**
+- Risk-based: `(Balance · RISK_PERCENT/100) / SL_distance`, floored to the lot step.
+- **v10.15 — integer-lot split at open (`ComputeLevelVolumes`):** the original volume is divided among the 5 TPs by their percentages using the **largest-remainder method**, in whole lot steps that sum exactly to the original. Each TP closes a fixed tranche ≥ 1 step and the last tranche with lots brings remaining to 0, so the sub-min "dust" remnant **never comes into existence** — no dust-close, no retries, no in-tick recompute. Split is computed once in `SetupTPState`, persisted in `levelVolumes[]` (survives restarts), and consumed in `CheckAndExecuteTP`.
+- `COMPLETE` is reported **only when the position is actually closed** (remaining 0). Any stop — broker SL, code-stop, safety, or SL moved to breakeven — closes 100% of the remainder.
+- With small volumes, a TP whose share rounds below one lot step gets 0 lots and is skipped, so the trade simply completes at an earlier TP (e.g. 40/40/20 on a 2-lot position closes 50/50 at TP1/TP2). This is the lot-minimum at work, not a bug.
 
-- Volume calculated using risk management: `(Balance * RISK_PERCENT / 100) / StopLossDistance`
-- Each TP closes its configured percentage of ORIGINAL volume
-- TP5 always closes 100% of remaining volume regardless of TP5_PERCENT
+**Breakeven:** at `BE_LEVEL`, SL → entry (zero risk), reported via `ReportProgress(new_stop_loss)`.
 
-**Breakeven Logic:**
+**Historical close detection:** if the position disappears, `GetCloseReasonFromHistory` inspects the closing deal to classify SL / TP / manual / external and avoid duplicate close reports.
 
-- Activated when price reaches TP at BE_LEVEL
-- Moves SL to entry price (zero-risk position)
-- Reports new SL in ReportProgress()
-
-**Historical Position Tracking:**
-
-- If position disappears, EA checks history to determine WHY
-- Distinguishes: SL hit, TP hit, manual close, unknown
-- Prevents duplicate close reports
-
-**Single Position Constraint:**
-
-- EA only handles ONE active trade at a time (`currentTP.isActive` flag)
-- New signals ignored while position is open
-- This simplifies state management and prevents conflicts
+**Single position constraint:** the EA handles one trade (or pending order) at a time (`HasTrade()`); new signals are ignored while busy.
 
 ### TradingView Expert Advisor (EA_TV.mq5)
 
