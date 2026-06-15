@@ -20,4 +20,7 @@ define('UPLOAD_PATH', './uploads/');
 |   /home/<user>/.mt5/drive_c/Program Files/MetaTrader 5/MQL5/Files/
 | (www-data necesita read+traverse; ver spec, sección Permissions).
 */
-defined('JOURNALS_PATH') OR define('JOURNALS_PATH', FCPATH . 'EA/journals/');
+// Prod (Debian): symlink /var/www/journals -> carpeta Wine MQL5/Files (ver comandos abajo).
+// Dev (XAMPP): cae a EA/journals del repo.
+defined('JOURNALS_PATH') OR define('JOURNALS_PATH',
+    is_dir('/var/www/journals') ? '/var/www/journals/' : FCPATH . 'EA/journals/');
