@@ -66,4 +66,30 @@ class Journal_stats {
             'exit_levels'    => $exitLevels,
         );
     }
+
+    /** PnL acumulado de trades operados, ordenado por ts_signal. [['ts'=>,'cum'=>],...]. */
+    public function cumulative_pnl($rows) {
+        $op = array();
+        foreach ($rows as $row) if ($this->is_operated($row)) $op[] = $row;
+        usort($op, function($a, $b) {
+            return strcmp((string)(isset($a['ts_signal'])?$a['ts_signal']:''),
+                          (string)(isset($b['ts_signal'])?$b['ts_signal']:''));
+        });
+        $out = array(); $cum = 0.0;
+        foreach ($op as $row) {
+            $cum += (float)$this->val($row, 'gross_pnl', 0);
+            $out[] = array('ts' => (string)$this->val($row, 'ts_signal', ''), 'cum' => round($cum, 2));
+        }
+        return $out;
+    }
+
+    /** Conteo por valor de un campo. */
+    public function distribution($rows, $field) {
+        $out = array();
+        foreach ($rows as $row) {
+            $kk = (string)$this->val($row, $field, '');
+            $out[$kk] = (isset($out[$kk]) ? $out[$kk] : 0) + 1;
+        }
+        return $out;
+    }
 }

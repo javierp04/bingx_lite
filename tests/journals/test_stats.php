@@ -39,4 +39,18 @@ $z = $s->per_symbol(array());
 check_eq($z['win_rate'], null, 'win_rate null on 0 operated');
 check_eq($z['pnl_total'], 0.0, 'pnl_total 0 on empty');
 
+$series = array(
+    array('close_reason'=>'CLOSED_COMPLETE','gross_pnl'=>10.0,'ts_signal'=>'2026-06-15T10:00:00'),
+    array('close_reason'=>'ORDER_CANCELLED','gross_pnl'=>0.0,'ts_signal'=>'2026-06-15T09:00:00'),
+    array('close_reason'=>'CLOSED_STOPLOSS','gross_pnl'=>-4.0,'ts_signal'=>'2026-06-15T11:00:00'),
+);
+$cum = $s->cumulative_pnl($series);
+check_eq(count($cum), 2, 'cumulative skips not-operated (2 points)');
+check_eq($cum[0]['cum'], 10.0, 'first cum = 10 (sorted by ts)');
+check_eq($cum[1]['cum'], 6.0, 'second cum = 6');
+
+$dist = $s->distribution($series, 'close_reason');
+check_eq($dist['CLOSED_COMPLETE'], 1, 'distribution counts CLOSED_COMPLETE');
+check_eq($dist['ORDER_CANCELLED'], 1, 'distribution counts ORDER_CANCELLED');
+
 done();
