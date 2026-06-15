@@ -35,4 +35,24 @@ check_eq(count($live), 0, 'header-only live -> 0 rows');
 // missing file -> 0 rows, no fatal
 check_eq(count($r->parse_csv(__DIR__ . '/fixtures/nope.csv')), 0, 'missing file -> 0 rows');
 
+// list_symbols (union across kinds; BAD only has journal)
+check_eq($r->list_symbols(), array('BAD', 'ES', 'GC'), 'list_symbols sorted union');
+
+// read_journal merges + adds user_id
+$esj = $r->read_journal('ES');
+check_eq(count($esj), 3, 'read_journal ES = 3 rows');
+check_eq($esj[0]['user_id'], 1, 'read_journal adds user_id');
+check_eq(count($r->read_journal('GC')), 1, 'read_journal GC = 1 row');
+check_eq(count($r->read_journal('NONE')), 0, 'unknown symbol -> 0 rows');
+
+// read_live: ES live is header-only -> null
+check_eq($r->read_live('ES'), null, 'header-only live -> null');
+
+// read_state: ES has a state json
+$st = $r->read_state('ES');
+check_eq(is_array($st), true, 'read_state returns array');
+check_eq($st['signalId'], 4, 'state signalId');
+check_eq($st['levelVolumes'][2], 0.10, 'state levelVolumes parsed');
+check_eq($r->read_state('GC'), null, 'no state -> null');
+
 done();

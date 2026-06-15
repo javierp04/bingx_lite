@@ -63,4 +63,65 @@ class Journal_reader {
         }
         return $v;
     }
+
+    /** Metadata de todos los archivos reconocidos. */
+    private function all_files() {
+        $out = array();
+        if (!$this->is_readable_dir()) return $out;
+        foreach (scandir($this->basePath) as $f) {
+            $info = $this->parse_filename($f);
+            if ($info !== null) {
+                $info['file'] = $this->basePath . $f;
+                $out[] = $info;
+            }
+        }
+        return $out;
+    }
+
+    /** Símbolos presentes (union de journal/live/state), ordenados. */
+    public function list_symbols() {
+        $symbols = array();
+        foreach ($this->all_files() as $info) $symbols[$info['symbol']] = true;
+        $out = array_keys($symbols);
+        sort($out);
+        return $out;
+    }
+
+    /** Filas de todos los bxlite_journal_*_<symbol>.csv, con user_id por fila. */
+    public function read_journal($symbol) {
+        $rows = array();
+        foreach ($this->all_files() as $info) {
+            if ($info['kind'] !== 'journal' || $info['symbol'] !== $symbol) continue;
+            foreach ($this->parse_csv($info['file']) as $row) {
+                $row['user_id'] = $info['user_id'];
+                $rows[] = $row;
+            }
+        }
+        return $rows;
+    }
+
+    /** Fila viva del live csv, o null. */
+    public function read_live($symbol) {
+        foreach ($this->all_files() as $info) {
+            if ($info['kind'] !== 'live' || $info['symbol'] !== $symbol) continue;
+            $rows = $this->parse_csv($info['file']);
+            if (count($rows) > 0) {
+                $rows[0]['user_id'] = $info['user_id'];
+                return $rows[0];
+            }
+        }
+        return null;
+    }
+
+    /** State json decodificado, o null si no existe / no parseable. */
+    public function read_state($symbol) {
+        foreach ($this->all_files() as $info) {
+            if ($info['kind'] !== 'state' || $info['symbol'] !== $symbol) continue;
+            $raw = @file_get_contents($info['file']);
+            if ($raw === false) return null;
+            $data = json_decode($raw, true);
+            return is_array($data) ? $data : null;
+        }
+        return null;
+    }
 }
