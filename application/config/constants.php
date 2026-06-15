@@ -9,3 +9,15 @@ define('BINGX_FUTURES_API_URL_SANDBOX', 'https://open-api-vst.bingx.com'); // Sa
 
 // File upload paths
 define('UPLOAD_PATH', './uploads/');
+
+/*
+| -------------------------------------------------------------------------
+| Journal Viewer
+| -------------------------------------------------------------------------
+| Carpeta donde EA_Signals.mq5 escribe bxlite_journal/live/state.
+| Dev (XAMPP): la carpeta EA/journals del repo.
+| Prod (Debian + Wine): apuntar a
+|   /home/<user>/.mt5/drive_c/Program Files/MetaTrader 5/MQL5/Files/
+| (www-data necesita read+traverse; ver spec, sección Permissions).
+*/
+defined('JOURNALS_PATH') OR define('JOURNALS_PATH', FCPATH . 'EA/journals/');
