@@ -99,9 +99,9 @@ http://localhost/bingx_lite/
 ### MetaTrader Expert Advisor (EA_Signals.mq5)
 
 **Location:** `EA/EA_Signals.mq5`
-**Version:** 10.19
+**Version:** 10.20
 **Language:** MQL5 (MetaTrader 5)
-**Lines:** ~1,920
+**Lines:** ~2,090
 
 Polls the backend for Telegram-derived signals, executes them on the chart symbol, manages multi-TP partial closes + breakeven, persists state to disk (survives EA/terminal restarts), reports execution back to the API, and writes a CSV trade journal (dataset + live). **Asset-agnostic:** every entry/cost gate is scaled to the signal's own size (`T1 = |entry − TP1|`), so it works across FX, indices, oil, etc. without per-symbol tuning.
 
@@ -144,9 +144,10 @@ position vanished   → GetCloseReasonFromHistory() → ReportClose()
 
 **Asset-Agnostic Gates** (all anchored to `T1 = |entry − TP1|`):
 
-- `K_STOP_RATIO` = 0.02 - Market band on the favorable side (→ STOP). Small on purpose: don't front-run the breakout, respect the analyst's stop entry (wait for confirmation).
+- `K_STOP_RATIO` = 0.05 - Market band on the favorable side (→ STOP). Respects the analyst's stop entry (wait for confirmation); kept `≥ M_SLIP_RATIO` so the favorable band is at least as wide as the slippage cap.
 - `K_LIMIT_RATIO` = 0.10 - Market band on the adverse side (→ LIMIT). Wider than STOP to absorb signal→execution latency (price drifted past entry); must be > `M_SLIP_RATIO`.
-- `M_SLIP_RATIO` = 0.05 - Slippage/deviation cap, market only; must be < `K_LIMIT_RATIO`
+- `ENABLE_SLIP_CHECK` = false - Slippage cap is **off by default** (high-liquidity brokers/hours): market deviation is set wide (no effective cap). The slippage tolerance is still recorded in the journal; it just doesn't gate. When **on**, deviation = `M_SLIP_RATIO · T1`.
+- `M_SLIP_RATIO` = 0.04 - When `ENABLE_SLIP_CHECK` is on: slippage/deviation cap, market only; must be < `K_LIMIT_RATIO`. Unused (no constraint) when the check is off.
 - `ENABLE_SPREAD_CHECK` = false - Spread gate is **off by default** (built for high-liquidity brokers/hours). The spread is still recorded in the journal; it just doesn't reject.
 - `C_SPREAD_RATIO` = 0.05 - When `ENABLE_SPREAD_CHECK` is on: reject if spread > `C_SPREAD_RATIO · T1` (recalibrated from 0.40 — a spread that big would eat ~40% of TP1)
 
@@ -176,7 +177,9 @@ Distance between current market price and signal entry, measured in units of T1:
 
 - distance ≤ `k · T1` → **MARKET** (`k` = `K_STOP_RATIO` if price is on the favorable side of entry, else `K_LIMIT_RATIO`)
 - otherwise: favorable side → **STOP** order at entry; adverse side → **LIMIT** order at entry
-- Market orders set deviation = `M_SLIP_RATIO · T1` (always < the `k` band, by the `M < K_LIMIT` invariant)
+- Market orders set deviation via `ENABLE_SLIP_CHECK`: on → `M_SLIP_RATIO · T1` (always < the `k` band, by the `M < K_LIMIT` invariant); off (default) → wide deviation (no cap)
+- **STOP/LIMIT too close to market** (broker returns `TRADE_RETCODE_INVALID_STOPS` because the pending price is within `SYMBOL_TRADE_STOPS_LEVEL`) → **fallback to MARKET** (v10.20). Self-gating: on brokers with stops level 0 the pending is never rejected, so the fallback never fires. Journalled as `MARKET_FB`.
+- Prices sent to the broker (pending entry + SL) are normalized to the symbol's `tickSize`/`digits` before sending (v10.20) — the price correction leaves arbitrary decimals that some brokers reject.
 
 `R = |entry − SL|` is used for volume sizing; `T1` for the entry/cost gates. Both use post-correction prices.
 
@@ -290,7 +293,7 @@ Each row captures the full feature vector: raw vs corrected prices, R, T1, real/
 
 #### Important EA Behaviors
 
-**Signal validation:** SL1 and all of TP1–TP5 must be > 0, else the signal is rejected (`INVALID_STOPLOSS` / `INVALID_TPS`) without operating.
+**Signal validation:** SL1 and all of TP1–TP5 must be > 0, else the signal is rejected (`INVALID_STOPLOSS` / `INVALID_TPS`) without operating. **Geometry is also validated** (v10.20): for LONG `sl1 < entry < tp1 < tp2 < tp3 < tp4 < tp5`, inverse for SHORT — a wrong-side SL or out-of-order/wrong-side TP is rejected (`INVALID_STOPLOSS` / `INVALID_TPS`), preventing absurd executions (a wrong-side TP would be "reached" instantly; a wrong-side SL would mirror to a made-up level).
 
 **Volume management:**
 
@@ -304,6 +307,8 @@ Each row captures the full feature vector: raw vs corrected prices, R, T1, real/
 **Historical close detection:** if the position disappears, `GetCloseReasonFromHistory` inspects the closing deal to classify SL / TP / manual / external and avoid duplicate close reports.
 
 **Single position constraint:** the EA handles one trade (or pending order) at a time (`HasTrade()`); new signals are ignored while busy.
+
+**Known limitation — report delivery is best-effort (not yet retried):** `ReportOpen/Progress/Close` log on failure but do not retry, and the close path calls `EndTrade()` (clears state) regardless. If a `POST .../close` fails (network down, server restarting) the trade is closed in MT5 but the server never learns → the `user_signal` stays `open` in the DB. A robust fix (a persistent outbound queue retried by `OnTimer`, plus making `report_close`/`report_progress` idempotent server-side — they currently *add* `gross_pnl` cumulatively, so naive retries would double-count) is pending.
 
 ### TradingView Expert Advisor (EA_TV.mq5)
 

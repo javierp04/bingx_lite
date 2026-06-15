@@ -1,6 +1,10 @@
 #property copyright "TelegramSignals"
-#property version   "10.19"
+#property version   "10.20"
 #property description "Reliability + gates asset-agnostic (TP1) + CSV trade journal (dataset + live)"
+// v10.20: (E) si el broker rechaza la pendiente por caer dentro de STOPS_LEVEL (INVALID_STOPS),
+//         fallback a MARKET (self-gateado: en stops level 0 nunca dispara). Recalibra K_STOP 0.02->0.05
+//         (ahora >= M_SLIP) y M_SLIP 0.05->0.04. Slippage cap ahora OPCIONAL (ENABLE_SLIP_CHECK, OFF
+//         por defecto): OFF = deviation amplia (alta liquidez), el tol se sigue registrando en journal.
 // v10.19: recalibra bandas de order type: K_STOP 0.30->0.02 (no adelantarse al breakout, respeta el
 //         stop del analista) y K_LIMIT 0.15->0.10 (cubre latencia señal->ejecucion). stop-estricto/limit-laxo.
 // v10.18: validacion de spread ahora OPCIONAL (ENABLE_SPREAD_CHECK, OFF por defecto) y coeficiente
@@ -20,6 +24,10 @@
 
 // CONSTANTES
 #define HTTP_TIMEOUT 5000
+
+// Deviation "sin cap" cuando ENABLE_SLIP_CHECK=false: valor grande en points (efectivamente ilimitado
+// para cualquier instrumento) -> el market no se rechaza por slippage. Mirrors el gate de spread.
+#define SLIP_NO_CAP_POINTS 1000000
 
 // Exit-level codes reportados a la API (ver CLAUDE.md). >0 = cerro en TPn.
 #define EXIT_STOP      -1     // cerrado por Stop Loss (broker) o code-stop
@@ -60,9 +68,10 @@ input string    TICKER_SYMBOL = "EURUSD";
 input double    RISK_PERCENT = 2.0;
 input int       POLL_INTERVAL = 10;
 input group "=== Gates asset-agnostic (anclados a TP1) ==="
-input double    K_STOP_RATIO   = 0.02;   // banda market lado STOP (favorable): chica = respeta la confirmacion del analista
+input double    K_STOP_RATIO   = 0.05;   // banda market lado STOP (favorable): respeta la confirmacion del analista; >= M_SLIP_RATIO
 input double    K_LIMIT_RATIO  = 0.10;   // banda market lado LIMIT (adverso): cubre latencia señal->ejecucion — debe ser > M_SLIP_RATIO
-input double    M_SLIP_RATIO   = 0.05;   // tope de slippage (deviation) — debe ser < K_LIMIT_RATIO
+input bool      ENABLE_SLIP_CHECK = false; // OFF por defecto: deviation amplia (alta liquidez). ON = cap = M_SLIP_RATIO*T1
+input double    M_SLIP_RATIO   = 0.04;   // si ENABLE_SLIP_CHECK: tope de slippage (deviation) — debe ser < K_LIMIT_RATIO
 input bool      ENABLE_SPREAD_CHECK = false; // OFF por defecto (brokers/horarios de alta liquidez)
 input double    C_SPREAD_RATIO = 0.05;   // si ENABLE_SPREAD_CHECK: rechaza si spread > C_SPREAD_RATIO * T1
 
@@ -194,16 +203,17 @@ private:
     string json;
 
     bool ValidateNumber(string value) {
-        if(StringLen(value) == 0) return false;
-        for(int i = 0; i < StringLen(value); i++) {
-            ushort char_code = StringGetCharacter(value, i);
-            if(char_code < '0' || char_code > '9') {
-                if(char_code != '.' && char_code != '-' && char_code != '+') {
-                    return false;
-                }
-            }
+        int len = StringLen(value);
+        if(len == 0) return false;
+        int dots = 0, digits = 0;
+        for(int i = 0; i < len; i++) {
+            ushort c = StringGetCharacter(value, i);
+            if(c >= '0' && c <= '9') { digits++; continue; }
+            if(c == '.') { dots++; if(dots > 1) return false; continue; }   // un solo punto decimal
+            if(c == '-' || c == '+') { if(i != 0) return false; continue; } // signo solo al inicio
+            return false;                                                   // cualquier otro caracter
         }
-        return true;
+        return (digits > 0);   // al menos un dígito (rechaza "", ".", "+", "-")
     }
 
     string ExtractNumericValue(string key) {
@@ -229,6 +239,12 @@ public:
     int GetInt(string key, int defaultValue = 0) {
         string value = ExtractNumericValue(key);
         return (ValidateNumber(value)) ? (int)StringToInteger(value) : defaultValue;
+    }
+
+    // GetLong: como GetInt pero sin truncar a 32 bits (ej. epoch unix, que excede int en 2038).
+    long GetLong(string key, long defaultValue = 0) {
+        string value = ExtractNumericValue(key);
+        return (ValidateNumber(value)) ? StringToInteger(value) : defaultValue;
     }
 
     string GetString(string key, string defaultValue = "") {
@@ -660,7 +676,23 @@ void AdoptStateOnInit() {
         return;
     }
 
-    // Caso 3: no hay posicion ni pendiente -> cerro/cancelo mientras estabamos caidos
+    // Caso 3: no hay posicion ni pendiente viva -> cerro/cancelo mientras estabamos caidos.
+    // Si el estado guardado era PENDIENTE, distinguir cancelacion/expiracion (la orden nunca fillró)
+    // de un fill+cierre ocurridos mientras el EA estaba caido. Solo desviar a ORDER_CANCELLED con
+    // evidencia POSITIVA en el historial de la orden; ante la duda (orden no sincronizada / fillró),
+    // caer al reconciliado de cierre, que registra el trade. Usa EXIT_ERROR + REASON_ORDER_CANCELLED,
+    // consistente con el path de cancelacion con EA vivo (CheckPendingOrderExecution).
+    if(!currentTP.isActive && currentTP.ticket > 0 && HistoryOrderSelect(currentTP.ticket)) {
+        ENUM_ORDER_STATE st = (ENUM_ORDER_STATE)HistoryOrderGetInteger(currentTP.ticket, ORDER_STATE);
+        if(st == ORDER_STATE_CANCELED || st == ORDER_STATE_EXPIRED || st == ORDER_STATE_REJECTED) {
+            Log(WARNING_LVL, "ADOPT", StringFormat("Pendiente SignalID=%d %s mientras EA caido -> ORDER_CANCELLED",
+                currentTP.signalId, EnumToString(st)));
+            ReportClose(currentTP.signalId, EXIT_ERROR, REASON_ORDER_CANCELLED, 0, 0);
+            EndTrade();
+            return;
+        }
+    }
+
     Log(WARNING_LVL, "ADOPT", StringFormat("Trade SignalID=%d ya no existe en MT5: reconciliando cierre desde historial",
         currentTP.signalId));
     FinalizeClosedFromHistory(0.0, 0.0);
@@ -712,6 +744,7 @@ void InitTPState() {
     currentTP.slMovedToBE = false;
 
     ArrayInitialize(currentTP.levelFlags, false);
+    ArrayInitialize(currentTP.levelVolumes, 0.0);   // higiene: no arrastrar el reparto del trade anterior
 
     currentTP.entry = 0;
     currentTP.originalSL = 0;
@@ -735,7 +768,9 @@ bool ValidateAllInputs() {
         Log(ERROR_LVL, "INIT", "Ratios de gates inválidos: deben ser > 0");
         return false;
     }
-    if(M_SLIP_RATIO >= K_LIMIT_RATIO) {
+    // El invariante M_SLIP < K_LIMIT solo importa si el cap de slippage esta activo (si no, el
+    // deviation es amplio y M_SLIP queda sin uso). Asi un M_SLIP grande con el check OFF no bloquea.
+    if(ENABLE_SLIP_CHECK && M_SLIP_RATIO >= K_LIMIT_RATIO) {
         Log(ERROR_LVL, "INIT", StringFormat("Invariante de gates violado: M_SLIP_RATIO(%.2f) debe ser < K_LIMIT_RATIO(%.2f)",
             M_SLIP_RATIO, K_LIMIT_RATIO));
         return false;
@@ -760,6 +795,13 @@ TPConfig ValidateTPConfig() {
     }
 
     config.isValid = (config.totalPercent <= 100.0);
+
+    // Config degenerada: valida igual (no es error), pero avisar para que no sorprenda el comportamiento.
+    if(config.totalPercent <= 0.0)
+        Log(WARNING_LVL, "INIT", "Config TP suma 0%: sin cierres parciales; el trade sale solo por TP5(closeAll) o SL");
+    else if(config.totalPercent < 100.0)
+        Log(WARNING_LVL, "INIT", StringFormat("Config TP suma %.0f%% (<100): el remanente lo barre TP5 closeAll", config.totalPercent));
+
     return config;
 }
 
@@ -988,7 +1030,7 @@ double CalculatePriceCorrection(string symbol, string &errorMessage) {
 
     SimpleJSONParser parser(response.data);
     double futurePrice = parser.GetDouble("last_close");
-    long epochTime = parser.GetInt("ts_epoch");
+    long epochTime = parser.GetLong("ts_epoch");
 
     Log(INFO_LVL, "PRICE_CORR", StringFormat("Future Price=%.5f, Epoch=%d", futurePrice, epochTime));
 
@@ -1070,14 +1112,35 @@ double CalculatePNL(double currentPrice, double volume = 0) {
     return (priceDiff / specs.point) * volume * PointValuePerLot(specs);
 }
 
-double NormalizeVolume(double volume, SymbolSpecs &specs) {
-    if(!specs.isValid || specs.stepVolume <= 0) return volume;
+// Alinea un precio a la grilla de tick del símbolo y lo limpia a SYMBOL_DIGITS. La corrección de
+// precios (división por un factor irracional) deja decimales arbitrarios; un precio no alineado al
+// tickSize puede ser rechazado por el broker (Invalid price/stops), sobre todo en pendientes y en
+// instrumentos donde tickSize != point (índices, oil, etc.).
+double NormalizePrice(double price) {
+    SymbolSpecs specs = GetSymbolSpecs();
+    int digits = (int)SymbolInfoInteger(currentSymbol, SYMBOL_DIGITS);
+    if(specs.isValid && specs.tickSize > 0)
+        price = MathRound(price / specs.tickSize) * specs.tickSize;
+    return NormalizeDouble(price, digits);
+}
 
-    double normalized = MathRound(volume / specs.stepVolume) * specs.stepVolume;
-    normalized = MathMax(specs.minVolume, normalized);
-    normalized = MathMin(specs.maxVolume, normalized);
-
-    return normalized;
+// Setea el deviation (slippage máximo) de un market. Si ENABLE_SLIP_CHECK: cap = M_SLIP_RATIO*T1;
+// si está OFF (default, alta liquidez): deviation amplia (sin cap efectivo). El tol se registra en el
+// journal SIEMPRE (informativo), igual que el gate de spread. Reusada por el market normal y por el
+// fallback de E (pendiente rechazada -> market).
+void ApplyMarketDeviation(double t1, double point) {
+    double slipTol = M_SLIP_RATIO * t1;
+    currentJournal.slip_tol = slipTol;   // informativo (journal) siempre
+    int devPoints;
+    if(ENABLE_SLIP_CHECK) {
+        devPoints = (point > 0) ? (int)MathRound(slipTol / point) : 1;
+        if(devPoints < 1) devPoints = 1;
+        Log(INFO_LVL, "SLIPPAGE", StringFormat("check ON | tol=%.5f (m=%.2f*T1) = %d points", slipTol, M_SLIP_RATIO, devPoints));
+    } else {
+        devPoints = SLIP_NO_CAP_POINTS;
+        Log(INFO_LVL, "SLIPPAGE", StringFormat("check OFF | tol=%.5f informativo | deviation=%d (sin cap)", slipTol, devPoints));
+    }
+    trade.SetDeviationInPoints(devPoints);
 }
 
 // Reparte 'volume' entre los 5 niveles de TP segun sus porcentajes, en multiplos ENTEROS de
@@ -1310,7 +1373,8 @@ bool ClosePositionByCode(string reason) {
 
     if(trade.PositionClose(position.Ticket())) {
         double finalPnl = CalculatePNL(currentPrice);
-        int exitLevel = (reason == REASON_CODE_STOP) ? EXIT_STOP : currentTP.currentLevel;
+        // Code-stop y safety-stop son cierres tipo stop -> exit_level = EXIT_STOP (no el nivel de TP).
+        int exitLevel = (reason == REASON_CODE_STOP || reason == REASON_SAFETY_STOP) ? EXIT_STOP : currentTP.currentLevel;
 
         ReportClose(currentTP.signalId, exitLevel, reason, currentPrice, finalPnl);
         Log(INFO_LVL, "CODE_CLOSE", "Posición cerrada por código: " + reason);
@@ -1386,6 +1450,9 @@ void OnTick() {
         }
     }
 
+    // Reintento throttleado de BE si quedó pendiente por un PositionModify fallido
+    RetryBreakevenIfPending();
+
     // Gestionar TPs
     ManageTPs(currentPrice);
 }
@@ -1437,10 +1504,16 @@ bool CheckAndExecuteTP(int tpLevel, double tpPrice, double currentPrice, bool cl
 }
 
 void ManageTPs(double currentPrice) {
+    // Si un TP completa el trade (ClosePartialPosition -> EndTrade), cortar: seguir iterando
+    // dispararía CheckAndExecuteTP sobre un estado ya reseteado (logs espurios / mutación de currentLevel).
     CheckAndExecuteTP(1, currentTP.tp1, currentPrice);
+    if(!currentTP.isActive) return;
     CheckAndExecuteTP(2, currentTP.tp2, currentPrice);
+    if(!currentTP.isActive) return;
     CheckAndExecuteTP(3, currentTP.tp3, currentPrice);
+    if(!currentTP.isActive) return;
     CheckAndExecuteTP(4, currentTP.tp4, currentPrice);
+    if(!currentTP.isActive) return;
 
     // TP5: cierra TODO el volumen restante (incluye cualquier sobrante de config < 100%)
     if(currentTP.currentVolume > 0) {
@@ -1451,24 +1524,52 @@ void ManageTPs(double currentPrice) {
 // ==========================================
 // BREAKEVEN
 // ==========================================
-void SetBreakeven() {
-    if(position.SelectByTicket(currentTP.ticket)) {
-        double newSL = currentTP.entry;
-        if(trade.PositionModify(position.Ticket(), newSL, position.TakeProfit())) {
-            currentTP.slMovedToBE = true;
-            currentTP.currentSL = newSL;
-            SaveState();
-
-            Log(INFO_LVL, "BE", StringFormat("BE activado en TP%d: SL %.5f → %.5f, Vol restante=%.2f",
-                currentTP.currentLevel, currentTP.originalSL, newSL, currentTP.currentVolume));
-
-            double currentPrice = GetCurrentPrice(currentTP.direction);
-
-            ReportProgress(currentTP.signalId, currentTP.currentLevel, currentTP.closedPercent,
-                          currentTP.currentVolume, currentPrice, 0.0,
-                          "Stop Loss movido a Breakeven", newSL);
-        }
+// Mueve el SL a entry. Devuelve true si quedó aplicado. Los fallos (no se pudo seleccionar la
+// posición, o PositionModify rechazado por el broker — p.ej. distancia < STOPS_LEVEL) se loguean
+// y devuelven false: RetryBreakevenIfPending lo reintenta 1×/barra hasta que entra o cierra el trade.
+bool SetBreakeven() {
+    if(!position.SelectByTicket(currentTP.ticket)) {
+        Log(WARNING_LVL, "BE", StringFormat("BE no aplicado: no se pudo seleccionar la posición (ticket=%d). Reintentará.",
+            currentTP.ticket));
+        return false;
     }
+
+    double newSL = currentTP.entry;
+    if(!trade.PositionModify(position.Ticket(), newSL, position.TakeProfit())) {
+        Log(WARNING_LVL, "BE", StringFormat("BE no aplicado: PositionModify falló %d (%s), SL→%.5f. Reintentará.",
+            trade.ResultRetcode(), trade.ResultRetcodeDescription(), newSL));
+        return false;
+    }
+
+    currentTP.slMovedToBE = true;
+    currentTP.currentSL = newSL;
+    SaveState();
+
+    Log(INFO_LVL, "BE", StringFormat("BE activado en TP%d: SL %.5f → %.5f, Vol restante=%.2f",
+        currentTP.currentLevel, currentTP.originalSL, newSL, currentTP.currentVolume));
+
+    double currentPrice = GetCurrentPrice(currentTP.direction);
+
+    ReportProgress(currentTP.signalId, currentTP.currentLevel, currentTP.closedPercent,
+                  currentTP.currentVolume, currentPrice, 0.0,
+                  "Stop Loss movido a Breakeven", newSL);
+    return true;
+}
+
+// Reintento throttleado de breakeven. Si el nivel de BE ya se alcanzó pero el SL no llegó a BE
+// (un PositionModify previo falló, típicamente por T1 < STOPS_LEVEL), reintenta 1×/barra M1.
+// A medida que el precio se aleja del entry la distancia crece y el modify se vuelve válido; el
+// gate por barra evita el spam de un reintento por tick. Se auto-cura tras reinicios del EA.
+void RetryBreakevenIfPending() {
+    if(BE_LEVEL <= 0 || currentTP.slMovedToBE || currentTP.currentLevel < BE_LEVEL) return;
+
+    static datetime lastTryBar = 0;
+    datetime curBar = iTime(currentSymbol, PERIOD_M1, 0);
+    if(curBar == lastTryBar) return;   // ya se intentó en esta barra
+    lastTryBar = curBar;
+
+    Log(INFO_LVL, "BE", StringFormat("Reintentando BE (nivel %d alcanzado, SL aún no en BE)...", currentTP.currentLevel));
+    SetBreakeven();
 }
 
 // ==========================================
@@ -1644,6 +1745,29 @@ void ProcessSignalResponse(string jsonResponse) {
         return;
     }
 
+    // Geometría: validar lado y orden según la dirección. Precios crudos (la corrección divide por un
+    // factor >0 y preserva el orden). Una señal malformada ejecutaría absurdo: un TP del lado equivocado
+    // se "alcanza" al instante y un SL del lado equivocado se espeja a un nivel inventado.
+    bool isLong = (opType == "LONG");
+
+    bool slOk = isLong ? (sl1 < entry) : (sl1 > entry);
+    if(!slOk) {
+        Log(ERROR_LVL, "SIGNAL", StringFormat("Señal rechazada ID=%d: SL del lado equivocado (%s entry=%.5f SL=%.5f)",
+            userSignalId, opType, entry, sl1));
+        ReportClose(userSignalId, EXIT_INVALID, REASON_INVALID_SL, 0, 0);
+        return;
+    }
+
+    bool tpsOk = isLong
+        ? (entry < tp1 && tp1 < tp2 && tp2 < tp3 && tp3 < tp4 && tp4 < tp5)
+        : (entry > tp1 && tp1 > tp2 && tp2 > tp3 && tp3 > tp4 && tp4 > tp5);
+    if(!tpsOk) {
+        Log(ERROR_LVL, "SIGNAL", StringFormat("Señal rechazada ID=%d: TPs fuera de orden/lado (%s entry=%.5f TPs=[%.5f,%.5f,%.5f,%.5f,%.5f])",
+            userSignalId, opType, entry, tp1, tp2, tp3, tp4, tp5));
+        ReportClose(userSignalId, EXIT_INVALID, REASON_INVALID_TPS, 0, 0);
+        return;
+    }
+
     if(ExecuteTrade(userSignalId, opType, entry, sl1, tp1, tp2, tp3, tp4, tp5, sl2)) {
         Log(INFO_LVL, "TRADE", "Trade ejecutado exitosamente");
     }
@@ -1815,6 +1939,12 @@ bool ExecuteTrade(int userSignalId, string opType, double entryPrice, double sto
     double effectiveDistance = ENABLE_CODE_STOP ? (slDistance * SAFETY_FACTOR) : slDistance;
     double orderStopLoss = (opType == "LONG") ? (entryPrice - effectiveDistance) : (entryPrice + effectiveDistance);
 
+    // Alinear a tick/digits los precios que van al broker (post-corrección quedan con decimales
+    // arbitrarios). entryPrice = precio de la PENDIENTE; orderStopLoss = SL de market y pendiente.
+    // Se hace antes del chequeo de STOPS_LEVEL para que slDistFinal refleje lo que realmente se manda.
+    entryPrice    = NormalizePrice(entryPrice);
+    orderStopLoss = NormalizePrice(orderStopLoss);
+
     Log(INFO_LVL, "SL_CALC", StringFormat("Original=%.5f, Distance=%.5f, Factor=%.2f, Final=%.5f",
             stopLoss, slDistance, ENABLE_CODE_STOP ? SAFETY_FACTOR : 1.0, orderStopLoss));
 
@@ -1836,38 +1966,72 @@ bool ExecuteTrade(int userSignalId, string opType, double entryPrice, double sto
     ulong ticket = 0;
     bool isMarketOrder = (orderType == ORDER_TYPE_BUY || orderType == ORDER_TYPE_SELL);
 
-    // Slippage permitido solo para market: deviation = m*T1 (siempre < banda k por invariante m < k_limit)
     if(isMarketOrder) {
-        double slipTol  = M_SLIP_RATIO * t1;
-        int    devPoints = (int)MathRound(slipTol / point);
-        if(devPoints < 1) devPoints = 1;
-        trade.SetDeviationInPoints(devPoints);
-        Log(INFO_LVL, "SLIPPAGE", StringFormat("tol=%.5f (m=%.2f*T1) = %d points", slipTol, M_SLIP_RATIO, devPoints));
-        currentJournal.slip_tol = slipTol;
-    }
-
-    if(isMarketOrder) {
+        ApplyMarketDeviation(t1, point);
         success = trade.PositionOpen(currentSymbol, orderType, calculatedVolume, 0, orderStopLoss, 0, TRADE_COMMENT);
     } else {
         success = trade.OrderOpen(currentSymbol, orderType, calculatedVolume, 0, entryPrice, orderStopLoss, 0,
                                  ORDER_TIME_DAY, 0, TRADE_COMMENT);
+
+        // E: si el broker rechaza la pendiente por caer dentro de STOPS_LEVEL (precio a pocos puntos
+        // del entry), entrar a MARKET. El fill queda ~en el entry (lado favorable: igual o mejor;
+        // lado adverso: chase mínimo). Self-gateado: en brokers con stops level 0 nunca se rechaza.
+        if(!success && trade.ResultRetcode() == TRADE_RETCODE_INVALID_STOPS) {
+            Log(WARNING_LVL, "ORDER", StringFormat("Pendiente %s rechazada por cercanía (INVALID_STOPS) -> fallback MARKET",
+                EnumToString(orderType)));
+            orderType     = (opType == "LONG") ? ORDER_TYPE_BUY : ORDER_TYPE_SELL;
+            isMarketOrder = true;
+            orderDecision = "MARKET_FB";
+            currentJournal.order_type = orderDecision;
+            ApplyMarketDeviation(t1, point);
+            success = trade.PositionOpen(currentSymbol, orderType, calculatedVolume, 0, orderStopLoss, 0, TRADE_COMMENT);
+        }
     }
-    ticket = trade.ResultOrder();
+    ticket = trade.ResultOrder();   // ticket de la ORDEN (correcto para pendientes)
 
-    if(success && ticket > 0) {
-        // Para market orders, obtener precio real y position ID
-        double realEntryPrice = entryPrice;
-        ulong positionID = 0;
+    // Para MARKET la posición es la fuente de verdad del éxito, NO ResultOrder: algunos brokers
+    // devuelven order=0 en ejecución instantánea (sólo setean deal). Si exigiéramos ResultOrder>0,
+    // un fill real se reportaría EXECUTION_FAILED dejando la posición huérfana (y abriría un
+    // duplicado en el próximo poll). Para PENDIENTES sí se exige el ticket de la orden.
+    double realEntryPrice = entryPrice;
+    ulong positionID = 0;
+    bool opened;
 
-        if(isMarketOrder && FindOwnPosition()) {
+    if(isMarketOrder) {
+        // La posición es la fuente de verdad. Tras un open exitoso el cache de posiciones del
+        // terminal puede tardar unos ms en reflejarla: reintentar FindOwnPosition antes de concluir.
+        bool found = false;
+        for(int attempt = 0; success && attempt < 5; attempt++) {
+            if(FindOwnPosition()) { found = true; break; }
+            Sleep(50);
+        }
+
+        if(found) {
+            ticket         = position.Ticket();      // ticket REAL de posición (consistente con AdoptLivePosition)
+            positionID     = position.Identifier();
             realEntryPrice = position.PriceOpen();
-            positionID = position.Identifier();
             double slipReal = MathAbs(realEntryPrice - currentPrice);
             Log(INFO_LVL, "SLIPPAGE", StringFormat("real=%.5f | pedido=%.5f fill=%.5f", slipReal, currentPrice, realEntryPrice));
             currentJournal.slip_real = slipReal;
             entryPrice = realEntryPrice;
+            opened = true;
+        } else if(success && ticket > 0) {
+            // No hallada tras reintentos pero el broker dio un order ticket válido: seguir con él
+            // (best effort); OnTick la maneja por SelectByTicket.
+            Log(WARNING_LVL, "TRADE", StringFormat("PositionOpen OK, posición no hallada tras reintentos; usando ResultOrder=%d", ticket));
+            opened = true;
+        } else {
+            // success pero sin posición NI order ticket trackeable (o open fallido): no proseguir con
+            // ticket 0 (OnTick lo cerraría en falso). Reportar EXECUTION_FAILED.
+            if(success)
+                Log(ERROR_LVL, "TRADE", "PositionOpen reportó OK pero no hay posición ni ticket trackeable -> EXECUTION_FAILED");
+            opened = false;
         }
+    } else {
+        opened = (success && ticket > 0);
+    }
 
+    if(opened) {
         // Setup state (ya con positionID resuelto)
         currentJournal.real_entry  = entryPrice;
         currentJournal.real_volume = calculatedVolume;
