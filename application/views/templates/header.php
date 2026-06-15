@@ -177,6 +177,9 @@
                                     <li><a class="dropdown-item" href="<?= base_url('systemlogs') ?>">
                                             <i class="fas fa-file-alt me-2"></i>System Logs
                                         </a></li>
+                                    <li><a class="dropdown-item" href="<?= base_url('journals') ?>">
+                                            <i class="fas fa-table me-2"></i>Journals
+                                        </a></li>
                                     <?php if (has_module('bingx') || has_module('metatrader')): ?>
                                         <li>
                                             <hr class="dropdown-divider">

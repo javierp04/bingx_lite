@@ -59,6 +59,10 @@ $route['my_trading/trading_detail/(:num)'] = 'My_trading/trading_detail/$1';
 $route['my_trading/signal_detail/(:num)'] = 'My_trading/signal_detail/$1';
 $route['my_trading/(:any)'] = 'My_trading/index/$1';
 
+// Journals viewer routes (Admin only)
+$route['journals'] = 'journals/index';
+$route['journals/symbol/(:any)'] = 'journals/symbol/$1';
+
 // Telegram Signals routes (Admin only - MODIFICADO)
 $route['telegram_signals'] = 'Telegram_signals';
 $route['telegram_signals/view/(:num)'] = 'Telegram_signals/view/$1';
