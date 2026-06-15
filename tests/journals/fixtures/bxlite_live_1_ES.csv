@@ -1,0 +1,1 @@
+ts_signal,signal_id,symbol,dir,corr_on,corr_factor,entry_raw,sl_raw,entry,sl,tp1,tp2,tp3,tp4,tp5,R,T1,spread_real,spread_tol,price_signal,dist_entry,side,k_band,order_type,real_entry,slip_real,slip_tol,real_volume,stops_min,sl_dist,max_level,vol_closed_pct,be_on,exit_level,close_reason,gross_pnl,last_price,result
