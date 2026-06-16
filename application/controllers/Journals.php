@@ -14,6 +14,7 @@ class Journals extends CI_Controller {
         if ($this->session->userdata('role') !== 'admin') show_error('Acceso denegado', 403);
         $this->load->model('Telegram_signals_model');
         $this->load->library('journal_stats');
+        $this->load->helper('journal_labels');
     }
 
     public function index() {
@@ -36,8 +37,8 @@ class Journals extends CI_Controller {
             $allRows = array_merge($allRows, $rows);
         }
         $data['global'] = $this->aggregate_global($data['symbols']);
-        $data['chart']['order_types'] = $this->journal_stats->distribution($allRows, 'order_type');
-        $data['chart']['exit_levels'] = $this->journal_stats->distribution($allRows, 'exit_level');
+        $data['chart']['order_types'] = $this->relabel($this->journal_stats->distribution($allRows, 'order_type'), 'journal_order_label');
+        $data['chart']['exit_levels'] = $this->relabel($this->journal_stats->distribution($allRows, 'exit_level'), 'journal_exit_label');
         $data['chart']['cum']         = $this->journal_stats->cumulative_pnl($allRows);
 
         $this->load->view('templates/header', $data);
@@ -64,7 +65,7 @@ class Journals extends CI_Controller {
         $data['chart']  = array(
             'cum'         => $this->journal_stats->cumulative_pnl($rows),
             'scatter'     => $this->scatter_data($rows),
-            'exit_levels' => $this->journal_stats->distribution($rows, 'exit_level'),
+            'exit_levels' => $this->relabel($this->journal_stats->distribution($rows, 'exit_level'), 'journal_exit_label'),
         );
 
         $this->load->view('templates/header', $data);
@@ -90,6 +91,16 @@ class Journals extends CI_Controller {
         $this->load->view('templates/header', $data);
         $this->load->view('journals/trade_detail', $data);
         $this->load->view('templates/footer');
+    }
+
+    /** Remapea las claves de una distribución (código -> etiqueta legible vía helper). Suma si colisionan. */
+    private function relabel($dist, $labeller) {
+        $out = array();
+        foreach ($dist as $k => $v) {
+            $label = $labeller((string)$k);
+            $out[$label] = (isset($out[$label]) ? $out[$label] : 0) + $v;
+        }
+        return $out;
     }
 
     private function scatter_data($rows) {

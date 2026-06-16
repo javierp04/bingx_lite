@@ -175,6 +175,8 @@ class My_trading extends CI_Controller
             redirect('my_trading/active');
         }
 
+        $this->load->helper('journal_labels');   // labels ES para la vista compartida trade_detail
+
         $data['title']         = 'Trade #' . $user_signal_id;
         $data['sym']           = $signal->ticker_symbol;
         $data['signal']        = $signal;

@@ -1,8 +1,5 @@
 <?php
-$el_help = array(
-    '1'=>'TP1','2'=>'TP2','3'=>'TP3','4'=>'TP4','5'=>'TP5',
-    '-1'=>'Stop loss','-998'=>'Señal inválida','-999'=>'Error/gate/cancel','0'=>'En vivo'
-);
+// Etiquetas legibles (exit_level / close_reason) -> helper journal_labels (fuente única).
 function jv_num($v, $d = 2) { return is_numeric($v) ? number_format((float)$v, $d) : htmlspecialchars((string)$v); }
 
 // Resuelve un campo prefiriendo el snapshot del EA, con fallback a user_telegram_signals.
@@ -76,8 +73,8 @@ function jv_pick($t, $snapField, $utsField) {
                 <td><?= htmlspecialchars($otype) ?></td>
                 <td><?= ($t->snap && $t->snap->dist_entry !== null) ? jv_num($t->snap->dist_entry, 5) : '—' ?></td>
                 <td><?= ($t->snap && $t->snap->t1 !== null) ? jv_num($t->snap->t1, 5) : '—' ?></td>
-                <td title="<?= isset($el_help[$elk]) ? $el_help[$elk] : '' ?>"><?= htmlspecialchars($elk) ?></td>
-                <td><?= htmlspecialchars($reason) ?></td>
+                <td title="<?= htmlspecialchars($elk) ?>"><?= htmlspecialchars(journal_exit_label($elk)) ?></td>
+                <td title="<?= htmlspecialchars($reason) ?>"><?= htmlspecialchars(journal_reason_label($reason)) ?></td>
                 <td><?= $t->real_volume !== null ? jv_num($t->real_volume, 2) : '—' ?></td>
                 <td class="<?= $pnl >= 0 ? 'text-profit' : 'text-loss' ?>"><?= jv_num($pnl, 2) ?></td>
                 <td><a href="<?= $url ?>" class="btn btn-sm btn-outline-primary py-0"><i class="fas fa-search"></i></a></td>

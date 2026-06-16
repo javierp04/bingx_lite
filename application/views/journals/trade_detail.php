@@ -43,7 +43,7 @@ $is_be = ($real_sl > 0 && $real_entry > 0 && abs($real_sl - $real_entry) < pow(1
 
 // Estado / cierre
 $closed_reason = $signal->close_reason ?: '';
-$status_label  = $closed_reason ?: strtoupper($signal->status);
+$status_label  = $closed_reason ? journal_reason_label($closed_reason) : strtoupper($signal->status);
 $pnl  = (float)$signal->gross_pnl;
 $dir_class = ($op === 'LONG') ? 'bg-success' : 'bg-danger';
 ?>
@@ -81,12 +81,12 @@ $bc_home_label = isset($bc_home_label) ? $bc_home_label : 'Journals';
   <div>
     <h3 class="mb-1"><?= htmlspecialchars($signal->ticker_symbol) ?>
       <span class="badge <?= $dir_class ?>"><?= htmlspecialchars($op ?: '—') ?></span>
-      <span class="badge bg-secondary"><?= htmlspecialchars($status_label) ?></span>
+      <span class="badge bg-secondary" title="<?= htmlspecialchars($closed_reason ?: $signal->status) ?>"><?= htmlspecialchars($status_label) ?></span>
     </h3>
     <div class="text-muted" style="font-size:.85rem">
       Señal <?= htmlspecialchars($signal->created_at) ?>
       <?php if ($signal->updated_at): ?> · actualizado <?= htmlspecialchars($signal->updated_at) ?><?php endif; ?>
-      <?php if ($signal->order_type): ?> · <?= htmlspecialchars($signal->order_type) ?><?php endif; ?>
+      <?php if ($signal->order_type): ?> · <?= htmlspecialchars(journal_order_label($signal->order_type)) ?><?php endif; ?>
       <?php if ($signal->real_volume): ?> · vol <?= jd_num($signal->real_volume, 2) ?><?php endif; ?>
     </div>
   </div>
@@ -233,20 +233,7 @@ $bc_home_label = isset($bc_home_label) ? $bc_home_label : 'Journals';
           <h6>Señal recibida</h6><small><?= date('Y-m-d H:i:s', strtotime($signal->created_at)) ?></small></div>
 
         <?php
-        $order_labels = array(
-            'ORDER_TYPE_BUY'=>'Market Buy','ORDER_TYPE_SELL'=>'Market Sell',
-            'ORDER_TYPE_BUY_LIMIT'=>'Buy Limit','ORDER_TYPE_SELL_LIMIT'=>'Sell Limit',
-            'ORDER_TYPE_BUY_STOP'=>'Buy Stop','ORDER_TYPE_SELL_STOP'=>'Sell Stop',
-        );
-        $reason_labels = array(
-            'CLOSED_COMPLETE'=>['bg-success','Todos los TP'],'CLOSED_STOPLOSS'=>['bg-danger','Stop Loss'],
-            'CLOSED_BREAKEVEN'=>['bg-secondary','Breakeven'],'CLOSED_CODE_STOP'=>['bg-danger','Code Stop'],
-            'CLOSED_SAFETY_STOP'=>['bg-danger','Safety Stop'],'CLOSED_MANUAL'=>['bg-warning text-dark','Manual'],
-            'CLOSED_EXTERNAL'=>['bg-warning text-dark','Externo'],'ORDER_CANCELLED'=>['bg-warning text-dark','Cancelada'],
-            'PRICE_CORRECTION_ERROR'=>['bg-dark','Corrección falló'],'SPREAD_TOO_HIGH'=>['bg-dark','Spread alto'],
-            'VOLUME_ERROR'=>['bg-dark','Error volumen'],'INVALID_TPS'=>['bg-dark','TPs inválidos'],
-            'INVALID_STOPLOSS'=>['bg-dark','SL inválido'],'EXECUTION_FAILED'=>['bg-dark','Broker rechazó'],
-        );
+        // Etiquetas de order_type / close_reason -> helper journal_labels (fuente única).
         foreach ($events as $ev):
             $type = $ev['event'] ?? '';
             $time = isset($ev['at']) ? date('Y-m-d H:i:s', strtotime($ev['at'])) : '—';
@@ -257,12 +244,12 @@ $bc_home_label = isset($bc_home_label) ? $bc_home_label : 'Journals';
             <div class="tl-dot bg-warning"><i class="fas fa-hand-pointer"></i></div>
             <h6>Reclamada por el EA</h6><small><?= $time ?></small>
 
-          <?php elseif ($type === 'open'): $ol = $order_labels[$ev['order_type'] ?? ''] ?? 'Orden a mercado'; ?>
+          <?php elseif ($type === 'open'): $ol = !empty($ev['order_type']) ? journal_order_label($ev['order_type']) : 'Orden a mercado'; ?>
             <div class="tl-dot bg-success"><i class="fas fa-bolt"></i></div>
             <h6><?= $ol ?> ejecutada</h6>
             <small><?= $time ?><?php if (isset($ev['entry'])): ?> · entry <?= jd_num($ev['entry'], $d) ?><?php endif; ?><?php if (isset($ev['volume'])): ?> · vol <?= jd_num($ev['volume'], 2) ?><?php endif; ?></small>
 
-          <?php elseif ($type === 'pending_order'): $ol = $order_labels[$ev['order_type'] ?? ''] ?? 'Orden pendiente'; ?>
+          <?php elseif ($type === 'pending_order'): $ol = !empty($ev['order_type']) ? journal_order_label($ev['order_type']) : 'Orden pendiente'; ?>
             <div class="tl-dot bg-info"><i class="fas fa-hourglass"></i></div>
             <h6><?= $ol ?> colocada</h6><small><?= $time ?> · esperando entry</small>
 
@@ -286,7 +273,7 @@ $bc_home_label = isset($bc_home_label) ? $bc_home_label : 'Journals';
 
           <?php elseif ($type === 'closed' || $type === 'failed'):
               $cr = $ev['reason'] ?? $closed_reason;
-              $cfg = $reason_labels[$cr] ?? ['bg-secondary', $cr ?: 'Cerrado']; ?>
+              $cfg = $cr ? journal_reason_meta($cr) : ['bg-secondary', 'Cerrado']; ?>
             <div class="tl-dot <?= $cfg[0] ?>"><i class="fas fa-flag-checkered"></i></div>
             <h6><?= $type === 'failed' ? 'Rechazado' : 'Cierre' ?> — <?= htmlspecialchars($cfg[1]) ?></h6>
             <small><?= $time ?>
