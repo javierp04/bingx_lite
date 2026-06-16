@@ -80,16 +80,22 @@ class Telegram_signals_model extends CI_Model
         $this->db->where('user_id', $user_id);
         $this->db->where('status', 'available');
 
-        $result = $this->db->update('user_telegram_signals', [
+        $this->db->update('user_telegram_signals', [
             'status' => 'claimed',
             'updated_at' => date('Y-m-d H:i:s')
         ]);
 
-        if ($result) {
+        // Ganamos el claim SOLO si esta query cambió la fila. update() devuelve TRUE aunque
+        // 0 filas coincidan (otro proceso ya la reclamó); affected_rows() distingue al ganador
+        // de la carrera y evita que dos EAs ejecuten la misma señal por duplicado. El cambio
+        // de status available->claimed garantiza que una fila matcheada siempre cuente como afectada.
+        $claimed = ($this->db->affected_rows() > 0);
+
+        if ($claimed) {
             $this->append_event($user_signal_id, 'claimed');
         }
 
-        return $result;
+        return $claimed;
     }
 
     /**
@@ -148,6 +154,11 @@ class Telegram_signals_model extends CI_Model
      */
     public function report_open($user_signal_id, $open_data)
     {
+        // Guard de existencia -> el controller devuelve 404 si el id no existe (ver signal_exists()).
+        if (!$this->signal_exists($user_signal_id)) {
+            return false;
+        }
+
         $update_data = [
             'updated_at' => date('Y-m-d H:i:s')
         ];
@@ -229,6 +240,11 @@ class Telegram_signals_model extends CI_Model
      */
     public function report_progress($user_signal_id, $progress_data)
     {
+        // Guard de existencia -> el controller devuelve 404 si el id no existe (ver signal_exists()).
+        if (!$this->signal_exists($user_signal_id)) {
+            return false;
+        }
+
         $update_data = [
             'updated_at' => date('Y-m-d H:i:s')
         ];
@@ -337,6 +353,11 @@ class Telegram_signals_model extends CI_Model
      */
     public function report_close($user_signal_id, $close_data)
     {
+        // Guard de existencia -> el controller devuelve 404 si el id no existe (ver signal_exists()).
+        if (!$this->signal_exists($user_signal_id)) {
+            return false;
+        }
+
         $close_reason = $close_data['close_reason'] ?? '';
         $is_real_close = !$this->is_failure_reason($close_reason);
 
@@ -530,6 +551,18 @@ class Telegram_signals_model extends CI_Model
     {
         $this->db->where('id', $user_signal_id);
         return $this->db->get('user_telegram_signals')->row();
+    }
+
+    /**
+     * ¿Existe la user_signal? Guard para los reportes del EA. El 404 no puede inferirse de
+     * update() (devuelve TRUE con 0 filas) ni de affected_rows() (MySQL devuelve 0 cuando los
+     * valores no cambian — p.ej. dos progress idénticos en el mismo segundo darían un falso 404).
+     * Chequeo de existencia explícito: distingue "id inexistente" de "update sin cambios".
+     */
+    private function signal_exists($user_signal_id)
+    {
+        return (bool) $this->db->select('id')
+            ->get_where('user_telegram_signals', ['id' => $user_signal_id], 1)->row();
     }
 
     /**
