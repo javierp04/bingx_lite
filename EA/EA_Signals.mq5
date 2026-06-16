@@ -64,7 +64,7 @@ enum APIResult { API_SUCCESS, API_HTTP_ERROR, API_NETWORK_ERROR };
 
 // INPUTS
 input group "=== API Configuration ==="
-input string    API_URL = "http://bx-trade.local/api/";
+input string    API_URL = "https://bx-trade.2bunnylabs.com/api/";
 input int       USER_ID = 1;
 
 input group "=== Trading Settings ==="
