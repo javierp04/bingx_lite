@@ -60,7 +60,7 @@
 
 // Enums
 enum LogLevel { DEBUG_LVL, INFO_LVL, WARNING_LVL, ERROR_LVL };
-enum APIResult { API_SUCCESS, API_HTTP_ERROR, API_JSON_ERROR, API_BUSINESS_ERROR, API_NETWORK_ERROR };
+enum APIResult { API_SUCCESS, API_HTTP_ERROR, API_NETWORK_ERROR };
 
 // INPUTS
 input group "=== API Configuration ==="
@@ -174,7 +174,6 @@ struct JournalRecord {
 
 struct TPConfig {
     double percents[5];
-    bool enabled[5];
     double totalPercent;
     bool isValid;
 };
@@ -814,7 +813,6 @@ TPConfig ValidateTPConfig() {
 
     config.totalPercent = 0;
     for(int i = 0; i < 5; i++) {
-        config.enabled[i] = (config.percents[i] > 0);
         config.totalPercent += config.percents[i];
     }
 
@@ -844,7 +842,7 @@ bool ValidateSymbol() {
 }
 
 void LogInitialization() {
-   Print("EA Signals v10.19 | User: ", USER_ID, " | Symbol: ", currentSymbol, " | BE Level: ", BE_LEVEL);
+   Print("EA Signals v", EA_VERSION, " | User: ", USER_ID, " | Symbol: ", currentSymbol, " | BE Level: ", BE_LEVEL);
    Log(INFO_LVL, "INIT", "Stop management: " + (ENABLE_CODE_STOP ? "CODE" : "MT5"));
 }
 
