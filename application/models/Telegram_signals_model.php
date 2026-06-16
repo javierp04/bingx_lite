@@ -97,24 +97,29 @@ class Telegram_signals_model extends CI_Model
      */
     private function append_event($user_signal_id, $event_type, $extra = [], $utc_time = null)
     {
+        $at = $utc_time ? $this->convert_utc_to_local($utc_time) : date('Y-m-d H:i:s');
+
+        // Fuente de verdad: tabla relacional consultable (ea_trade_events). El blob event_log
+        // queda SOLO como fallback legacy mientras la migracion no haya corrido — sin duplicar.
+        if ($this->ea_tables_ready()) {
+            $this->record_event($user_signal_id, $event_type, $extra, $at);
+        } else {
+            $this->append_event_log($user_signal_id, $event_type, $extra, $at);
+        }
+    }
+
+    /** Fallback legacy: append al blob JSON user_telegram_signals.event_log */
+    private function append_event_log($user_signal_id, $event_type, $extra, $at)
+    {
         $this->db->select('event_log');
         $this->db->where('id', $user_signal_id);
         $row = $this->db->get('user_telegram_signals')->row();
 
         $log = ($row && !empty($row->event_log)) ? (json_decode($row->event_log, true) ?: []) : [];
-
-        $event = ['event' => $event_type];
-        $event['at'] = $utc_time ? $this->convert_utc_to_local($utc_time) : date('Y-m-d H:i:s');
-        if (!empty($extra)) {
-            $event = array_merge($event, $extra);
-        }
-        $log[] = $event;
+        $log[] = array_merge(['event' => $event_type, 'at' => $at], (array)$extra);
 
         $this->db->where('id', $user_signal_id);
         $this->db->update('user_telegram_signals', ['event_log' => json_encode($log)]);
-
-        // Espejo relacional consultable en ea_trade_events (timeline / Cronologia)
-        $this->record_event($user_signal_id, $event_type, $extra, $event['at']);
     }
 
     /**
@@ -1140,10 +1145,165 @@ class Telegram_signals_model extends CI_Model
             'pnl_delta'             => ($event_type === 'tp' && isset($extra['pnl'])) ? $extra['pnl'] : null,
             'pnl_cumulative'        => $this->get_current_gross_pnl($user_signal_id),
             'message'               => isset($extra['message']) ? $extra['message'] : null,
+            'order_type'            => isset($extra['order_type']) ? $extra['order_type'] : null,
+            'volume'                => isset($extra['volume']) ? $extra['volume'] : null,
+            'close_reason'          => isset($extra['reason']) ? $extra['reason'] : null,
             'event_time'            => $event_time_local,
             'created_at'            => date('Y-m-d H:i:s'),
         ];
 
         $this->db->insert('ea_trade_events', $data);
+    }
+
+    // =====================================================================
+    // LECTURA PARA JOURNALS (drill-down: overview -> symbol -> trade detail)
+    // Base = user_telegram_signals (siempre poblada) + LEFT JOIN ea_trade_* (rico cuando existe).
+    // =====================================================================
+
+    /** Estados que representan un trade que el EA accionó (operó o rechazó). */
+    private function journal_statuses()
+    {
+        return ['open', 'closed', 'failed_execution', 'cancelled', 'pending'];
+    }
+
+    /** Snapshot estatico de un trade (o null). */
+    public function get_trade_snapshot($user_signal_id)
+    {
+        if (!$this->ea_tables_ready()) return null;
+        return $this->db->get_where('ea_trade_snapshots', ['user_signal_id' => $user_signal_id])->row();
+    }
+
+    /** Proceso de correccion de un trade (o null). */
+    public function get_trade_correction($user_signal_id)
+    {
+        if (!$this->ea_tables_ready()) return null;
+        return $this->db->get_where('ea_price_corrections', ['user_signal_id' => $user_signal_id])->row();
+    }
+
+    /**
+     * Timeline normalizada (shape legacy event_log). Preferente: ea_trade_events.
+     * Fallback: blob event_log para señales historicas (sin filas en la tabla).
+     */
+    public function get_timeline_events($signal)
+    {
+        $uid = is_object($signal) ? $signal->id : $signal;
+
+        if ($this->ea_tables_ready()) {
+            $this->db->order_by('seq', 'ASC');
+            $rows = $this->db->get_where('ea_trade_events', ['user_signal_id' => $uid])->result_array();
+            if (!empty($rows)) {
+                $out = [];
+                foreach ($rows as $r) {
+                    $is_close = in_array($r['event_type'], ['closed', 'failed'], true);
+                    $out[] = [
+                        'event'      => $r['event_type'],
+                        'at'         => $r['event_time'],
+                        'order_type' => $r['order_type'],
+                        'entry'      => $r['last_price'],
+                        'price'      => $r['last_price'],
+                        'volume'     => $r['volume'],
+                        'level'      => $r['current_level'],
+                        'pnl'        => $is_close ? $r['pnl_cumulative'] : $r['pnl_delta'],
+                        'closed_pct' => $r['volume_closed_percent'],
+                        'new_sl'     => $r['new_stop_loss'],
+                        'reason'     => $r['close_reason'],
+                    ];
+                }
+                return $out;
+            }
+        }
+
+        // Fallback legacy
+        if (is_object($signal) && !empty($signal->event_log)) {
+            $decoded = json_decode($signal->event_log, true);
+            return is_array($decoded) ? $decoded : [];
+        }
+        return [];
+    }
+
+    /** Detalle de un trade para journals (admin: cualquier usuario). Mismos joins que get_user_signal_detail. */
+    public function get_signal_detail_admin($user_signal_id)
+    {
+        $this->db->select('uts.*, ts.ticker_symbol, ts.image_path, ts.tradingview_url,
+                          ts.message_text, ts.analysis_data, ts.op_type, at.display_decimals');
+        $this->db->from('user_telegram_signals uts');
+        $this->db->join('telegram_signals ts', 'uts.telegram_signal_id = ts.id');
+        $this->db->join('available_tickers at', 'ts.ticker_symbol = at.symbol', 'left');
+        $this->db->where('uts.id', $user_signal_id);
+        return $this->db->get()->row();
+    }
+
+    /** Simbolos con trades accionados por el EA (para el overview). */
+    public function journal_list_symbols()
+    {
+        $this->db->distinct();
+        $this->db->select('ticker_symbol');
+        $this->db->from('user_telegram_signals');
+        $this->db->where_in('status', $this->journal_statuses());
+        $this->db->order_by('ticker_symbol', 'ASC');
+        $rows = $this->db->get()->result();
+        $out = [];
+        foreach ($rows as $r) $out[] = $r->ticker_symbol;
+        return $out;
+    }
+
+    /**
+     * Filas de un símbolo con las claves que espera Journal_stats (order_type, exit_level,
+     * dist_entry, t1, close_reason, gross_pnl, ts_signal). Enriquece con el snapshot si existe.
+     */
+    public function journal_rows_for_symbol($sym)
+    {
+        if ($this->ea_tables_ready()) {
+            $this->db->select("uts.id,
+                               COALESCE(s.ts_signal, uts.created_at) AS ts_signal,
+                               COALESCE(s.order_type, uts.order_type) AS order_type,
+                               COALESCE(s.exit_level, uts.exit_level) AS exit_level,
+                               COALESCE(s.close_reason, uts.close_reason) AS close_reason,
+                               COALESCE(s.gross_pnl, uts.gross_pnl) AS gross_pnl,
+                               s.dist_entry AS dist_entry, s.t1 AS t1", false);
+            $this->db->from('user_telegram_signals uts');
+            $this->db->join('ea_trade_snapshots s', 's.user_signal_id = uts.id', 'left');
+        } else {
+            $this->db->select("uts.id, uts.created_at AS ts_signal, uts.order_type AS order_type,
+                               uts.exit_level AS exit_level, uts.close_reason AS close_reason,
+                               uts.gross_pnl AS gross_pnl, NULL AS dist_entry, NULL AS t1", false);
+            $this->db->from('user_telegram_signals uts');
+        }
+        $this->db->where('uts.ticker_symbol', $sym);
+        $this->db->where_in('uts.status', $this->journal_statuses());
+        $this->db->order_by('ts_signal', 'ASC');
+        return $this->db->get()->result_array();
+    }
+
+    /** Lista de trades de un símbolo para la tabla de la subpágina (objetos). */
+    public function journal_trades_for_symbol($sym)
+    {
+        $this->db->select("uts.id, uts.status, uts.current_level, uts.real_volume,
+                           uts.exit_level AS uts_exit_level, uts.close_reason AS uts_close_reason,
+                           uts.gross_pnl AS uts_gross_pnl, uts.order_type AS uts_order_type,
+                           uts.created_at, ts.op_type", false);
+        $this->db->from('user_telegram_signals uts');
+        $this->db->join('telegram_signals ts', 'uts.telegram_signal_id = ts.id');
+        $this->db->where('uts.ticker_symbol', $sym);
+        $this->db->where_in('uts.status', $this->journal_statuses());
+        $this->db->order_by('uts.created_at', 'DESC');
+        $rows = $this->db->get()->result();
+
+        if (!$this->ea_tables_ready()) {
+            foreach ($rows as $r) { $r->snap = null; }
+            return $rows;
+        }
+        // Enriquecer con snapshot (order_type/exit/close/pnl/ts del EA) sin N+1: un IN
+        $ids = [];
+        foreach ($rows as $r) $ids[] = $r->id;
+        $snaps = [];
+        if (!empty($ids)) {
+            $this->db->where_in('user_signal_id', $ids);
+            foreach ($this->db->get('ea_trade_snapshots')->result() as $s) {
+                $snaps[$s->user_signal_id] = $s;
+            }
+        }
+        foreach ($rows as $r) $r->snap = isset($snaps[$r->id]) ? $snaps[$r->id] : null;
+        return $rows;
     }
 }
