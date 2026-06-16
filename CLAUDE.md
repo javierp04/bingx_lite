@@ -17,6 +17,8 @@ This is a **BingX Trading Signal Management System** built with CodeIgniter 3. I
 
 This is a **XAMPP-based development environment** on Windows.
 
+**Git workflow:** work directly on `main` — this repo does **not** use feature branches. Commit straight to `main`.
+
 ### Key Commands
 
 **Start/Stop Services:**
@@ -564,6 +566,8 @@ The system supports three trading modules with per-user access control:
 - `ea_price_corrections` - 1 row per signal: price-correction telemetry (futures vs CFD candle, broker offset, candle-alignment check, deviation, error stage).
 
 All writes are guarded by a `table_exists` check, so the trading flow is unaffected if the migration hasn't run.
+
+**EA Report Idempotency** (migration `database/migrations/2026-06-17-ea-report-dedup.sql`): `ea_report_dedup` stores a `sha1` of each report body keyed by `UNIQUE(user_signal_id, body_hash)`. `report_open/progress/close` run an `INSERT IGNORE` inside a transaction before applying — a re-sent report (identical body) hits the unique index → `affected_rows()==0` → idempotent no-op (no double-counted PnL, no duplicate events/trades); a mid-apply failure rolls back the dedup row too, so a retry stays clean. Also `table_exists`-guarded (applies directly if not migrated). This is the **server-side base for a future EA outbound-retry queue** — the EA itself is unchanged and still reports best-effort (no retry yet); the contract for that future queue is to **resend the byte-identical body** (same `execution_time`) so the hash matches.
 
 **Unified trade detail:** `/journals` is the DB-backed analytics area — drill-down `journals` (overview) → `journals/symbol/{SYM}` (trade list) → `journals/symbol/{SYM}/{id}` (trade detail). The detail view (`application/views/journals/trade_detail.php`) is shared by `Journals::trade` (admin, any user) and `My_trading::trading_detail` (owner-scoped); it prefers the `ea_trade_*` tables and falls back to the legacy JSON blobs for historical trades. The old `my_trading/trading_detail.php` view is deprecated/removed.
 
