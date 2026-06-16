@@ -15,6 +15,7 @@ class Journals extends CI_Controller {
         $this->load->model('Telegram_signals_model');
         $this->load->library('journal_stats');
         $this->load->helper('journal_labels');
+        $this->load->helper('trade_view');
     }
 
     public function index() {

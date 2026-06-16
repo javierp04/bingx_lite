@@ -20,6 +20,9 @@ class My_trading extends CI_Controller
 
         $this->load->model('User_tickers_model');
         $this->load->model('Telegram_signals_model');
+        // Helpers compartidos para el detalle unificado y la card del dashboard
+        $this->load->helper('journal_labels');
+        $this->load->helper('trade_view');
     }
 
     public function index($tab = 'active')
