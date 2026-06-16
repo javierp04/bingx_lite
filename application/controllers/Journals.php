@@ -37,7 +37,11 @@ class Journals extends CI_Controller {
             $allRows = array_merge($allRows, $rows);
         }
         $data['global'] = $this->aggregate_global($data['symbols']);
-        $data['chart']['order_types'] = $this->relabel($this->journal_stats->distribution($allRows, 'order_type'), 'journal_order_label');
+        // El pie de order type solo cuenta trades que colocaron orden: los rechazos pre-ejecución
+        // (sin order_type) no tienen tipo y solo ensuciarían con una porción "—". Consistente con per_symbol.
+        $otDist = $this->journal_stats->distribution($allRows, 'order_type');
+        unset($otDist['']);
+        $data['chart']['order_types'] = $this->relabel($otDist, 'journal_order_label');
         $data['chart']['exit_levels'] = $this->relabel($this->journal_stats->distribution($allRows, 'exit_level'), 'journal_exit_label');
         $data['chart']['cum']         = $this->journal_stats->cumulative_pnl($allRows);
 
