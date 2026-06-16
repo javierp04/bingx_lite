@@ -99,9 +99,9 @@ http://localhost/bingx_lite/
 ### MetaTrader Expert Advisor (EA_Signals.mq5)
 
 **Location:** `EA/EA_Signals.mq5`
-**Version:** 10.20
+**Version:** 10.21
 **Language:** MQL5 (MetaTrader 5)
-**Lines:** ~2,090
+**Lines:** ~2,200
 
 Polls the backend for Telegram-derived signals, executes them on the chart symbol, manages multi-TP partial closes + breakeven, persists state to disk (survives EA/terminal restarts), reports execution back to the API, and writes a CSV trade journal (dataset + live). **Asset-agnostic:** every entry/cost gate is scaled to the signal's own size (`T1 = |entry − TP1|`), so it works across FX, indices, oil, etc. without per-symbol tuning.
 
@@ -556,6 +556,16 @@ The system supports three trading modules with per-user access control:
 - `strategies` - Trading strategies (can be BingX or MetaTrader platform)
 - `api_keys` - User BingX API credentials
 - `users` - User accounts with module access flags (`module_bingx`, `module_metatrader`, `module_atvip`)
+
+**EA Analytics Tables** (migration `database/migrations/2026-06-16-ea-trade-snapshots.sql`, populated by `Telegram_signals_model` from EA reports — EA v10.21+):
+
+- `ea_trade_snapshots` - 1 row per trade (executed or rejected): full feature vector (raw/corrected prices, R/T1, gates, order-type decision) + the EA config constants in effect (`cfg_*`).
+- `ea_trade_events` - relational timeline (one row per lifecycle hit: claimed/open/pending/filled/tp/breakeven/closed/failed) with cumulative PnL. **Single source of truth** for the timeline; `user_telegram_signals.event_log` is now only a pre-migration fallback.
+- `ea_price_corrections` - 1 row per signal: price-correction telemetry (futures vs CFD candle, broker offset, candle-alignment check, deviation, error stage).
+
+All writes are guarded by a `table_exists` check, so the trading flow is unaffected if the migration hasn't run.
+
+**Unified trade detail:** `/journals` is the DB-backed analytics area — drill-down `journals` (overview) → `journals/symbol/{SYM}` (trade list) → `journals/symbol/{SYM}/{id}` (trade detail). The detail view (`application/views/journals/trade_detail.php`) is shared by `Journals::trade` (admin, any user) and `My_trading::trading_detail` (owner-scoped); it prefers the `ea_trade_*` tables and falls back to the legacy JSON blobs for historical trades. The old `my_trading/trading_detail.php` view is deprecated/removed.
 
 **Important Relationships:**
 
