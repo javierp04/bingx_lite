@@ -164,21 +164,30 @@ class My_trading extends CI_Controller
         redirect('my_trading/tickers');
     }
 
-    // View trading detail (renamed from signal_detail)
+    // Detalle de trade (vista unificada con journals, scoped al dueño)
     public function trading_detail($user_signal_id)
     {
         $user_id = $this->session->userdata('user_id');
-        $data['title'] = 'Trading Detail';
+        $signal = $this->Telegram_signals_model->get_user_signal_detail($user_id, $user_signal_id);
 
-        $data['signal'] = $this->Telegram_signals_model->get_user_signal_detail($user_id, $user_signal_id);
-
-        if (!$data['signal']) {
+        if (!$signal) {
             $this->session->set_flashdata('error', 'Signal not found');
             redirect('my_trading/active');
         }
 
+        $data['title']         = 'Trade #' . $user_signal_id;
+        $data['sym']           = $signal->ticker_symbol;
+        $data['signal']        = $signal;
+        $data['snapshot']      = $this->Telegram_signals_model->get_trade_snapshot($user_signal_id);
+        $data['correction']    = $this->Telegram_signals_model->get_trade_correction($user_signal_id);
+        $data['events']        = $this->Telegram_signals_model->get_timeline_events($signal);
+        $data['back_url']      = base_url('my_trading/active');
+        $data['bc_home_url']   = base_url('my_trading/active');
+        $data['bc_home_label'] = 'Mi Trading';
+
+        // Vista unificada (la antigua my_trading/trading_detail.php quedó deprecada)
         $this->load->view('templates/header', $data);
-        $this->load->view('my_trading/trading_detail', $data);
+        $this->load->view('journals/trade_detail', $data);
         $this->load->view('templates/footer');
     }
 

@@ -64,9 +64,14 @@ $dir_class = ($op === 'LONG') ? 'bg-success' : 'bg-danger';
   .corr-grid .lbl{margin-bottom:2px;}
 </style>
 
+<?php
+// Breadcrumb parametrizable: admin -> Journals; dueño -> Mi Trading.
+$bc_home_url   = isset($bc_home_url) ? $bc_home_url : base_url('journals');
+$bc_home_label = isset($bc_home_label) ? $bc_home_label : 'Journals';
+?>
 <!-- Breadcrumb -->
 <nav style="font-size:.85rem" class="mb-2">
-  <a href="<?= base_url('journals') ?>">Journals</a> <span class="text-muted">/</span>
+  <a href="<?= htmlspecialchars($bc_home_url) ?>"><?= htmlspecialchars($bc_home_label) ?></a> <span class="text-muted">/</span>
   <a href="<?= htmlspecialchars($back_url) ?>"><?= htmlspecialchars($sym) ?></a> <span class="text-muted">/</span>
   <span class="text-muted">Trade #<?= (int)$signal->id ?></span>
 </nav>
