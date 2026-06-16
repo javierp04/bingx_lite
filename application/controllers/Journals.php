@@ -1,41 +1,44 @@
 <?php
 defined('BASEPATH') or exit('No direct script access allowed');
 
+/**
+ * Journals: analítica unificada de trades del EA (DB-backed).
+ * Drill-down: overview (por símbolo) -> symbol (lista de trades) -> trade (detalle, estilo mock).
+ * Fuente: user_telegram_signals + LEFT JOIN ea_trade_* (rico cuando el EA ya reportó).
+ */
 class Journals extends CI_Controller {
 
     public function __construct() {
         parent::__construct();
         if (!$this->session->userdata('logged_in')) redirect('auth');
         if ($this->session->userdata('role') !== 'admin') show_error('Acceso denegado', 403);
-        $this->load->library('journal_reader');
+        $this->load->model('Telegram_signals_model');
         $this->load->library('journal_stats');
     }
 
     public function index() {
         $data['title']    = 'Journals';
-        $data['readable'] = $this->journal_reader->is_readable_dir();
-        $data['path']     = $this->journal_reader->base_path();
+        $data['readable'] = true;
+        $data['path']     = 'Base de datos (user_telegram_signals + ea_trade_*)';
         $data['symbols']  = array();
         $data['global']   = $this->empty_global();
         $data['chart']    = array('pnl_by_symbol' => array(), 'order_types' => array(),
                                   'exit_levels' => array(), 'cum' => array());
 
-        if ($data['readable']) {
-            $allRows = array();
-            foreach ($this->journal_reader->list_symbols() as $sym) {
-                $rows = $this->journal_reader->read_journal($sym);
-                if (count($rows) === 0) continue;
-                $k = $this->journal_stats->per_symbol($rows);
-                $k['symbol'] = $sym;
-                $data['symbols'][] = $k;
-                $data['chart']['pnl_by_symbol'][$sym] = $k['pnl_total'];
-                $allRows = array_merge($allRows, $rows);
-            }
-            $data['global'] = $this->aggregate_global($data['symbols']);
-            $data['chart']['order_types'] = $this->journal_stats->distribution($allRows, 'order_type');
-            $data['chart']['exit_levels'] = $this->journal_stats->distribution($allRows, 'exit_level');
-            $data['chart']['cum']         = $this->journal_stats->cumulative_pnl($allRows);
+        $allRows = array();
+        foreach ($this->Telegram_signals_model->journal_list_symbols() as $sym) {
+            $rows = $this->Telegram_signals_model->journal_rows_for_symbol($sym);
+            if (count($rows) === 0) continue;
+            $k = $this->journal_stats->per_symbol($rows);
+            $k['symbol'] = $sym;
+            $data['symbols'][] = $k;
+            $data['chart']['pnl_by_symbol'][$sym] = $k['pnl_total'];
+            $allRows = array_merge($allRows, $rows);
         }
+        $data['global'] = $this->aggregate_global($data['symbols']);
+        $data['chart']['order_types'] = $this->journal_stats->distribution($allRows, 'order_type');
+        $data['chart']['exit_levels'] = $this->journal_stats->distribution($allRows, 'exit_level');
+        $data['chart']['cum']         = $this->journal_stats->cumulative_pnl($allRows);
 
         $this->load->view('templates/header', $data);
         $this->load->view('journals/overview', $data);
@@ -46,21 +49,18 @@ class Journals extends CI_Controller {
         $sym = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $sym)); // whitelist anti path-traversal
         if ($sym === '') redirect('journals');
 
-        $rows  = $this->journal_reader->read_journal($sym);
-        $state = $this->journal_reader->read_state($sym);
-        $live  = $this->journal_reader->read_live($sym);
+        $rows   = $this->Telegram_signals_model->journal_rows_for_symbol($sym);
+        $trades = $this->Telegram_signals_model->journal_trades_for_symbol($sym);
 
-        if (count($rows) === 0 && $state === null && $live === null) {
-            $this->session->set_flashdata('warning', "No hay datos para el símbolo $sym");
+        if (count($trades) === 0) {
+            $this->session->set_flashdata('warning', "No hay trades para el símbolo $sym");
             redirect('journals');
         }
 
         $data['title']  = "Journal $sym";
         $data['symbol'] = $sym;
         $data['kpi']    = $this->journal_stats->per_symbol($rows);
-        $data['rows']   = $rows;
-        $data['state']  = $state;
-        $data['live']   = $live;
+        $data['trades'] = $trades;
         $data['chart']  = array(
             'cum'         => $this->journal_stats->cumulative_pnl($rows),
             'scatter'     => $this->scatter_data($rows),
@@ -69,6 +69,26 @@ class Journals extends CI_Controller {
 
         $this->load->view('templates/header', $data);
         $this->load->view('journals/detail', $data);
+        $this->load->view('templates/footer');
+    }
+
+    public function trade($sym = '', $user_signal_id = 0) {
+        $signal = $this->Telegram_signals_model->get_signal_detail_admin($user_signal_id);
+        if (!$signal) {
+            $this->session->set_flashdata('error', 'Trade no encontrado');
+            redirect('journals');
+        }
+
+        $data['title']      = 'Trade #' . $user_signal_id;
+        $data['sym']        = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $sym)) ?: $signal->ticker_symbol;
+        $data['signal']     = $signal;
+        $data['snapshot']   = $this->Telegram_signals_model->get_trade_snapshot($user_signal_id);
+        $data['correction'] = $this->Telegram_signals_model->get_trade_correction($user_signal_id);
+        $data['events']     = $this->Telegram_signals_model->get_timeline_events($signal);
+        $data['back_url']   = base_url('journals/symbol/' . $data['sym']);
+
+        $this->load->view('templates/header', $data);
+        $this->load->view('journals/trade_detail', $data);
         $this->load->view('templates/footer');
     }
 

@@ -4,6 +4,14 @@ $el_help = array(
     '-1'=>'Stop loss','-998'=>'Señal inválida','-999'=>'Error/gate/cancel','0'=>'En vivo'
 );
 function jv_num($v, $d = 2) { return is_numeric($v) ? number_format((float)$v, $d) : htmlspecialchars((string)$v); }
+
+// Resuelve un campo prefiriendo el snapshot del EA, con fallback a user_telegram_signals.
+function jv_pick($t, $snapField, $utsField) {
+    if (isset($t->snap) && $t->snap && isset($t->snap->$snapField) && $t->snap->$snapField !== null && $t->snap->$snapField !== '') {
+        return $t->snap->$snapField;
+    }
+    return isset($t->$utsField) ? $t->$utsField : null;
+}
 ?>
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h2><i class="fas fa-chart-line me-2"></i><?= htmlspecialchars($symbol) ?></h2>
@@ -27,40 +35,6 @@ function jv_num($v, $d = 2) { return is_numeric($v) ? number_format((float)$v, $
     <?php endforeach; ?>
 </div>
 
-<div class="card"><div class="card-body">
-    <h5 class="card-title">Estado actual</h5>
-    <?php if ($state === null && $live === null): ?>
-        <p class="text-muted mb-0">Sin posición activa.</p>
-    <?php else: $st = $state ?: array(); ?>
-        <div class="row">
-            <div class="col-md-6">
-                <table class="table table-sm mb-0">
-                    <tr><th>Dirección</th><td><?= htmlspecialchars(isset($st['direction']) ? $st['direction'] : '—') ?></td></tr>
-                    <tr><th>Ticket</th><td><?= htmlspecialchars(isset($st['ticket']) ? $st['ticket'] : '—') ?></td></tr>
-                    <tr><th>Nivel actual</th><td><?= isset($st['currentLevel']) ? (int)$st['currentLevel'] : '—' ?></td></tr>
-                    <tr><th>SL en BE</th><td><?= !empty($st['slMovedToBE']) ? 'Sí' : 'No' ?></td></tr>
-                    <tr><th>Entry / SL</th><td><?= isset($st['entry']) ? jv_num($st['entry'],5) : '—' ?> / <?= isset($st['currentSL']) ? jv_num($st['currentSL'],5) : '—' ?></td></tr>
-                </table>
-            </div>
-            <div class="col-md-6">
-                <strong>Escalera TP (reparto de lotes)</strong>
-                <table class="table table-sm mb-0">
-                    <thead><tr><th>TP</th><th>Precio</th><th>Lotes</th></tr></thead>
-                    <tbody>
-                    <?php for ($i = 1; $i <= 5; $i++):
-                        $price = isset($st['tp'.$i]) ? $st['tp'.$i] : null;
-                        $lots  = isset($st['levelVolumes'][$i]) ? $st['levelVolumes'][$i] : null; ?>
-                        <tr><td>TP<?= $i ?></td>
-                            <td><?= $price === null ? '—' : jv_num($price,5) ?></td>
-                            <td><?= $lots === null ? '—' : jv_num($lots,2) ?></td></tr>
-                    <?php endfor; ?>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    <?php endif; ?>
-</div></div>
-
 <div class="row">
     <div class="col-md-6"><div class="card"><div class="card-body">
         <h6>PnL acumulado</h6><canvas id="chCum"></canvas>
@@ -74,35 +48,39 @@ function jv_num($v, $d = 2) { return is_numeric($v) ? number_format((float)$v, $
 </div>
 
 <div class="card"><div class="card-body">
-    <h5 class="card-title">Journal (<?= count($rows) ?> filas)</h5>
+    <h5 class="card-title">Trades (<?= count($trades) ?>)</h5>
     <div class="table-responsive">
-    <table class="table table-sm table-striped" style="font-size:.8rem">
+    <table class="table table-sm table-hover align-middle" style="font-size:.82rem">
         <thead><tr>
-            <th>ts</th><th>id</th><th>dir</th><th title="order type">type</th><th>side</th>
+            <th>Fecha</th><th>#</th><th>dir</th><th title="order type">type</th>
             <th title="distancia al entry">dist</th><th>T1</th>
-            <th title="-2 nunca abrió, 0 sin TP, 1-5 TPn">max_lvl</th>
             <th title="1-5 TPn · -1 SL · -998 inválida · -999 error/cancel">exit</th>
-            <th>close_reason</th><th>PnL</th>
+            <th>close_reason</th><th>vol</th><th>PnL</th><th></th>
         </tr></thead>
         <tbody>
-        <?php foreach ($rows as $r):
-            $pnl = isset($r['gross_pnl']) ? (float)$r['gross_pnl'] : 0;
-            $reason = isset($r['close_reason']) ? (string)$r['close_reason'] : '';
-            $cls = ($reason === 'ORDER_CANCELLED') ? 'table-secondary' : ($pnl > 0 ? 'table-success' : ($pnl < 0 ? 'table-danger' : ''));
-            $elk = (string)(isset($r['exit_level']) ? $r['exit_level'] : '');
+        <?php foreach ($trades as $t):
+            $pnl    = (float) jv_pick($t, 'gross_pnl', 'uts_gross_pnl');
+            $reason = (string) jv_pick($t, 'close_reason', 'uts_close_reason');
+            $otype  = (string) jv_pick($t, 'order_type', 'uts_order_type');
+            $exit   = jv_pick($t, 'exit_level', 'uts_exit_level');
+            $dir    = isset($t->snap, $t->snap->dir) && $t->snap->dir ? $t->snap->dir : ($t->op_type ?? '');
+            $ts     = (isset($t->snap, $t->snap->ts_signal) && $t->snap->ts_signal) ? $t->snap->ts_signal : $t->created_at;
+            $cls    = ($reason === 'ORDER_CANCELLED') ? 'table-secondary' : ($pnl > 0 ? 'table-success' : ($pnl < 0 ? 'table-danger' : ''));
+            $elk    = (string)($exit === null ? '' : $exit);
+            $url    = base_url('journals/symbol/' . rawurlencode($symbol) . '/' . (int)$t->id);
             ?>
-            <tr class="<?= $cls ?>">
-                <td><?= htmlspecialchars(isset($r['ts_signal']) ? $r['ts_signal'] : '') ?></td>
-                <td><?= isset($r['signal_id']) ? (int)$r['signal_id'] : '' ?></td>
-                <td><?= htmlspecialchars(isset($r['dir']) ? $r['dir'] : '') ?></td>
-                <td><?= htmlspecialchars(isset($r['order_type']) ? $r['order_type'] : '') ?></td>
-                <td><?= htmlspecialchars(isset($r['side']) ? $r['side'] : '') ?></td>
-                <td><?= isset($r['dist_entry']) ? jv_num($r['dist_entry'],5) : '' ?></td>
-                <td><?= isset($r['t1']) ? jv_num($r['t1'],5) : '' ?></td>
-                <td><?= isset($r['max_level']) ? (int)$r['max_level'] : '' ?></td>
+            <tr class="<?= $cls ?>" style="cursor:pointer" onclick="window.location='<?= $url ?>'">
+                <td><?= htmlspecialchars((string)$ts) ?></td>
+                <td><a href="<?= $url ?>">#<?= (int)$t->id ?></a></td>
+                <td><?= htmlspecialchars((string)$dir) ?></td>
+                <td><?= htmlspecialchars($otype) ?></td>
+                <td><?= ($t->snap && $t->snap->dist_entry !== null) ? jv_num($t->snap->dist_entry, 5) : '—' ?></td>
+                <td><?= ($t->snap && $t->snap->t1 !== null) ? jv_num($t->snap->t1, 5) : '—' ?></td>
                 <td title="<?= isset($el_help[$elk]) ? $el_help[$elk] : '' ?>"><?= htmlspecialchars($elk) ?></td>
                 <td><?= htmlspecialchars($reason) ?></td>
-                <td class="<?= $pnl >= 0 ? 'text-profit' : 'text-loss' ?>"><?= jv_num($pnl,2) ?></td>
+                <td><?= $t->real_volume !== null ? jv_num($t->real_volume, 2) : '—' ?></td>
+                <td class="<?= $pnl >= 0 ? 'text-profit' : 'text-loss' ?>"><?= jv_num($pnl, 2) ?></td>
+                <td><a href="<?= $url ?>" class="btn btn-sm btn-outline-primary py-0"><i class="fas fa-search"></i></a></td>
             </tr>
         <?php endforeach; ?>
         </tbody>

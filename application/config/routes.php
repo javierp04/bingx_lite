@@ -61,6 +61,8 @@ $route['my_trading/(:any)'] = 'My_trading/index/$1';
 
 // Journals viewer routes (Admin only)
 $route['journals'] = 'journals/index';
+// Drill-down: detalle de trade — especifica ANTES que la generica de symbol
+$route['journals/symbol/(:any)/(:num)'] = 'journals/trade/$1/$2';
 $route['journals/symbol/(:any)'] = 'journals/symbol/$1';
 
 // Telegram Signals routes (Admin only - MODIFICADO)
