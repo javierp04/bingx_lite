@@ -1030,12 +1030,41 @@ class Telegram_signals_model extends CI_Model
                         WHEN "open" THEN 1 
                         WHEN "pending" THEN 2 
                         WHEN "claimed" THEN 2 
-                        WHEN "closed" THEN 3 
+                        WHEN "closed" THEN 3
                         ELSE 4 END', '', FALSE);
         $this->db->order_by('uts.created_at', 'DESC');
         $this->db->limit(100);
 
-        return $this->db->get()->result();
+        $rows = $this->db->get()->result();
+        $this->attach_snap_corr($rows);  // enriquece con ea_trade_snapshots / ea_price_corrections
+        return $rows;
+    }
+
+    /**
+     * Adjunta ->snap (ea_trade_snapshots) y ->corr (ea_price_corrections) a cada fila por
+     * user_signal_id, en 2 queries batch (sin N+1, sin colisiones de columnas). Si la
+     * migracion no corrio o no hay filas, deja ambos en null.
+     */
+    private function attach_snap_corr(&$rows)
+    {
+        foreach ($rows as $r) { $r->snap = null; $r->corr = null; }
+        if (empty($rows) || !$this->ea_tables_ready()) return;
+
+        $ids = array();
+        foreach ($rows as $r) $ids[] = $r->id;
+
+        $snaps = array();
+        $this->db->where_in('user_signal_id', $ids);
+        foreach ($this->db->get('ea_trade_snapshots')->result() as $s) $snaps[$s->user_signal_id] = $s;
+
+        $corrs = array();
+        $this->db->where_in('user_signal_id', $ids);
+        foreach ($this->db->get('ea_price_corrections')->result() as $c) $corrs[$c->user_signal_id] = $c;
+
+        foreach ($rows as $r) {
+            if (isset($snaps[$r->id])) $r->snap = $snaps[$r->id];
+            if (isset($corrs[$r->id])) $r->corr = $corrs[$r->id];
+        }
     }
 
     private function get_current_gross_pnl($user_signal_id)

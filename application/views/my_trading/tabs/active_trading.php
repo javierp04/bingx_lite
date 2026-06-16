@@ -259,10 +259,19 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     function updateDashboard(data) {
-        // Update complete content (table + stats)
+        // Update complete content (cards + stats)
         const contentContainer = document.getElementById('dashboard-content-container');
         if (contentContainer) {
+            // Preservar cards expandidas entre refreshes (si no, se cierran solas)
+            const openIds = Array.from(contentContainer.querySelectorAll('.collapse.show')).map(el => el.id);
             contentContainer.innerHTML = data.content_html;
+            openIds.forEach(id => {
+                const panel = document.getElementById(id);
+                if (!panel) return;
+                panel.classList.add('show');
+                const head = contentContainer.querySelector(`[data-bs-target="#${id}"]`);
+                if (head) { head.classList.remove('collapsed'); head.setAttribute('aria-expanded', 'true'); }
+            });
         }
         
         // Update count badge in header
