@@ -152,11 +152,17 @@ class Telegram_signals_model extends CI_Model
     /**
      * ACTUALIZADO: Reportar apertura de posición (con conversión UTC)
      */
-    public function report_open($user_signal_id, $open_data)
+    public function report_open($user_signal_id, $open_data, $raw_body = null)
     {
         // Guard de existencia -> el controller devuelve 404 si el id no existe (ver signal_exists()).
         if (!$this->signal_exists($user_signal_id)) {
             return false;
+        }
+
+        // Idempotencia: un reporte reenviado (mismo body) es no-op (ver begin_report()).
+        $report_state = $this->begin_report($user_signal_id, 'open', $raw_body, $open_data);
+        if ($report_state === 'duplicate') {
+            return true;
         }
 
         $update_data = [
@@ -232,17 +238,24 @@ class Telegram_signals_model extends CI_Model
             $this->record_ea_open($user_signal_id, $open_data);
         }
 
+        $this->finish_report($report_state);
         return $result;
     }
 
     /**
      * ACTUALIZADO: Reportar progreso de TPs/Breakeven (con conversión UTC)
      */
-    public function report_progress($user_signal_id, $progress_data)
+    public function report_progress($user_signal_id, $progress_data, $raw_body = null)
     {
         // Guard de existencia -> el controller devuelve 404 si el id no existe (ver signal_exists()).
         if (!$this->signal_exists($user_signal_id)) {
             return false;
+        }
+
+        // Idempotencia: un reporte reenviado (mismo body) es no-op (ver begin_report()).
+        $report_state = $this->begin_report($user_signal_id, 'progress', $raw_body, $progress_data);
+        if ($report_state === 'duplicate') {
+            return true;
         }
 
         $update_data = [
@@ -344,6 +357,7 @@ class Telegram_signals_model extends CI_Model
             }
         }
 
+        $this->finish_report($report_state);
         return $result;
     }
 
@@ -351,11 +365,17 @@ class Telegram_signals_model extends CI_Model
      * ACTUALIZADO: Reportar cierre final de posición (con conversión UTC)
      * También inserta en tabla trades para unificar Trade History (solo para cierres reales)
      */
-    public function report_close($user_signal_id, $close_data)
+    public function report_close($user_signal_id, $close_data, $raw_body = null)
     {
         // Guard de existencia -> el controller devuelve 404 si el id no existe (ver signal_exists()).
         if (!$this->signal_exists($user_signal_id)) {
             return false;
+        }
+
+        // Idempotencia: un reporte reenviado (mismo body) es no-op (ver begin_report()).
+        $report_state = $this->begin_report($user_signal_id, 'close', $raw_body, $close_data);
+        if ($report_state === 'duplicate') {
+            return true;
         }
 
         $close_reason = $close_data['close_reason'] ?? '';
@@ -427,6 +447,7 @@ class Telegram_signals_model extends CI_Model
             $this->record_ea_close($user_signal_id, $close_data, $cum_pnl);
         }
 
+        $this->finish_report($report_state);
         return $result;
     }
 
@@ -563,6 +584,66 @@ class Telegram_signals_model extends CI_Model
     {
         return (bool) $this->db->select('id')
             ->get_where('user_telegram_signals', ['id' => $user_signal_id], 1)->row();
+    }
+
+    // =====================================================================
+    // IDEMPOTENCIA DE REPORTES (ea_report_dedup)
+    // Hace open/progress/close seguros de recibir 2 veces (base para el retry futuro del EA).
+    // Guard table_exists: si la migracion no corrio, se aplica directo (= comportamiento previo).
+    // =====================================================================
+
+    /** ¿Existe la tabla de dedup? (cacheado) */
+    private $_dedup_ready = null;
+    private function dedup_ready()
+    {
+        if ($this->_dedup_ready === null) {
+            $this->_dedup_ready = $this->db->table_exists('ea_report_dedup');
+        }
+        return $this->_dedup_ready;
+    }
+
+    /**
+     * Gate de idempotencia. Inserta la huella (sha1 del body) del reporte; un reenvío del mismo
+     * body choca el UNIQUE y se detecta como duplicado. Devuelve uno de:
+     *   'duplicate'   -> ya procesado: el llamador hace no-op y `return true`.
+     *   'transaction' -> primera vez, transacción abierta: aplicar y luego finish_report().
+     *   'no_dedup'    -> tabla no migrada: aplicar sin transacción y luego finish_report().
+     * INSERT IGNORE + affected_rows() (no captura de excepción): robusto con db_debug on/off.
+     */
+    private function begin_report($user_signal_id, $endpoint, $raw_body, $data)
+    {
+        if (!$this->dedup_ready()) {
+            return 'no_dedup';
+        }
+
+        $hash = sha1($raw_body !== null ? $raw_body : json_encode($data));
+
+        $this->db->trans_start();
+        $this->db->query(
+            "INSERT IGNORE INTO ea_report_dedup (user_signal_id, endpoint, body_hash, created_at)
+             VALUES (?, ?, ?, ?)",
+            [$user_signal_id, $endpoint, $hash, date('Y-m-d H:i:s')]
+        );
+
+        if ((int) $this->db->affected_rows() === 0) {
+            // Duplicado: INSERT IGNORE no escribió nada -> no-op. Cerrar la transacción.
+            $this->db->trans_complete();
+            return 'duplicate';
+        }
+
+        return 'transaction';
+    }
+
+    /**
+     * Cierra la transacción abierta por begin_report. Solo actúa si se abrió una (estado
+     * 'transaction'); si algún query falló, trans_complete() hace rollback y borra también la
+     * fila de dedup, dejando el reintento limpio. No-op cuando el dedup no estaba disponible.
+     */
+    private function finish_report($report_state)
+    {
+        if ($report_state === 'transaction') {
+            $this->db->trans_complete();
+        }
     }
 
     /**
@@ -861,7 +942,14 @@ class Telegram_signals_model extends CI_Model
      */
     public function cleanup_old_signals($days = 30)
     {
-        $this->db->where('created_at <', date('Y-m-d H:i:s', strtotime("-{$days} days")));
+        $cutoff = date('Y-m-d H:i:s', strtotime("-{$days} days"));
+
+        // Prune de las huellas de dedup de reportes (filas chicas, mismo horizonte).
+        if ($this->dedup_ready()) {
+            $this->db->where('created_at <', $cutoff)->delete('ea_report_dedup');
+        }
+
+        $this->db->where('created_at <', $cutoff);
         return $this->db->delete('telegram_signals');
     }
 

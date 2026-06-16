@@ -98,7 +98,8 @@ class Api extends CI_Controller
      */
     public function report_open($user_signal_id)
     {
-        $open_data = json_decode(file_get_contents("php://input"), true);
+        $raw_body = file_get_contents("php://input");
+        $open_data = json_decode($raw_body, true);
 
         if (!is_numeric($user_signal_id) || !$open_data) {
             http_response_code(400);
@@ -107,7 +108,7 @@ class Api extends CI_Controller
         }
 
         try {
-            if ($this->Telegram_signals_model->report_open($user_signal_id, $open_data)) {
+            if ($this->Telegram_signals_model->report_open($user_signal_id, $open_data, $raw_body)) {
                 http_response_code(200);
                 echo json_encode(['success' => true, 'status' => 'opened']);
             } else {
@@ -126,7 +127,8 @@ class Api extends CI_Controller
      */
     public function report_progress($user_signal_id)
     {
-        $progress_data = json_decode(file_get_contents("php://input"), true);
+        $raw_body = file_get_contents("php://input");
+        $progress_data = json_decode($raw_body, true);
 
         if (!is_numeric($user_signal_id) || !$progress_data) {
             http_response_code(400);
@@ -135,7 +137,7 @@ class Api extends CI_Controller
         }
 
         try {
-            if ($this->Telegram_signals_model->report_progress($user_signal_id, $progress_data)) {
+            if ($this->Telegram_signals_model->report_progress($user_signal_id, $progress_data, $raw_body)) {
                 http_response_code(200);
                 echo json_encode(['success' => true, 'status' => 'progress_updated']);
             } else {
@@ -154,7 +156,8 @@ class Api extends CI_Controller
      */
     public function report_close($user_signal_id)
     {
-        $close_data = json_decode(file_get_contents("php://input"), true);
+        $raw_body = file_get_contents("php://input");
+        $close_data = json_decode($raw_body, true);
 
         if (!is_numeric($user_signal_id) || !$close_data) {
             http_response_code(400);
@@ -163,7 +166,7 @@ class Api extends CI_Controller
         }
 
         try {
-            if ($this->Telegram_signals_model->report_close($user_signal_id, $close_data)) {
+            if ($this->Telegram_signals_model->report_close($user_signal_id, $close_data, $raw_body)) {
                 http_response_code(200);
                 echo json_encode(['success' => true, 'status' => 'closed']);
             } else {
