@@ -33,3 +33,10 @@ user_guide_src/cilexer/pycilexer.egg-info/*
 /tests/results/
 mt_out_signals/*
 uploads/*
+
+# EA: binario compilado + data de runtime (journals CSV, estado persistido)
+EA/*.ex5
+EA/journals/
+
+# Superpowers: directorio de trabajo del skill (brainstorm, mockups)
+.superpowers/
