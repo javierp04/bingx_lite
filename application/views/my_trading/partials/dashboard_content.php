@@ -104,6 +104,8 @@
                                         <?php else: ?>
                                             <span class="text-muted"><i class="fas fa-clock me-1"></i>Waiting...</span>
                                         <?php endif; ?>
+                                    <?php elseif (in_array($signal->status, ['failed_execution', 'cancelled'])): ?>
+                                        <span class="text-muted">—</span>
                                     <?php else: ?>
                                         <span class="text-muted"><i class="fas fa-clock me-1"></i>Waiting...</span>
                                     <?php endif; ?>
