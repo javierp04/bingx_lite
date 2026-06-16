@@ -1,6 +1,10 @@
 #property copyright "TelegramSignals"
-#property version   "10.20"
+#property version   "10.21"
 #property description "Reliability + gates asset-agnostic (TP1) + CSV trade journal (dataset + live)"
+// v10.21: reporta a BD el snapshot completo del trade (objetos snapshot/ea_config en ReportOpen) +
+//         telemetria del proceso de correccion (objeto correction: futuro vs vela CFD, verificacion de
+//         alineacion de velas). Permite materializar el journal/analisis en tablas consultables.
+#define EA_VERSION "10.21"
 // v10.20: (E) si el broker rechaza la pendiente por caer dentro de STOPS_LEVEL (INVALID_STOPS),
 //         fallback a MARKET (self-gateado: en stops level 0 nunca dispara). Recalibra K_STOP 0.02->0.05
 //         (ahora >= M_SLIP) y M_SLIP 0.05->0.04. Slippage cap ahora OPCIONAL (ENABLE_SLIP_CHECK, OFF
@@ -152,6 +156,20 @@ struct JournalRecord {
     string  order_type;
     double  real_entry, slip_real, slip_tol, real_volume;
     double  stops_min, sl_dist;
+    // --- Telemetria del proceso de correccion (para tabla ea_price_corrections) ---
+    string  corr_status;        // "" (no corrido) / "OK" / "ERROR"
+    string  corr_error_stage;   // FETCH/INVALID_DATA/STALE_TIMESTAMP/NO_BAR/INVALID_CFD/DEVIATION_TOO_HIGH
+    double  fut_price;          // last_close del futuro (Yahoo)
+    string  fut_candle_time;    // vela del futuro (UTC)
+    double  mt5_price;          // iClose de la vela CFD usada
+    string  mt5_bar_time;       // iTime real de la vela usada (reloj broker)
+    int     mt5_bar_index;      // barIndex de iBarShift
+    int     broker_offset_sec;  // TimeCurrent - TimeGMT
+    string  target_broker_time; // ts_epoch + offset (lo que se busco)
+    int     bar_gap_sec;        // mt5_bar_time - target_broker_time (0 = misma vela)
+    bool    candles_aligned;    // |bar_gap_sec| <= tolerancia
+    double  deviation_pct;      // |factor-1|*100
+    int     timestamp_age_sec;  // antiguedad del dato del futuro
 };
 
 struct TPConfig {
@@ -537,6 +555,12 @@ void JournalReset() {
     currentJournal.side = ""; currentJournal.k_band = 0; currentJournal.order_type = "";
     currentJournal.real_entry = 0; currentJournal.slip_real = 0; currentJournal.slip_tol = 0; currentJournal.real_volume = 0;
     currentJournal.stops_min = 0; currentJournal.sl_dist = 0;
+    currentJournal.corr_status = ""; currentJournal.corr_error_stage = "";
+    currentJournal.fut_price = 0; currentJournal.fut_candle_time = "";
+    currentJournal.mt5_price = 0; currentJournal.mt5_bar_time = ""; currentJournal.mt5_bar_index = 0;
+    currentJournal.broker_offset_sec = 0; currentJournal.target_broker_time = "";
+    currentJournal.bar_gap_sec = 0; currentJournal.candles_aligned = false;
+    currentJournal.deviation_pct = 0; currentJournal.timestamp_age_sec = 0;
 }
 
 string JournalHeader() {
@@ -934,6 +958,84 @@ bool PostReport(string url, string json, string label) {
     return false;
 }
 
+// ---- Objetos de analytics para la BD (mirror del CSV journal) ----
+
+// snapshot: feature vector estatico del trade (keys == columnas de ea_trade_snapshots)
+string BuildSnapshotJson() {
+    JsonBuilder jb;
+    jb.AddString("dir", currentJournal.dir);
+    jb.AddInt("corr_on", currentJournal.corr_on ? 1 : 0);
+    jb.AddDouble("corr_factor", currentJournal.corr_factor, 6);
+    jb.AddDouble("entry_raw", currentJournal.entry_raw);
+    jb.AddDouble("sl_raw", currentJournal.sl_raw);
+    jb.AddDouble("entry", currentJournal.entry);
+    jb.AddDouble("sl", currentJournal.sl);
+    jb.AddDouble("tp1", currentJournal.tp1);
+    jb.AddDouble("tp2", currentJournal.tp2);
+    jb.AddDouble("tp3", currentJournal.tp3);
+    jb.AddDouble("tp4", currentJournal.tp4);
+    jb.AddDouble("tp5", currentJournal.tp5);
+    jb.AddDouble("r_dist", currentJournal.rdist);
+    jb.AddDouble("t1", currentJournal.t1);
+    jb.AddDouble("spread_real", currentJournal.spread_real);
+    jb.AddDouble("spread_tol", currentJournal.spread_tol);
+    jb.AddDouble("slip_real", currentJournal.slip_real);
+    jb.AddDouble("slip_tol", currentJournal.slip_tol);
+    jb.AddDouble("price_signal", currentJournal.price_signal);
+    jb.AddDouble("dist_entry", currentJournal.dist_entry);
+    jb.AddString("side", currentJournal.side);
+    jb.AddDouble("k_band", currentJournal.k_band);
+    jb.AddString("order_type", currentJournal.order_type);
+    jb.AddDouble("real_entry", currentJournal.real_entry);
+    jb.AddDouble("real_volume", currentJournal.real_volume, 2);
+    jb.AddDouble("stops_min", currentJournal.stops_min);
+    jb.AddDouble("sl_dist", currentJournal.sl_dist);
+    return jb.Build();
+}
+
+// ea_config: las constantes (inputs) vigentes en ESTE trade
+string BuildEaConfigJson() {
+    JsonBuilder jb;
+    jb.AddDouble("cfg_risk_percent", RISK_PERCENT, 2);
+    jb.AddDouble("cfg_k_stop_ratio", K_STOP_RATIO, 4);
+    jb.AddDouble("cfg_k_limit_ratio", K_LIMIT_RATIO, 4);
+    jb.AddDouble("cfg_m_slip_ratio", M_SLIP_RATIO, 4);
+    jb.AddDouble("cfg_c_spread_ratio", C_SPREAD_RATIO, 4);
+    jb.AddInt("cfg_enable_slip", ENABLE_SLIP_CHECK ? 1 : 0);
+    jb.AddInt("cfg_enable_spread", ENABLE_SPREAD_CHECK ? 1 : 0);
+    jb.AddInt("cfg_enable_corr", ENABLE_PRICE_CORRECTION ? 1 : 0);
+    jb.AddInt("cfg_be_level", BE_LEVEL);
+    jb.AddDouble("cfg_tp1_pct", TP1_PERCENT, 2);
+    jb.AddDouble("cfg_tp2_pct", TP2_PERCENT, 2);
+    jb.AddDouble("cfg_tp3_pct", TP3_PERCENT, 2);
+    jb.AddDouble("cfg_tp4_pct", TP4_PERCENT, 2);
+    jb.AddDouble("cfg_tp5_pct", TP5_PERCENT, 2);
+    return jb.Build();
+}
+
+// correction: telemetria del proceso de correccion (futuro vs vela CFD + verificacion)
+string BuildCorrectionJson() {
+    JsonBuilder jb;
+    jb.AddInt("enabled", ENABLE_PRICE_CORRECTION ? 1 : 0);
+    jb.AddString("status", currentJournal.corr_status == "" ? "OK" : currentJournal.corr_status);
+    if(currentJournal.corr_error_stage != "")
+        jb.AddString("error_stage", currentJournal.corr_error_stage);
+    jb.AddDouble("fut_price", currentJournal.fut_price);
+    jb.AddString("fut_candle_time", currentJournal.fut_candle_time);
+    jb.AddDouble("mt5_price", currentJournal.mt5_price);
+    jb.AddString("mt5_bar_time", currentJournal.mt5_bar_time);
+    jb.AddInt("mt5_bar_index", currentJournal.mt5_bar_index);
+    jb.AddDouble("signal_mt5_price", currentJournal.price_signal);
+    jb.AddInt("broker_offset_sec", currentJournal.broker_offset_sec);
+    jb.AddString("target_broker_time", currentJournal.target_broker_time);
+    jb.AddInt("bar_gap_sec", currentJournal.bar_gap_sec);
+    jb.AddInt("candles_aligned", currentJournal.candles_aligned ? 1 : 0);
+    jb.AddDouble("corr_factor", currentJournal.corr_factor, 6);
+    jb.AddDouble("deviation_pct", currentJournal.deviation_pct, 4);
+    jb.AddInt("timestamp_age_sec", currentJournal.timestamp_age_sec);
+    return jb.Build();
+}
+
 void ReportOpen(int userSignalId, bool isMarketOrder, ENUM_ORDER_TYPE orderType,
                 double entryPrice, double stopLoss, double volume, ulong ticket,
                 string opType, PriceSet &raw, PriceSet &corrected) {
@@ -956,6 +1058,13 @@ void ReportOpen(int userSignalId, bool isMarketOrder, ENUM_ORDER_TYPE orderType,
         jb.AddRaw("signal_data", BuildSignalDataJson(opType, raw));
     if(corrected.entry > 0 && opType != "")
         jb.AddRaw("mt_corrected_data", BuildSignalDataJson(opType, corrected));
+
+    // Analytics BD: snapshot estatico + constantes de config + proceso de correccion
+    jb.AddString("ea_version", EA_VERSION);
+    jb.AddRaw("snapshot", BuildSnapshotJson());
+    jb.AddRaw("ea_config", BuildEaConfigJson());
+    if(currentJournal.corr_status != "")
+        jb.AddRaw("correction", BuildCorrectionJson());
 
     jb.AddString("symbol", TICKER_SYMBOL);
     jb.AddString("execution_time", TimeToString(TimeGMT(), TIME_DATE|TIME_SECONDS));
@@ -998,6 +1107,17 @@ void ReportClose(int userSignalId, int exitLevel, string closeReason,
     jb.AddString("close_reason", closeReason);
     jb.AddDouble("gross_pnl", finalPnl, 2);
     jb.AddDouble("last_price", finalPrice);
+
+    // Fallos pre-ejecucion (nunca operó, ReportOpen no corrió): adjuntamos el feature vector
+    // + config + correccion para no perder la fila de analisis (mirror del CSV de rechazos).
+    if(exitLevel == EXIT_INVALID || exitLevel == EXIT_ERROR) {
+        jb.AddString("ea_version", EA_VERSION);
+        jb.AddRaw("snapshot", BuildSnapshotJson());
+        jb.AddRaw("ea_config", BuildEaConfigJson());
+        if(currentJournal.corr_status != "")
+            jb.AddRaw("correction", BuildCorrectionJson());
+    }
+
     jb.AddString("symbol", TICKER_SYMBOL);
     jb.AddString("execution_time", TimeToString(TimeGMT(), TIME_DATE|TIME_SECONDS));
 
@@ -1009,6 +1129,14 @@ void ReportClose(int userSignalId, int exitLevel, string closeReason,
 // ==========================================
 // CORRECCIÓN DE PRECIOS (resultado y datos clave en INFO, internals en DEBUG)
 // ==========================================
+// Formatea un datetime al formato DATETIME de MySQL ("YYYY-MM-DD HH:MM:SS").
+string DbDateTime(datetime t) {
+    if(t <= 0) return "";
+    MqlDateTime d;
+    TimeToStruct(t, d);
+    return StringFormat("%04d-%02d-%02d %02d:%02d:%02d", d.year, d.mon, d.day, d.hour, d.min, d.sec);
+}
+
 double CalculatePriceCorrection(string symbol, string &errorMessage) {
     errorMessage = "";
 
@@ -1025,6 +1153,7 @@ double CalculatePriceCorrection(string symbol, string &errorMessage) {
     if(response.result != API_SUCCESS) {
         errorMessage = "Error obteniendo precio del futuro - HTTP: " + IntegerToString(response.httpCode);
         Log(ERROR_LVL, "PRICE_CORR", errorMessage);
+        currentJournal.corr_status = "ERROR"; currentJournal.corr_error_stage = "FETCH";
         return 0.0;
     }
 
@@ -1032,11 +1161,15 @@ double CalculatePriceCorrection(string symbol, string &errorMessage) {
     double futurePrice = parser.GetDouble("last_close");
     long epochTime = parser.GetLong("ts_epoch");
 
+    currentJournal.fut_price = futurePrice;
+    if(epochTime > 0) currentJournal.fut_candle_time = DbDateTime((datetime)epochTime);
+
     Log(INFO_LVL, "PRICE_CORR", StringFormat("Future Price=%.5f, Epoch=%d", futurePrice, epochTime));
 
     if(futurePrice <= 0 || epochTime <= 0) {
         errorMessage = StringFormat("Datos inválidos del futuro - Price: %.5f, Epoch: %d", futurePrice, epochTime);
         Log(ERROR_LVL, "PRICE_CORR", errorMessage);
+        currentJournal.corr_status = "ERROR"; currentJournal.corr_error_stage = "INVALID_DATA";
         return 0.0;
     }
 
@@ -1050,33 +1183,50 @@ double CalculatePriceCorrection(string symbol, string &errorMessage) {
     datetime brokerTargetTime = (datetime)(targetTime + brokerOffset);
     long timeDifference = currentTime - brokerTargetTime;
 
+    currentJournal.broker_offset_sec   = (int)brokerOffset;
+    currentJournal.target_broker_time  = DbDateTime(brokerTargetTime);
+    currentJournal.timestamp_age_sec   = (int)timeDifference;
+
     Log(DEBUG_LVL, "PRICE_CORR", StringFormat("Target UTC=%s, Broker=%s, Diff=%ds, Max=%ds",
         TimeToString(targetTime), TimeToString(brokerTargetTime), timeDifference, maxAgeSeconds));
 
     if(timeDifference > maxAgeSeconds) {
         errorMessage = StringFormat("Timestamp muy viejo: %ds > %ds", timeDifference, maxAgeSeconds);
         Log(ERROR_LVL, "PRICE_CORR", errorMessage);
+        currentJournal.corr_status = "ERROR"; currentJournal.corr_error_stage = "STALE_TIMESTAMP";
         return 0.0;
     }
 
     int barIndex = iBarShift(Symbol(), PERIOD_M1, brokerTargetTime);
+    currentJournal.mt5_bar_index = barIndex;
 
     if(barIndex < 0) {
         errorMessage = "No se encontró vela CFD para tiempo: " + TimeToString(targetTime);
         Log(ERROR_LVL, "PRICE_CORR", errorMessage);
+        currentJournal.corr_status = "ERROR"; currentJournal.corr_error_stage = "NO_BAR";
         return 0.0;
     }
 
+    // Vela CFD realmente matcheada: verificacion de alineacion vs el tiempo objetivo
+    datetime matchedBarTime = iTime(Symbol(), PERIOD_M1, barIndex);
+    currentJournal.mt5_bar_time    = DbDateTime(matchedBarTime);
+    currentJournal.bar_gap_sec     = (int)(matchedBarTime - brokerTargetTime);
+    currentJournal.candles_aligned = (MathAbs(currentJournal.bar_gap_sec) <= 60);
+
     double cfdPrice = iClose(Symbol(), PERIOD_M1, barIndex);
+    currentJournal.mt5_price = cfdPrice;
 
     if(cfdPrice <= 0) {
         errorMessage = "Precio CFD inválido: " + DoubleToString(cfdPrice, 5);
         Log(ERROR_LVL, "PRICE_CORR", errorMessage);
+        currentJournal.corr_status = "ERROR"; currentJournal.corr_error_stage = "INVALID_CFD";
         return 0.0;
     }
 
     double factor = futurePrice / cfdPrice;
     double deviationPercent = MathAbs((factor - 1.0) * 100.0);
+    currentJournal.corr_factor   = factor;
+    currentJournal.deviation_pct = deviationPercent;
 
     Log(INFO_LVL, "PRICE_CORR", StringFormat("Future=%.5f, CFD=%.5f, Factor=%.6f, Desviación=%.2f%%",
         futurePrice, cfdPrice, factor, deviationPercent));
@@ -1084,9 +1234,11 @@ double CalculatePriceCorrection(string symbol, string &errorMessage) {
     if(deviationPercent > MAX_PRICE_DEVIATION) {
         errorMessage = StringFormat("Desviación muy alta: %.2f%% > %.2f%%", deviationPercent, MAX_PRICE_DEVIATION);
         Log(ERROR_LVL, "PRICE_CORR", errorMessage);
+        currentJournal.corr_status = "ERROR"; currentJournal.corr_error_stage = "DEVIATION_TOO_HIGH";
         return 0.0;
     }
 
+    currentJournal.corr_status = "OK";
     return factor;
 }
 

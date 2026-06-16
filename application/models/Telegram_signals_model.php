@@ -3,6 +3,9 @@ defined('BASEPATH') or exit('No direct script access allowed');
 
 class Telegram_signals_model extends CI_Model
 {
+    // Cache del check de existencia de tablas de analytics (ea_trade_*). Evita romper el
+    // flujo de trading si la migracion 2026-06-16-ea-trade-snapshots.sql aun no corrio.
+    private $_ea_ready = null;
 
     public function __construct()
     {
@@ -109,6 +112,9 @@ class Telegram_signals_model extends CI_Model
 
         $this->db->where('id', $user_signal_id);
         $this->db->update('user_telegram_signals', ['event_log' => json_encode($log)]);
+
+        // Espejo relacional consultable en ea_trade_events (timeline / Cronologia)
+        $this->record_event($user_signal_id, $event_type, $extra, $event['at']);
     }
 
     /**
@@ -205,6 +211,9 @@ class Telegram_signals_model extends CI_Model
                 $event_extra,
                 $open_data['execution_time'] ?? null
             );
+
+            // Analytics: snapshot estatico + proceso de correccion (ea_trade_* )
+            $this->record_ea_open($user_signal_id, $open_data);
         }
 
         return $result;
@@ -384,6 +393,12 @@ class Telegram_signals_model extends CI_Model
             if ($is_real_close) {
                 $this->insert_closed_trade_to_trades($user_signal_id, $close_data, $update_data['gross_pnl']);
             }
+
+            // Analytics: completar resultado del snapshot + correccion fallida (ea_trade_*)
+            $cum_pnl = isset($update_data['gross_pnl'])
+                ? $update_data['gross_pnl']
+                : $this->get_current_gross_pnl($user_signal_id);
+            $this->record_ea_close($user_signal_id, $close_data, $cum_pnl);
         }
 
         return $result;
@@ -920,5 +935,215 @@ class Telegram_signals_model extends CI_Model
             return is_array($decoded) ? $decoded : null;
         }
         return null;
+    }
+
+    // =====================================================================
+    // ANALYTICS EA: ea_trade_snapshots / ea_trade_events / ea_price_corrections
+    // Materializa en columnas consultables lo que el EA reporta (mirror del CSV journal).
+    // Todo guardado tras ea_tables_ready(): si la migracion no corrio, no rompe nada.
+    // =====================================================================
+
+    /** Existen las tablas de analytics? (cacheado) */
+    private function ea_tables_ready()
+    {
+        if ($this->_ea_ready === null) {
+            $this->_ea_ready = $this->db->table_exists('ea_trade_snapshots');
+        }
+        return $this->_ea_ready;
+    }
+
+    /** Contexto de la señal (user_id, symbol, telegram_signal_id, ts) */
+    private function get_signal_context($user_signal_id)
+    {
+        $this->db->select('user_id, ticker_symbol, telegram_signal_id, created_at');
+        return $this->db->get_where('user_telegram_signals', ['id' => $user_signal_id])->row();
+    }
+
+    /** Columnas permitidas en ea_trade_snapshots (whitelist anti-columnas-basura) */
+    private function snapshot_columns()
+    {
+        return [
+            'telegram_signal_id','user_id','symbol','ea_version',
+            'dir','entry_raw','sl_raw','corr_on','corr_factor','entry','sl',
+            'tp1','tp2','tp3','tp4','tp5','r_dist','t1','spread_real','spread_tol',
+            'slip_real','slip_tol','price_signal','dist_entry','side','k_band',
+            'stops_min','sl_dist','order_type','real_entry','real_volume','trade_id',
+            'max_level','vol_closed_pct','exit_level','close_reason','gross_pnl',
+            'last_price','result','cfg_risk_percent','cfg_k_stop_ratio','cfg_k_limit_ratio',
+            'cfg_m_slip_ratio','cfg_c_spread_ratio','cfg_enable_slip','cfg_enable_spread',
+            'cfg_enable_corr','cfg_be_level','cfg_tp1_pct','cfg_tp2_pct','cfg_tp3_pct',
+            'cfg_tp4_pct','cfg_tp5_pct','cfg_extra','ts_signal','opened_at','closed_at',
+        ];
+    }
+
+    /** Filtra un array a las columnas validas del snapshot (cfg_extra -> json) */
+    private function filter_snapshot_columns($incoming)
+    {
+        $fields = array_intersect_key($incoming, array_flip($this->snapshot_columns()));
+        if (isset($fields['cfg_extra']) && is_array($fields['cfg_extra'])) {
+            $fields['cfg_extra'] = json_encode($fields['cfg_extra']);
+        }
+        return $fields;
+    }
+
+    /** Upsert del snapshot por user_signal_id. Devuelve snapshot_id. */
+    private function upsert_snapshot($user_signal_id, $fields)
+    {
+        if (empty($fields)) return null;
+
+        $existing = $this->db->select('id')
+            ->get_where('ea_trade_snapshots', ['user_signal_id' => $user_signal_id])->row();
+
+        if ($existing) {
+            if (!empty($fields)) {
+                $this->db->where('id', $existing->id)->update('ea_trade_snapshots', $fields);
+            }
+            return $existing->id;
+        }
+
+        $fields['user_signal_id'] = $user_signal_id;
+        if (empty($fields['created_at'])) $fields['created_at'] = date('Y-m-d H:i:s');
+        $this->db->insert('ea_trade_snapshots', $fields);
+        return $this->db->insert_id();
+    }
+
+    /** Inserta el snapshot estatico + correccion al abrir (o al fallar pre-ejecucion en close) */
+    private function record_ea_open($user_signal_id, $open_data)
+    {
+        if (!$this->ea_tables_ready()) return;
+
+        $ctx = $this->get_signal_context($user_signal_id);
+
+        // Base: contexto siempre presente (satisface NOT NULL de user_id/symbol)
+        $fields = [];
+        if ($ctx) {
+            $fields['user_id']            = $ctx->user_id;
+            $fields['symbol']             = $ctx->ticker_symbol;
+            $fields['telegram_signal_id'] = $ctx->telegram_signal_id;
+            $fields['ts_signal']          = $ctx->created_at;
+        }
+
+        // Fallbacks desde el payload top-level (los pisa el objeto snapshot si viene)
+        if (isset($open_data['real_entry_price'])) $fields['real_entry']  = $open_data['real_entry_price'];
+        if (isset($open_data['real_volume']))      $fields['real_volume'] = $open_data['real_volume'];
+        if (isset($open_data['trade_id']))         $fields['trade_id']    = $open_data['trade_id'];
+        if (isset($open_data['symbol']))           $fields['symbol']      = $open_data['symbol'];
+        if (isset($open_data['ea_version']))       $fields['ea_version']  = $open_data['ea_version'];
+        if (isset($open_data['execution_time_local'])) $fields['opened_at'] = $open_data['execution_time_local'];
+
+        // Objetos nuevos del EA (keys == nombres de columna)
+        $incoming = [];
+        if (isset($open_data['snapshot']) && is_array($open_data['snapshot'])) {
+            $incoming = array_merge($incoming, $open_data['snapshot']);
+        }
+        if (isset($open_data['ea_config']) && is_array($open_data['ea_config'])) {
+            $incoming = array_merge($incoming, $open_data['ea_config']);
+        }
+        $fields = array_merge($fields, $this->filter_snapshot_columns($incoming));
+
+        $snapshot_id = $this->upsert_snapshot($user_signal_id, $fields);
+
+        if (isset($open_data['correction']) && is_array($open_data['correction'])) {
+            $this->record_correction($user_signal_id, $snapshot_id, $open_data['correction'],
+                $ctx ? $ctx->ticker_symbol : ($open_data['symbol'] ?? ''));
+        }
+    }
+
+    /** Completa los campos de resultado del snapshot al cerrar (+ correccion fallida) */
+    private function record_ea_close($user_signal_id, $close_data, $cumulative_pnl)
+    {
+        if (!$this->ea_tables_ready()) return;
+
+        $ctx = $this->get_signal_context($user_signal_id);
+
+        // Contexto para garantizar NOT NULL si el snapshot aun no existe (fallo pre-open)
+        $fields = [];
+        if ($ctx) {
+            $fields['user_id']            = $ctx->user_id;
+            $fields['symbol']             = $ctx->ticker_symbol;
+            $fields['telegram_signal_id'] = $ctx->telegram_signal_id;
+        }
+
+        if (isset($close_data['exit_level']))     $fields['exit_level']     = $close_data['exit_level'];
+        if (isset($close_data['close_reason']))   { $fields['close_reason'] = $close_data['close_reason'];
+                                                    $fields['result']       = $close_data['close_reason']; }
+        if (isset($close_data['last_price']))     $fields['last_price']     = $close_data['last_price'];
+        if (isset($close_data['max_level']))      $fields['max_level']      = $close_data['max_level'];
+        if (isset($close_data['vol_closed_pct'])) $fields['vol_closed_pct'] = $close_data['vol_closed_pct'];
+        if (isset($close_data['execution_time_local'])) $fields['closed_at'] = $close_data['execution_time_local'];
+        $fields['gross_pnl'] = $cumulative_pnl;
+
+        $snapshot_id = $this->upsert_snapshot($user_signal_id, $fields);
+
+        if (isset($close_data['correction']) && is_array($close_data['correction'])) {
+            $this->record_correction($user_signal_id, $snapshot_id, $close_data['correction'],
+                $ctx ? $ctx->ticker_symbol : '');
+        }
+    }
+
+    /** Upsert del proceso de correccion (1 fila por señal) */
+    private function record_correction($user_signal_id, $snapshot_id, $c, $symbol)
+    {
+        if (!$this->ea_tables_ready() || empty($c) || !is_array($c)) return;
+
+        $cols = [
+            'enabled','fut_price','fut_candle_time','mt5_price','mt5_bar_time','mt5_bar_index',
+            'signal_mt5_price','broker_offset_sec','target_broker_time','bar_gap_sec',
+            'candles_aligned','corr_factor','deviation_pct','timestamp_age_sec',
+            'status','error_stage','error_message',
+        ];
+        $fields = array_intersect_key($c, array_flip($cols));
+        if (empty($fields)) return;
+
+        $fields['symbol'] = $symbol;
+        if ($snapshot_id) $fields['snapshot_id'] = $snapshot_id;
+        if (empty($fields['status'])) {
+            $fields['status'] = !empty($fields['error_stage']) ? 'ERROR' : 'OK';
+        }
+
+        $existing = $this->db->select('id')
+            ->get_where('ea_price_corrections', ['user_signal_id' => $user_signal_id])->row();
+
+        if ($existing) {
+            $this->db->where('id', $existing->id)->update('ea_price_corrections', $fields);
+        } else {
+            $fields['user_signal_id'] = $user_signal_id;
+            $fields['created_at']     = date('Y-m-d H:i:s');
+            $this->db->insert('ea_price_corrections', $fields);
+        }
+    }
+
+    /** Inserta una fila en la timeline relacional (ea_trade_events) */
+    private function record_event($user_signal_id, $event_type, $extra, $event_time_local)
+    {
+        if (!$this->ea_tables_ready()) return;
+
+        $snap = $this->db->select('id')
+            ->get_where('ea_trade_snapshots', ['user_signal_id' => $user_signal_id])->row();
+
+        $this->db->select_max('seq');
+        $seq_row = $this->db->get_where('ea_trade_events', ['user_signal_id' => $user_signal_id])->row();
+        $seq = ($seq_row && $seq_row->seq) ? ((int)$seq_row->seq + 1) : 1;
+
+        $data = [
+            'snapshot_id'           => $snap ? $snap->id : null,
+            'user_signal_id'        => $user_signal_id,
+            'seq'                   => $seq,
+            'event_type'            => $event_type,
+            'current_level'         => isset($extra['level']) ? $extra['level'] : null,
+            'last_price'            => isset($extra['price']) ? $extra['price']
+                                       : (isset($extra['entry']) ? $extra['entry'] : null),
+            'new_stop_loss'         => isset($extra['new_sl']) ? $extra['new_sl'] : null,
+            'volume_closed_percent' => isset($extra['closed_pct']) ? $extra['closed_pct'] : null,
+            'remaining_volume'      => isset($extra['remaining_volume']) ? $extra['remaining_volume'] : null,
+            // pnl_delta solo cuando es claramente incremental (TP parcial); el resto lo da el acumulado
+            'pnl_delta'             => ($event_type === 'tp' && isset($extra['pnl'])) ? $extra['pnl'] : null,
+            'pnl_cumulative'        => $this->get_current_gross_pnl($user_signal_id),
+            'message'               => isset($extra['message']) ? $extra['message'] : null,
+            'event_time'            => $event_time_local,
+            'created_at'            => date('Y-m-d H:i:s'),
+        ];
+
+        $this->db->insert('ea_trade_events', $data);
     }
 }
