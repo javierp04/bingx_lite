@@ -24,8 +24,7 @@ $this->load->view('journals/_blocks/styles');
             $m  = $vm['meta']; $ph = $vm['phase']; $h = $vm['health']; $d = $vm['decimals'];
             $cid = 'sig-' . $m['id'];
             $elapsed = signal_elapsed($signal->created_at);
-            $has_detail = $vm['decision']['present'] || $vm['gates']['present']
-                          || $vm['correction']['present'] || $vm['prices']['raw']['entry'] > 0;
+            $has_detail = $vm['decision']['present'] || $vm['gates']['present'] || $vm['correction']['present'];
             $detail_url = base_url('my_trading/trading_detail/' . $m['id']);
         ?>
         <div class="card sig-card" data-signal-id="<?= $m['id'] ?>">
@@ -78,25 +77,17 @@ $this->load->view('journals/_blocks/styles');
             <div id="<?= $cid ?>" class="collapse">
                 <div class="card-body border-top bg-white">
                     <?php if ($has_detail): ?>
-                        <div class="row g-3">
-                            <div class="col-md-7">
-                                <?php $this->load->view('journals/_blocks/correction', ['vm' => $vm, 'compact' => true], false); ?>
-                                <?php if ($vm['decision']['present']): ?>
-                                    <div class="mt-2"><?php $this->load->view('journals/_blocks/decision', ['vm' => $vm, 'compact' => false], false); ?></div>
-                                <?php endif; ?>
-                                <?php if ($vm['gates']['present']): ?>
-                                    <div class="mt-2"><?php $this->load->view('journals/_blocks/gates', ['vm' => $vm, 'compact' => false], false); ?></div>
-                                <?php endif; ?>
-                            </div>
-                            <div class="col-md-5">
-                                <div class="lbl mb-1">Señal → Corregido → Real</div>
-                                <?php $this->load->view('journals/_blocks/prices', ['vm' => $vm, 'compact' => true], false); ?>
-                            </div>
-                        </div>
+                        <?php $this->load->view('journals/_blocks/correction', ['vm' => $vm, 'compact' => true], false); ?>
+                        <?php if ($vm['decision']['present']): ?>
+                            <div class="mt-2"><?php $this->load->view('journals/_blocks/decision', ['vm' => $vm, 'compact' => false], false); ?></div>
+                        <?php endif; ?>
+                        <?php if ($vm['gates']['present']): ?>
+                            <div class="mt-2"><?php $this->load->view('journals/_blocks/gates', ['vm' => $vm, 'compact' => true], false); ?></div>
+                        <?php endif; ?>
                     <?php else: ?>
                         <p class="text-muted small mb-2">Aún sin datos de ejecución (señal reclamada, esperando al EA).</p>
                     <?php endif; ?>
-                    <a href="<?= $detail_url ?>" class="btn btn-sm btn-outline-primary">
+                    <a href="<?= $detail_url ?>" class="btn btn-sm btn-outline-primary mt-3">
                         <i class="fas fa-search me-1"></i>Ver detalle completo
                     </a>
                 </div>
