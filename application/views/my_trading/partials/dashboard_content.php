@@ -85,7 +85,7 @@ $this->load->view('journals/_blocks/styles');
                                     <div class="mt-2"><?php $this->load->view('journals/_blocks/decision', ['vm' => $vm, 'compact' => false], false); ?></div>
                                 <?php endif; ?>
                                 <?php if ($vm['gates']['present']): ?>
-                                    <div class="mt-2"><?php $this->load->view('journals/_blocks/gates', ['vm' => $vm, 'compact' => true], false); ?></div>
+                                    <div class="mt-2"><?php $this->load->view('journals/_blocks/gates', ['vm' => $vm, 'compact' => false], false); ?></div>
                                 <?php endif; ?>
                             </div>
                             <div class="col-md-5">
