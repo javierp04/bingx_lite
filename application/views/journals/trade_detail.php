@@ -57,7 +57,6 @@ $bc_home_label = isset($bc_home_label) ? $bc_home_label : 'Journals';
     <!-- ¿Por qué este order type? -->
     <?php if ($vm['decision']['present']): ?>
     <div class="card"><div class="card-body">
-      <h6 class="mb-3"><i class="fas fa-question-circle me-1 text-primary"></i>¿Por qué <b><?= htmlspecialchars($vm['decision']['order_type']) ?></b>?</h6>
       <?php $this->load->view('journals/_blocks/decision', ['vm' => $vm, 'compact' => false], false); ?>
     </div></div>
     <?php endif; ?>

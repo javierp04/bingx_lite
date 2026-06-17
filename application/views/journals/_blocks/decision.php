@@ -15,6 +15,7 @@ $ol = function_exists('journal_order_label') ? journal_order_label($dec['order_t
     <?php endif; ?>
   </div>
 <?php else: ?>
+  <h6 class="mb-2"><i class="fas fa-question-circle me-1 text-primary"></i>¿Por qué <b><?= htmlspecialchars($dec['order_type']) ?></b>?</h6>
   <div class="calc">
     Mercado al llegar la señal: <b><?= tv_num($dec['price_signal'], $d) ?></b> · Entry corregido: <b><?= tv_num($dec['entry'], $d) ?></b><br>
     Distancia = <b><?= tv_num($dec['dist_entry'], $d) ?></b> · Lado <b><?= htmlspecialchars($dec['side'] ?: '—') ?></b><br>
