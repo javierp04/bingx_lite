@@ -42,6 +42,9 @@ function jv_pick($t, $snapField, $utsField) {
     <div class="col-md-6"><div class="card"><div class="card-body">
         <h6>Exit level</h6><canvas id="chExit"></canvas>
     </div></div></div>
+    <div class="col-md-6"><div class="card"><div class="card-body">
+        <h6>Motivo de cierre</h6><canvas id="chReason"></canvas>
+    </div></div></div>
 </div>
 
 <div class="card"><div class="card-body">
@@ -90,6 +93,7 @@ function jv_pick($t, $snapField, $utsField) {
 const cum     = <?= json_encode($chart['cum']) ?>;
 const scatter = <?= json_encode($chart['scatter']) ?>;
 const exitl   = <?= json_encode($chart['exit_levels']) ?>;
+const reasons = <?= json_encode($chart['close_reasons']) ?>;
 const typeColor = { 'MARKET':'#0d6efd','MARKET_FB':'#6610f2','LIMIT':'#fd7e14','STOP':'#20c997' };
 
 new Chart(document.getElementById('chCum'), {
@@ -111,5 +115,9 @@ new Chart(document.getElementById('chScatter'), {
 new Chart(document.getElementById('chExit'), {
     type: 'bar',
     data: { labels: Object.keys(exitl), datasets: [{ label: 'count', data: Object.values(exitl), backgroundColor: '#6c757d' }] }
+});
+new Chart(document.getElementById('chReason'), {
+    type: 'bar',
+    data: { labels: reasons.labels, datasets: [{ label: 'count', data: reasons.counts, backgroundColor: reasons.colors }] }
 });
 </script>

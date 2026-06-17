@@ -68,6 +68,9 @@
         <div class="col-md-6"><div class="card"><div class="card-body">
             <h6>Exit level</h6><canvas id="chExit"></canvas>
         </div></div></div>
+        <div class="col-md-6"><div class="card"><div class="card-body">
+            <h6>Motivo de cierre</h6><canvas id="chReason"></canvas>
+        </div></div></div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
@@ -76,6 +79,7 @@
     const cum    = <?= json_encode($chart['cum']) ?>;
     const otype  = <?= json_encode($chart['order_types']) ?>;
     const exitl  = <?= json_encode($chart['exit_levels']) ?>;
+    const reasons = <?= json_encode($chart['close_reasons']) ?>;
 
     new Chart(document.getElementById('chPnlSym'), {
         type: 'bar',
@@ -95,6 +99,10 @@
     new Chart(document.getElementById('chExit'), {
         type: 'bar',
         data: { labels: Object.keys(exitl), datasets: [{ label: 'count', data: Object.values(exitl), backgroundColor: '#6c757d' }] }
+    });
+    new Chart(document.getElementById('chReason'), {
+        type: 'bar',
+        data: { labels: reasons.labels, datasets: [{ label: 'count', data: reasons.counts, backgroundColor: reasons.colors }] }
     });
     </script>
 <?php endif; ?>

@@ -44,6 +44,7 @@ class Journals extends CI_Controller {
         unset($otDist['']);
         $data['chart']['order_types'] = $this->relabel($otDist, 'journal_order_label');
         $data['chart']['exit_levels'] = $this->relabel($this->journal_stats->distribution($allRows, 'exit_level'), 'journal_exit_label');
+        $data['chart']['close_reasons'] = $this->reason_chart($allRows);
         $data['chart']['cum']         = $this->journal_stats->cumulative_pnl($allRows);
 
         $this->load->view('templates/header', $data);
@@ -71,6 +72,7 @@ class Journals extends CI_Controller {
             'cum'         => $this->journal_stats->cumulative_pnl($rows),
             'scatter'     => $this->scatter_data($rows),
             'exit_levels' => $this->relabel($this->journal_stats->distribution($rows, 'exit_level'), 'journal_exit_label'),
+            'close_reasons' => $this->reason_chart($rows),
         );
 
         $this->load->view('templates/header', $data);
@@ -96,6 +98,23 @@ class Journals extends CI_Controller {
         $this->load->view('templates/header', $data);
         $this->load->view('journals/trade_detail', $data);
         $this->load->view('templates/footer');
+    }
+
+    /**
+     * Distribución de close_reason (motivo de cierre) lista para un bar chart coloreado.
+     * Excluye trades sin cerrar (open/pending, sin close_reason). Color por tipo de resultado.
+     */
+    private function reason_chart($rows) {
+        $dist = $this->journal_stats->distribution($rows, 'close_reason');
+        unset($dist['']);
+        $labels = array(); $counts = array(); $colors = array();
+        foreach ($dist as $code => $n) {
+            $meta     = journal_reason_meta((string)$code);
+            $labels[] = $meta[1];
+            $counts[] = $n;
+            $colors[] = journal_class_hex($meta[0]);
+        }
+        return array('labels' => $labels, 'counts' => $counts, 'colors' => $colors);
     }
 
     /** Remapea las claves de una distribución (código -> etiqueta legible vía helper). Suma si colisionan. */

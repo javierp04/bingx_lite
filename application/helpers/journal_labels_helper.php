@@ -84,3 +84,18 @@ if (!function_exists('journal_order_label')) {
         return isset($map[$k]) ? $map[$k] : ($k === '' ? '—' : $k);
     }
 }
+
+if (!function_exists('journal_class_hex')) {
+    /** Clase bootstrap de badge -> color hex (para los datasets de Chart.js). */
+    function journal_class_hex($class)
+    {
+        $map = array(
+            'bg-success'           => '#28a745',
+            'bg-danger'            => '#dc3545',
+            'bg-warning text-dark' => '#ffc107',
+            'bg-dark'              => '#343a40',
+            'bg-secondary'         => '#6c757d',
+        );
+        return isset($map[$class]) ? $map[$class] : '#6c757d';
+    }
+}

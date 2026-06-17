@@ -37,4 +37,10 @@ check_eq(journal_order_label('MARKET'), 'Mercado', 'order decision market');
 check_eq(journal_order_label('MARKET_FB'), 'Mercado (fallback)', 'order decision fallback');
 check_eq(journal_order_label(''), '—', 'order vacío -> dash');
 
+// clase bootstrap -> hex (datasets de charts)
+check_eq(journal_class_hex('bg-success'), '#28a745', 'hex success');
+check_eq(journal_class_hex('bg-danger'), '#dc3545', 'hex danger');
+check_eq(journal_class_hex('bg-dark'), '#343a40', 'hex dark');
+check_eq(journal_class_hex('bg-desconocida'), '#6c757d', 'hex default');
+
 done();
