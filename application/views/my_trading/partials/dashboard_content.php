@@ -82,7 +82,10 @@ $this->load->view('journals/_blocks/styles');
                             <div class="col-md-7">
                                 <?php $this->load->view('journals/_blocks/correction', ['vm' => $vm, 'compact' => true], false); ?>
                                 <?php if ($vm['decision']['present']): ?>
-                                    <div class="mt-2"><?php $this->load->view('journals/_blocks/decision', ['vm' => $vm, 'compact' => true], false); ?></div>
+                                    <div class="mt-2">
+                                        <div class="lbl mb-1"><i class="fas fa-question-circle me-1 text-primary"></i>¿Por qué <?= htmlspecialchars($vm['decision']['order_type']) ?>?</div>
+                                        <?php $this->load->view('journals/_blocks/decision', ['vm' => $vm, 'compact' => false], false); ?>
+                                    </div>
                                 <?php endif; ?>
                                 <?php if ($vm['gates']['present']): ?>
                                     <div class="mt-2"><?php $this->load->view('journals/_blocks/gates', ['vm' => $vm, 'compact' => true], false); ?></div>
@@ -90,7 +93,7 @@ $this->load->view('journals/_blocks/styles');
                             </div>
                             <div class="col-md-5">
                                 <div class="lbl mb-1">Señal → Corregido → Real</div>
-                                <?php $this->load->view('journals/_blocks/prices', ['vm' => $vm], false); ?>
+                                <?php $this->load->view('journals/_blocks/prices', ['vm' => $vm, 'compact' => true], false); ?>
                             </div>
                         </div>
                     <?php else: ?>
