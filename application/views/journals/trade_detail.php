@@ -64,19 +64,13 @@ $bc_home_label = isset($bc_home_label) ? $bc_home_label : 'Journals';
     <!-- Volumen y gates -->
     <?php if ($vm['gates']['present']): ?>
     <div class="card"><div class="card-body">
-      <h6 class="mb-3"><i class="fas fa-sliders-h me-1 text-primary"></i>Volumen y gates</h6>
       <?php $this->load->view('journals/_blocks/gates', ['vm' => $vm, 'compact' => false], false); ?>
     </div></div>
     <?php endif; ?>
 
     <!-- Proceso de corrección -->
-    <?php if ($vm['correction']['present']):
-        $cstat = $vm['correction']['status']; ?>
+    <?php if ($vm['correction']['present']): ?>
     <div class="card"><div class="card-body">
-      <h6 class="mb-3"><i class="fas fa-satellite me-1 text-primary"></i>Proceso de corrección
-        <?php if ($cstat === 'OK'): ?><span class="badge bg-success ms-1">OK</span>
-        <?php else: ?><span class="badge bg-dark ms-1"><?= htmlspecialchars($vm['correction']['error_stage'] ?: 'ERROR') ?></span><?php endif; ?>
-      </h6>
       <?php $this->load->view('journals/_blocks/correction', ['vm' => $vm, 'compact' => false], false); ?>
     </div></div>
     <?php endif; ?>

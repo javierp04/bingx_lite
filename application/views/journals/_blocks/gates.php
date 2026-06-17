@@ -5,6 +5,9 @@ $g = $vm['gates']; $d = $vm['decimals'];
 $compact = isset($compact) ? $compact : false;
 if (empty($g['present'])) return;
 ?>
+<?php if (!$compact): ?>
+  <h6 class="mb-2"><i class="fas fa-sliders-h me-1 text-primary"></i>Volumen y gates</h6>
+<?php endif; ?>
 <?php if (!$compact && $g['real_volume'] !== null && $g['r_dist'] !== null): ?>
   <div class="calc mb-2">
     Volumen por riesgo = (Balance × RISK% <?= tv_num($g['risk_percent'], 1) ?>) ÷ R(<?= tv_num($g['r_dist'], $d) ?>) = <b><?= tv_num($g['real_volume'], 2) ?> lots</b>

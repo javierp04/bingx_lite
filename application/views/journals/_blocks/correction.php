@@ -4,6 +4,12 @@ $c = $vm['correction']; $d = $vm['decimals'];
 $compact = isset($compact) ? $compact : false;
 if (empty($c['present'])) return;
 ?>
+<?php if (!$compact): ?>
+  <h6 class="mb-2"><i class="fas fa-satellite me-1 text-primary"></i>Proceso de corrección
+    <?php if ($c['status'] === 'OK'): ?><span class="badge bg-success ms-1">OK</span>
+    <?php else: ?><span class="badge bg-dark ms-1"><?= htmlspecialchars($c['error_stage'] ?: 'ERROR') ?></span><?php endif; ?>
+  </h6>
+<?php endif; ?>
 <?php if ($c['bad']): ?>
   <div class="alert alert-warning py-2 mb-2" style="font-size:.85rem">
     <i class="fas fa-exclamation-triangle me-1"></i>
