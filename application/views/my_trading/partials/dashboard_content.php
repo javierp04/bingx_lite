@@ -60,6 +60,12 @@ $this->load->view('journals/_blocks/styles');
                     <?php endif; ?>
                 </div>
 
+                <div class="num small text-muted" style="min-width:70px">
+                    <?php if ($signal->real_volume): ?>
+                        vol <?php if ($m['status'] === 'open' && $signal->remaining_volume !== null): ?><?= tv_num($signal->remaining_volume, 2) ?>/<?= tv_num($signal->real_volume, 2) ?><?php else: ?><?= tv_num($signal->real_volume, 2) ?><?php endif; ?>
+                    <?php else: ?>—<?php endif; ?>
+                </div>
+
                 <div class="num">
                     <span class="<?= $m['pnl'] > 0 ? 'text-profit' : ($m['pnl'] < 0 ? 'text-loss' : 'text-muted') ?> fw-bold">
                         <?= $m['pnl'] >= 0 ? '+' : '' ?><?= tv_num($m['pnl'], 2) ?>
