@@ -15,10 +15,11 @@ if (!function_exists('journal_exit_label')) {
         $map = array(
             '1' => 'TP1', '2' => 'TP2', '3' => 'TP3', '4' => 'TP4', '5' => 'TP5',
             '-1' => 'Stop loss', '-998' => 'Señal inválida', '-999' => 'Error/gate/cancel',
-            '0' => 'En vivo',
+            '0' => 'Sin TP',   // cerró en nivel 0 = no alcanzó ningún TP (el close_reason dice cómo)
         );
+        // exit_level vacío/NULL = el trade todavía no cerró -> sigue en vivo (abierto).
         $k = (string) $code;
-        return isset($map[$k]) ? $map[$k] : ($k === '' ? '—' : $k);
+        return isset($map[$k]) ? $map[$k] : ($k === '' ? 'En vivo' : $k);
     }
 }
 

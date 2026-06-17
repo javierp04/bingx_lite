@@ -8,8 +8,8 @@ check_eq(journal_exit_label('5'), 'TP5', 'exit 5 -> TP5');
 check_eq(journal_exit_label('-1'), 'Stop loss', 'exit -1 -> Stop loss');
 check_eq(journal_exit_label('-998'), 'Señal inválida', 'exit -998');
 check_eq(journal_exit_label('-999'), 'Error/gate/cancel', 'exit -999');
-check_eq(journal_exit_label('0'), 'En vivo', 'exit 0 -> En vivo');
-check_eq(journal_exit_label(''), '—', 'exit vacío -> dash');
+check_eq(journal_exit_label('0'), 'Sin TP', 'exit 0 -> Sin TP (cerró sin TP)');
+check_eq(journal_exit_label(''), 'En vivo', 'exit vacío/NULL -> En vivo (abierto)');
 check_eq(journal_exit_label('42'), '42', 'exit desconocido -> código crudo');
 check_eq(journal_exit_label(3), 'TP3', 'exit acepta int');
 
