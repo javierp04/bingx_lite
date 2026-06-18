@@ -1,10 +1,12 @@
 #property copyright "TelegramSignals"
-#property version   "10.21"
+#property version   "10.22"
 #property description "Reliability + gates asset-agnostic (TP1) + CSV trade journal (dataset + live)"
+// v10.22: reporta acct_balance + sl_risk_per_lot en el snapshot -> el detalle muestra la formula
+//         de volumen completa (riesgo $ = RISK% x balance) / (riesgo $/lote) = lots, que cierra.
 // v10.21: reporta a BD el snapshot completo del trade (objetos snapshot/ea_config en ReportOpen) +
 //         telemetria del proceso de correccion (objeto correction: futuro vs vela CFD, verificacion de
 //         alineacion de velas). Permite materializar el journal/analisis en tablas consultables.
-#define EA_VERSION "10.21"
+#define EA_VERSION "10.22"
 // v10.20: (E) si el broker rechaza la pendiente por caer dentro de STOPS_LEVEL (INVALID_STOPS),
 //         fallback a MARKET (self-gateado: en stops level 0 nunca dispara). Recalibra K_STOP 0.02->0.05
 //         (ahora >= M_SLIP) y M_SLIP 0.05->0.04. Slippage cap ahora OPCIONAL (ENABLE_SLIP_CHECK, OFF
@@ -170,6 +172,7 @@ struct JournalRecord {
     string  order_type;
     double  real_entry, slip_real, slip_tol, real_volume;
     double  stops_min, sl_dist;
+    double  acct_balance, sl_risk_per_lot;   // para la fórmula de volumen (detalle): balance + riesgo $/lote
     // --- Telemetria del proceso de correccion (para tabla ea_price_corrections) ---
     string  corr_status;        // "" (no corrido) / "OK" / "ERROR"
     string  corr_error_stage;   // FETCH/INVALID_DATA/STALE_TIMESTAMP/NO_BAR/INVALID_CFD/DEVIATION_TOO_HIGH
@@ -585,6 +588,7 @@ void JournalReset() {
     currentJournal.side = ""; currentJournal.k_band = 0; currentJournal.order_type = "";
     currentJournal.real_entry = 0; currentJournal.slip_real = 0; currentJournal.slip_tol = 0; currentJournal.real_volume = 0;
     currentJournal.stops_min = 0; currentJournal.sl_dist = 0;
+    currentJournal.acct_balance = 0; currentJournal.sl_risk_per_lot = 0;
     currentJournal.corr_status = ""; currentJournal.corr_error_stage = "";
     currentJournal.fut_price = 0; currentJournal.fut_candle_time = "";
     currentJournal.mt5_price = 0; currentJournal.mt5_bar_time = ""; currentJournal.mt5_bar_index = 0;
@@ -1022,6 +1026,8 @@ string BuildSnapshotJson() {
     jb.AddDouble("real_volume", currentJournal.real_volume, 2);
     jb.AddDouble("stops_min", currentJournal.stops_min);
     jb.AddDouble("sl_dist", currentJournal.sl_dist);
+    jb.AddDouble("acct_balance", currentJournal.acct_balance, 2);
+    jb.AddDouble("sl_risk_per_lot", currentJournal.sl_risk_per_lot, 4);
     return jb.Build();
 }
 
@@ -1397,6 +1403,9 @@ double CalculateVolumeOptimized(double entryPrice, double stopLoss) {
     if(pointValuePerLot <= 0 || distancePoints <= 0) return 0.0;
 
     double volume = riskAmount / (distancePoints * pointValuePerLot);
+    // Telemetria para la formula de volumen en el detalle (balance + riesgo $/lote del SL)
+    currentJournal.acct_balance    = balance;
+    currentJournal.sl_risk_per_lot = distancePoints * pointValuePerLot;
     volume = MathMax(specs.minVolume, MathMin(specs.maxVolume, volume));
     volume = MathFloor(volume / specs.stepVolume) * specs.stepVolume;
 

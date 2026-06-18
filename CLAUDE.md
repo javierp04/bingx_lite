@@ -101,7 +101,7 @@ http://localhost/bingx_lite/
 ### MetaTrader Expert Advisor (EA_Signals.mq5)
 
 **Location:** `EA/EA_Signals.mq5`
-**Version:** 10.21
+**Version:** 10.22
 **Language:** MQL5 (MetaTrader 5)
 **Lines:** ~2,200
 
