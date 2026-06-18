@@ -28,6 +28,7 @@ $bc_home_label = isset($bc_home_label) ? $bc_home_label : 'Journals';
     <h3 class="mb-1"><?= htmlspecialchars($m['symbol']) ?>
       <span class="badge <?= $m['dir_class'] ?>"><?= htmlspecialchars($m['op'] ?: '—') ?></span>
       <span class="badge <?= $ph['class'] ?>" title="<?= htmlspecialchars($m['close_reason'] ?: $m['status']) ?>"><?= htmlspecialchars($ph['label']) ?></span>
+      <?php if ($vm['max_level'] >= 1): ?><span class="badge badge-soft" title="TP más alto alcanzado">máx TP<?= (int)$vm['max_level'] ?></span><?php endif; ?>
     </h3>
     <div class="text-muted" style="font-size:.85rem">
       Señal <?= htmlspecialchars($m['created_at']) ?>
