@@ -18,6 +18,7 @@ check_eq(journal_reason_label('CLOSED_COMPLETE'), 'Todos los TP', 'reason comple
 check_eq(journal_reason_label('CLOSED_STOPLOSS'), 'Stop Loss', 'reason stoploss');
 check_eq(journal_reason_label('ORDER_CANCELLED'), 'Cancelada', 'reason cancelled');
 check_eq(journal_reason_label('EXECUTION_FAILED'), 'Broker rechazó', 'reason exec failed');
+check_eq(journal_reason_label('CLOSED_TIME'), 'Cierre por horario', 'reason cierre por horario');
 check_eq(journal_reason_label('SL_TOO_CLOSE'), 'SL muy cerca', 'reason sl too close');
 check_eq(journal_reason_label('WEIRD_CODE'), 'WEIRD_CODE', 'reason desconocido -> código crudo');
 check_eq(journal_reason_label(''), '—', 'reason vacío -> dash');
@@ -41,6 +42,7 @@ check_eq(journal_order_label(''), '—', 'order vacío -> dash');
 check_eq(journal_class_hex('bg-success'), '#28a745', 'hex success');
 check_eq(journal_class_hex('bg-danger'), '#dc3545', 'hex danger');
 check_eq(journal_class_hex('bg-dark'), '#343a40', 'hex dark');
+check_eq(journal_class_hex('bg-info'), '#0dcaf0', 'hex info');
 check_eq(journal_class_hex('bg-desconocida'), '#6c757d', 'hex default');
 
 done();

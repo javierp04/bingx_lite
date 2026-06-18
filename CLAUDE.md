@@ -171,6 +171,11 @@ position vanished   → GetCloseReasonFromHistory() → ReportClose()
 - `ENABLE_CODE_STOP` = false (close by code if price crosses SL), `SAFETY_FACTOR` = 1.5
 - `MIN_LOG_LEVEL` = INFO_LVL (DEBUG_LVL / INFO_LVL / WARNING_LVL / ERROR_LVL)
 
+**Time cutoffs (NY time, auto-DST)** — both OFF by default; the EA computes NY time from UTC applying US DST (2nd Sun Mar → 1st Sun Nov), so the configured hour is always real NY time year-round. Anchored to `tradeStartUtc` (persisted in state): each fires at the **next occurrence** of its NY time **after** the order was placed (an overnight pending isn't killed instantly), and self-heals on restart (if the EA returns past the cutoff, it acts on the next tick/timer). Both are also checked in `OnTimer` (every `POLL_INTERVAL`), so they fire reliably even without ticks.
+
+- `ENABLE_PENDING_CUTOFF` = false, `CUTOFF_HOUR_NY` = 16, `CUTOFF_MIN_NY` = 30 - cancel the **unfilled pending** at the cutoff → `OrderDelete` + `ORDER_CANCELLED`.
+- `ENABLE_FORCE_CLOSE` = false, `CLOSE_HOUR_NY` = 20, `CLOSE_MIN_NY` = 0 - close the **open position** at market regardless of price → `CLOSED_TIME` (exit_level = max TP reached).
+
 > Legacy `MAX_SPREAD` and `DEBUG_MODE`/`DEBUG_*` inputs no longer exist — spread is gated by `C_SPREAD_RATIO · T1`.
 
 #### Order Type Decision (`DetermineOrderType`)
@@ -252,7 +257,8 @@ Real closes (the trade ran):
 - `CLOSED_MANUAL` - manual close detected in history
 - `CLOSED_EXTERNAL` - closed by expert/other (default)
 - `CLOSED_CODE_STOP` / `CLOSED_SAFETY_STOP` - code-based / safety stop
-- `ORDER_CANCELLED` - pending order cancelled (server status → cancelled)
+- `CLOSED_TIME` - force-closed at the configured NY time (`ENABLE_FORCE_CLOSE`); a **real close** (goes to `trades`), journalled as "Cierre por horario"
+- `ORDER_CANCELLED` - pending order cancelled (server status → cancelled) — also the reason used by `ENABLE_PENDING_CUTOFF`
 
 Failure reasons (never operated → server status `failed_execution`):
 

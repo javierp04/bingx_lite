@@ -35,6 +35,7 @@ if (!function_exists('journal_reason_meta')) {
             'CLOSED_SAFETY_STOP'     => array('bg-danger', 'Safety Stop'),
             'CLOSED_MANUAL'          => array('bg-warning text-dark', 'Manual'),
             'CLOSED_EXTERNAL'        => array('bg-warning text-dark', 'Externo'),
+            'CLOSED_TIME'            => array('bg-info', 'Cierre por horario'),
             'ORDER_CANCELLED'        => array('bg-warning text-dark', 'Cancelada'),
             'PRICE_CORRECTION_ERROR' => array('bg-dark', 'Corrección falló'),
             'SPREAD_TOO_HIGH'        => array('bg-dark', 'Spread alto'),
@@ -93,6 +94,7 @@ if (!function_exists('journal_class_hex')) {
             'bg-success'           => '#28a745',
             'bg-danger'            => '#dc3545',
             'bg-warning text-dark' => '#ffc107',
+            'bg-info'              => '#0dcaf0',
             'bg-dark'              => '#343a40',
             'bg-secondary'         => '#6c757d',
         );

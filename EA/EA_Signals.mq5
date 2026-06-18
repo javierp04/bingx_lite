@@ -57,6 +57,7 @@
 #define REASON_VOLUME_ERR      "VOLUME_ERROR"
 #define REASON_SL_TOO_CLOSE    "SL_TOO_CLOSE"
 #define REASON_EXEC_FAILED     "EXECUTION_FAILED"
+#define REASON_TIME_CLOSE      "CLOSED_TIME"        // cierre por horario (cierre real, no fallo)
 
 // Enums
 enum LogLevel { DEBUG_LVL, INFO_LVL, WARNING_LVL, ERROR_LVL };
@@ -105,6 +106,14 @@ input group "=== Stop Loss Management ==="
 input bool      ENABLE_CODE_STOP = false;
 input double    SAFETY_FACTOR = 1.5;
 
+input group "=== Cortes por horario (hora NY, DST automatico) ==="
+input bool      ENABLE_PENDING_CUTOFF = false;  // cancelar la pendiente NO ejecutada al llegar la hora
+input int       CUTOFF_HOUR_NY = 16;            // hora NY de corte de pendientes
+input int       CUTOFF_MIN_NY  = 30;            // minuto NY de corte de pendientes
+input bool      ENABLE_FORCE_CLOSE = false;     // cerrar la posicion a mercado al llegar la hora (sin importar precio)
+input int       CLOSE_HOUR_NY = 20;             // hora NY de cierre forzado
+input int       CLOSE_MIN_NY  = 0;              // minuto NY de cierre forzado
+
 input group "=== Logging ==="
 input LogLevel  MIN_LOG_LEVEL = INFO_LVL;   // DEBUG_LVL = ver todo, INFO_LVL = normal
 
@@ -140,6 +149,9 @@ struct OptimizedTPState {
     double originalSL;
     double currentSL;
     double tp1, tp2, tp3, tp4, tp5;
+
+    // TIME (UTC en que se estableció la orden/posición: ancla de los cortes por horario NY)
+    datetime tradeStartUtc;
 };
 
 struct JournalRecord {
@@ -434,6 +446,7 @@ void SaveState() {
     jb.AddDouble("tp3", currentTP.tp3, 5);
     jb.AddDouble("tp4", currentTP.tp4, 5);
     jb.AddDouble("tp5", currentTP.tp5, 5);
+    jb.AddInt("tradeStartUtc", (long)currentTP.tradeStartUtc);
     // levelFlags como array crudo [0/1 x6]
     string flags = "[";
     for(int i = 0; i < 6; i++) {
@@ -503,6 +516,7 @@ bool LoadState() {
     currentTP.tp3               = parser.GetDouble("tp3", 0);
     currentTP.tp4               = parser.GetDouble("tp4", 0);
     currentTP.tp5               = parser.GetDouble("tp5", 0);
+    currentTP.tradeStartUtc     = (datetime)parser.GetLong("tradeStartUtc", 0);
     for(int i = 0; i < 6; i++) {
         currentTP.levelFlags[i] = (parser.GetArrayDouble("levelFlags", i, 0) >= 0.5);
     }
@@ -773,6 +787,7 @@ void InitTPState() {
     currentTP.originalSL = 0;
     currentTP.currentSL = 0;
     currentTP.tp1 = currentTP.tp2 = currentTP.tp3 = currentTP.tp4 = currentTP.tp5 = 0;
+    currentTP.tradeStartUtc = 0;
 }
 
 void SetupBaseUrls() {
@@ -1552,6 +1567,61 @@ bool IsWithinTradingHours() {
 }
 
 // ==========================================
+// CORTES POR HORARIO (hora NY con DST automático)
+// ==========================================
+// Día del mes del N-ésimo domingo (n=1..). day_of_week: 0=domingo.
+int NthSundayOfMonth(int year, int month, int n) {
+    MqlDateTime f; f.year=year; f.mon=month; f.day=1; f.hour=0; f.min=0; f.sec=0;
+    MqlDateTime d; TimeToStruct(StructToTime(f), d);
+    int firstSunday = 1 + ((7 - d.day_of_week) % 7);
+    return firstSunday + (n - 1) * 7;
+}
+
+// ¿Rige el horario de verano de EEUU para este instante UTC?
+// DST: 2º domingo de marzo 07:00 UTC -> 1º domingo de noviembre 06:00 UTC.
+bool IsUsDst(datetime utc) {
+    MqlDateTime d; TimeToStruct(utc, d);
+    MqlDateTime s; s.year=d.year; s.mon=3;  s.day=NthSundayOfMonth(d.year,3,2);  s.hour=7; s.min=0; s.sec=0;
+    MqlDateTime e; e.year=d.year; e.mon=11; e.day=NthSundayOfMonth(d.year,11,1); e.hour=6; e.min=0; e.sec=0;
+    return (utc >= StructToTime(s) && utc < StructToTime(e));
+}
+
+// Offset NY respecto de UTC, en segundos (EDT -4h verano / EST -5h invierno).
+int NyOffsetSec(datetime utc) { return IsUsDst(utc) ? -4 * 3600 : -5 * 3600; }
+
+// Próxima ocurrencia de HH:MM hora NY en/después de fromUtc, devuelta en UTC.
+datetime NextNyTimeUtc(datetime fromUtc, int hh, int mm) {
+    int off = NyOffsetSec(fromUtc);
+    datetime fromNy = fromUtc + off;
+    MqlDateTime ny; TimeToStruct(fromNy, ny);
+    ny.hour = hh; ny.min = mm; ny.sec = 0;
+    datetime targetNy = StructToTime(ny);
+    if(targetNy <= fromNy) targetNy += 86400;        // ya pasó hoy -> mañana
+    int offTarget = NyOffsetSec(targetNy - off);     // offset cerca del objetivo (cubre cruce de DST)
+    return targetNy - offTarget;
+}
+
+// ¿Llegó la hora de cortar la pendiente no ejecutada? (próximo CUTOFF_*_NY tras abrir el trade)
+bool ShouldCutoffPending() {
+    if(!ENABLE_PENDING_CUTOFF || currentTP.tradeStartUtc <= 0) return false;
+    return (TimeGMT() >= NextNyTimeUtc(currentTP.tradeStartUtc, CUTOFF_HOUR_NY, CUTOFF_MIN_NY));
+}
+
+// ¿Llegó la hora de cerrar la posición a mercado? (próximo CLOSE_*_NY tras abrir el trade)
+bool ShouldForceCloseNow() {
+    if(!ENABLE_FORCE_CLOSE || currentTP.tradeStartUtc <= 0) return false;
+    return (TimeGMT() >= NextNyTimeUtc(currentTP.tradeStartUtc, CLOSE_HOUR_NY, CLOSE_MIN_NY));
+}
+
+// Cancela la orden pendiente no ejecutada por corte de horario y reporta ORDER_CANCELLED.
+void CancelPendingByTime() {
+    Log(INFO_LVL, "CUTOFF", StringFormat("Corte de horario NY: cancelando pendiente no ejecutada (ticket=%d)", currentTP.ticket));
+    if(OrderSelect(currentTP.ticket)) trade.OrderDelete(currentTP.ticket);
+    ReportClose(currentTP.signalId, EXIT_ERROR, REASON_ORDER_CANCELLED, 0, 0);
+    EndTrade();
+}
+
+// ==========================================
 // EVENTOS PRINCIPALES
 // ==========================================
 void OnDeinit(const int reason) {
@@ -1560,6 +1630,18 @@ void OnDeinit(const int reason) {
 }
 
 void OnTimer() {
+    // Cortes por horario NY: fiables cada POLL_INTERVAL aunque no lleguen ticks (futuros con baja
+    // liquidez en algunos momentos). OnTick los maneja igual para respuesta inmediata.
+    if(currentTP.ticket > 0) {
+        if(!currentTP.isActive) {
+            if(ShouldCutoffPending()) { CancelPendingByTime(); return; }
+        } else if(ShouldForceCloseNow()) {
+            Log(INFO_LVL, "FORCE_CLOSE", "Hora de cierre NY alcanzada (timer): cerrando posición a mercado");
+            ClosePositionByCode(REASON_TIME_CLOSE);
+            return;
+        }
+    }
+
     if(ENABLE_TIME_FILTER && !IsWithinTradingHours()) return;
 
     if(HasTrade()) return;
@@ -1569,6 +1651,10 @@ void OnTimer() {
 
 void OnTick() {
     if(!currentTP.isActive && currentTP.ticket > 0) {
+        if(ShouldCutoffPending()) {   // corte por horario NY: pendiente no ejecutada
+            CancelPendingByTime();
+            return;
+        }
         CheckPendingOrderExecution();
         return;
     }
@@ -1598,6 +1684,13 @@ void OnTick() {
             ClosePositionByCode(REASON_SAFETY_STOP);
             return;
         }
+    }
+
+    // Cierre forzado por horario NY (sin importar precio)
+    if(ShouldForceCloseNow()) {
+        Log(INFO_LVL, "FORCE_CLOSE", "Hora de cierre NY alcanzada: cerrando posición a mercado");
+        ClosePositionByCode(REASON_TIME_CLOSE);
+        return;
     }
 
     // Reintento throttleado de BE si quedó pendiente por un PositionModify fallido
@@ -2231,6 +2324,7 @@ void SetupTPState(int signalId, string direction, double entry, double originalS
     currentTP.closedPercent = 0;
     currentTP.currentLevel = isMarketOrder ? 0 : -2;
     currentTP.slMovedToBE = false;
+    currentTP.tradeStartUtc = TimeGMT();   // ancla de los cortes por horario NY
 
     ArrayInitialize(currentTP.levelFlags, false);
 
