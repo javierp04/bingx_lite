@@ -320,6 +320,17 @@ private:
     string pairs[];
     int count;
 
+    // Escapa los chars que romperian el JSON (y el TSV del outbox del v11, que asume bodies de una
+    // sola linea sin tabs). El backslash va PRIMERO para no re-escapar lo que se agrega despues.
+    string Escape(string s) {
+        StringReplace(s, "\\", "\\\\");
+        StringReplace(s, "\"", "\\\"");
+        StringReplace(s, "\r", "\\r");
+        StringReplace(s, "\n", "\\n");
+        StringReplace(s, "\t", "\\t");
+        return s;
+    }
+
 public:
     JsonBuilder() : count(0) { ArrayResize(pairs, 0); }
 
@@ -340,7 +351,7 @@ public:
 
     void AddString(string key, string value) {
         ArrayResize(pairs, count + 1);
-        pairs[count++] = "\"" + key + "\":\"" + value + "\"";
+        pairs[count++] = "\"" + key + "\":\"" + Escape(value) + "\"";
     }
 
     void AddRaw(string key, string rawJson) {
