@@ -85,12 +85,12 @@ input double    MAX_PRICE_DEVIATION = 5.0;
 input int       MAX_TIMESTAMP_HOURS = 4;
 
 input group "=== Take Profit Settings ==="
-input double    TP1_PERCENT = 0.0;
-input double    TP2_PERCENT = 40.0;
-input double    TP3_PERCENT = 30.0;
+input double    TP1_PERCENT = 20.0;
+input double    TP2_PERCENT = 30.0;
+input double    TP3_PERCENT = 20.0;
 input double    TP4_PERCENT = 20.0;
 input double    TP5_PERCENT = 10.0;
-input int       BE_LEVEL = 1;                       // 0=never, 1=TP1, 2=TP2, etc.
+input int       BE_LEVEL = 2;                       // 0=never, 1=TP1, 2=TP2, etc.
 
 input group "=== Trading Hours ==="
 input bool      ENABLE_TIME_FILTER = false;

@@ -161,8 +161,8 @@ position vanished   → GetCloseReasonFromHistory() → ReportClose()
 
 **Take Profit Distribution:**
 
-- `TP1_PERCENT` = 0.0 / `TP2` = 40 / `TP3` = 30 / `TP4` = 20 / `TP5` = 10 - % of volume closed at each TP. The volume is split into **integer lots at open** (largest-remainder) so each tranche is ≥ 1 lot step; a TP with 0% (or whose share rounds to 0 lots) closes nothing, and TP5 (closeAll) sweeps any remainder.
-- `BE_LEVEL` = 1 - TP level at which SL moves to breakeven (0 = never)
+- `TP1_PERCENT` = 20 / `TP2` = 30 / `TP3` = 20 / `TP4` = 20 / `TP5` = 10 - % of volume closed at each TP. The volume is split into **integer lots at open** (largest-remainder) so each tranche is ≥ 1 lot step; a TP with 0% (or whose share rounds to 0 lots) closes nothing, and TP5 (closeAll) sweeps any remainder.
+- `BE_LEVEL` = 2 - TP level at which SL moves to breakeven (0 = never)
 
 **Trading Hours / Order / Stop / Logging:**
 
