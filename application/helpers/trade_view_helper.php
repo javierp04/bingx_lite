@@ -94,7 +94,7 @@ if (!function_exists('build_trade_view')) {
      * @param object|null $corr    fila ea_price_corrections
      * @return array
      */
-    function build_trade_view($signal, $snap = null, $corr = null)
+    function build_trade_view($signal, $snap = null, $corr = null, $events = [])
     {
         $d  = (int)(tv_has($signal, 'display_decimals') ? $signal->display_decimals : 5);
         $op = strtoupper($signal->op_type ?? ($snap && isset($snap->dir) ? $snap->dir : ''));
@@ -199,8 +199,30 @@ if (!function_exists('build_trade_view')) {
             ];
         }
 
+        // ---- Resultado por TP (desde la timeline de eventos) ----
+        // closed_pct es por-tramo (delta del acumulado); pnl es el PnL del tramo (pnl_delta).
+        $tp_results = [];
+        $max_level  = 0;
+        $prev_pct   = 0.0;
+        foreach ($events as $ev) {
+            if (($ev['event'] ?? '') !== 'tp') continue;
+            $lvl = (int)($ev['level'] ?? 0);
+            if ($lvl < 1 || $lvl > 5) continue;
+            $cum     = isset($ev['closed_pct']) && $ev['closed_pct'] !== null ? (float)$ev['closed_pct'] : null;
+            $tranche = ($cum !== null) ? max(0, $cum - $prev_pct) : null;
+            if ($cum !== null) $prev_pct = $cum;
+            $tp_results[$lvl] = [
+                'closed_pct' => $tranche,
+                'pnl'        => isset($ev['pnl']) && $ev['pnl'] !== null ? (float)$ev['pnl'] : null,
+                'price'      => isset($ev['price']) && $ev['price'] !== null ? (float)$ev['price'] : null,
+            ];
+            if ($lvl > $max_level) $max_level = $lvl;
+        }
+
         return [
-            'decimals' => $d,
+            'decimals'   => $d,
+            'tp_results' => $tp_results,   // [nivel => {closed_pct, pnl, price}]
+            'max_level'  => $max_level,    // TP más alto alcanzado (0 = ninguno)
             'meta' => [
                 'id'           => (int)$signal->id,
                 'symbol'       => $signal->ticker_symbol ?? '',

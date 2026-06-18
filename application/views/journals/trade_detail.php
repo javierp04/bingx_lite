@@ -5,7 +5,7 @@
  * con la card desplegable de my_trading/active. Los bloques se renderizan vía partials
  * journals/_blocks/* (mismos que la card, en modo full). Aquí solo va el layout + timeline.
  */
-$vm  = build_trade_view($signal, isset($snapshot) ? $snapshot : null, isset($correction) ? $correction : null);
+$vm  = build_trade_view($signal, isset($snapshot) ? $snapshot : null, isset($correction) ? $correction : null, isset($events) ? $events : []);
 $m   = $vm['meta'];
 $d   = $vm['decimals'];
 $ph  = $vm['phase'];
