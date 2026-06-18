@@ -73,7 +73,7 @@ input double    RISK_PERCENT = 2.0;
 input int       POLL_INTERVAL = 10;
 input group "=== Gates asset-agnostic (anclados a TP1) ==="
 input double    K_STOP_RATIO   = 0.05;   // banda market lado STOP (favorable): respeta la confirmacion del analista; >= M_SLIP_RATIO
-input double    K_LIMIT_RATIO  = 0.10;   // banda market lado LIMIT (adverso): cubre latencia señal->ejecucion — debe ser > M_SLIP_RATIO
+input double    K_LIMIT_RATIO  = 0.15;   // banda market lado LIMIT (adverso): cubre latencia señal->ejecucion — debe ser > M_SLIP_RATIO
 input bool      ENABLE_SLIP_CHECK = false; // OFF por defecto: deviation amplia (alta liquidez). ON = cap = M_SLIP_RATIO*T1
 input double    M_SLIP_RATIO   = 0.04;   // si ENABLE_SLIP_CHECK: tope de slippage (deviation) — debe ser < K_LIMIT_RATIO
 input bool      ENABLE_SPREAD_CHECK = false; // OFF por defecto (brokers/horarios de alta liquidez)

@@ -147,7 +147,7 @@ position vanished   → GetCloseReasonFromHistory() → ReportClose()
 **Asset-Agnostic Gates** (all anchored to `T1 = |entry − TP1|`):
 
 - `K_STOP_RATIO` = 0.05 - Market band on the favorable side (→ STOP). Respects the analyst's stop entry (wait for confirmation); kept `≥ M_SLIP_RATIO` so the favorable band is at least as wide as the slippage cap.
-- `K_LIMIT_RATIO` = 0.10 - Market band on the adverse side (→ LIMIT). Wider than STOP to absorb signal→execution latency (price drifted past entry); must be > `M_SLIP_RATIO`.
+- `K_LIMIT_RATIO` = 0.15 - Market band on the adverse side (→ LIMIT). Wider than STOP to absorb signal→execution latency (price drifted past entry); must be > `M_SLIP_RATIO`.
 - `ENABLE_SLIP_CHECK` = false - Slippage cap is **off by default** (high-liquidity brokers/hours): market deviation is set wide (no effective cap). The slippage tolerance is still recorded in the journal; it just doesn't gate. When **on**, deviation = `M_SLIP_RATIO · T1`.
 - `M_SLIP_RATIO` = 0.04 - When `ENABLE_SLIP_CHECK` is on: slippage/deviation cap, market only; must be < `K_LIMIT_RATIO`. Unused (no constraint) when the check is off.
 - `ENABLE_SPREAD_CHECK` = false - Spread gate is **off by default** (built for high-liquidity brokers/hours). The spread is still recorded in the journal; it just doesn't reject.
