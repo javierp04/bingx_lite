@@ -20,11 +20,11 @@ $this->load->view('journals/_blocks/styles');
 <?php else: ?>
     <div id="dashboardSignalsList">
         <?php foreach ($dashboard_signals as $signal):
-            $vm = build_trade_view($signal, $signal->snap ?? null, $signal->corr ?? null);
+            $vm = build_trade_view($signal, $signal->snap ?? null, $signal->corr ?? null, $signal->tp_events ?? []);
             $m  = $vm['meta']; $ph = $vm['phase']; $h = $vm['health']; $d = $vm['decimals'];
             $cid = 'sig-' . $m['id'];
             $elapsed = signal_elapsed($signal->created_at);
-            $has_detail = $vm['decision']['present'] || $vm['gates']['present'] || $vm['correction']['present'];
+            $has_detail = $vm['decision']['present'] || $vm['gates']['present'] || $vm['correction']['present'] || !empty($vm['tp_results']);
             $detail_url = base_url('my_trading/trading_detail/' . $m['id']);
         ?>
         <div class="card sig-card" data-signal-id="<?= $m['id'] ?>">
@@ -40,6 +40,9 @@ $this->load->view('journals/_blocks/styles');
                         <?= htmlspecialchars($ph['label']) ?>
                     </span>
                 </div>
+                <?php if ($vm['max_level'] >= 1): ?>
+                    <div><span class="badge badge-soft pill" title="TP más alto alcanzado">máx TP<?= (int)$vm['max_level'] ?></span></div>
+                <?php endif; ?>
                 <?php if ($m['order_type']): ?>
                     <div><span class="badge badge-soft pill"><?= htmlspecialchars(journal_order_label($m['order_type'])) ?></span></div>
                 <?php endif; ?>
@@ -80,6 +83,12 @@ $this->load->view('journals/_blocks/styles');
             <div id="<?= $cid ?>" class="collapse">
                 <div class="card-body border-top bg-white">
                     <?php if ($has_detail): ?>
+                        <?php if (!empty($vm['tp_results'])): ?>
+                            <div class="calc mb-2" style="font-size:.85rem">
+                                <b>Resultado por TP:</b>
+                                <?php $first = true; foreach ($vm['tp_results'] as $lvl => $r): ?><?= $first ? '' : ' · ' ?>TP<?= $lvl ?> <?= $r['closed_pct'] !== null ? tv_num($r['closed_pct'], 0).'%' : '' ?> <span class="<?= ($r['pnl'] !== null && $r['pnl'] >= 0) ? 'text-profit' : 'text-loss' ?>"><?= $r['pnl'] !== null ? (($r['pnl'] >= 0 ? '+' : '').tv_num($r['pnl'], 2)) : '' ?></span><?php $first = false; endforeach; ?> · <b>Total</b> <span class="<?= $m['pnl'] >= 0 ? 'text-profit' : 'text-loss' ?>"><?= ($m['pnl'] >= 0 ? '+' : '').tv_num($m['pnl'], 2) ?></span>
+                            </div>
+                        <?php endif; ?>
                         <?php $this->load->view('journals/_blocks/correction', ['vm' => $vm, 'compact' => true], false); ?>
                         <?php if ($vm['decision']['present']): ?>
                             <div class="mt-2"><?php $this->load->view('journals/_blocks/decision', ['vm' => $vm, 'compact' => false], false); ?></div>

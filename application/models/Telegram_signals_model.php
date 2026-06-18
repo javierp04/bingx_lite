@@ -1056,7 +1056,7 @@ class Telegram_signals_model extends CI_Model
      */
     private function attach_snap_corr(&$rows)
     {
-        foreach ($rows as $r) { $r->snap = null; $r->corr = null; }
+        foreach ($rows as $r) { $r->snap = null; $r->corr = null; $r->tp_events = array(); }
         if (empty($rows) || !$this->ea_tables_ready()) return;
 
         $ids = array();
@@ -1070,9 +1070,25 @@ class Telegram_signals_model extends CI_Model
         $this->db->where_in('user_signal_id', $ids);
         foreach ($this->db->get('ea_price_corrections')->result() as $c) $corrs[$c->user_signal_id] = $c;
 
+        // Eventos TP (para el desglose % + PnL por nivel en la card). Shape igual a get_timeline_events.
+        $tpev = array();
+        $this->db->where_in('user_signal_id', $ids);
+        $this->db->where('event_type', 'tp');
+        $this->db->order_by('seq', 'ASC');
+        foreach ($this->db->get('ea_trade_events')->result() as $e) {
+            $tpev[$e->user_signal_id][] = array(
+                'event'      => 'tp',
+                'level'      => $e->current_level,
+                'closed_pct' => $e->volume_closed_percent,
+                'pnl'        => $e->pnl_delta,
+                'price'      => $e->last_price,
+            );
+        }
+
         foreach ($rows as $r) {
             if (isset($snaps[$r->id])) $r->snap = $snaps[$r->id];
             if (isset($corrs[$r->id])) $r->corr = $corrs[$r->id];
+            if (isset($tpev[$r->id]))  $r->tp_events = $tpev[$r->id];
         }
     }
 
