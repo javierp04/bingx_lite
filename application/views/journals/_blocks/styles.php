@@ -18,8 +18,8 @@
   /* cards desplegables (dashboard) — grilla alineada tipo tabla */
   .sig-grid-wrap{overflow-x:auto;}
   .sig-card{box-shadow:0 .075rem .2rem rgba(0,0,0,.05);margin-bottom:8px;border:1px solid #e7ebf0;min-width:780px;}
-  .sig-thead,.sig-head{display:grid;grid-template-columns:46px minmax(104px,auto) minmax(190px,1.3fr) minmax(120px,1fr) 70px 86px 104px 22px;align-items:center;gap:.6rem;padding:.5rem .85rem;}
-  .sig-thead{min-width:780px;font-size:.68rem;text-transform:uppercase;letter-spacing:.03em;color:#8a94a6;padding-top:.2rem;padding-bottom:.2rem;}
+  .sig-thead,.sig-head{display:grid;grid-template-columns:44px 140px minmax(180px,1.4fr) minmax(120px,1fr) 70px 88px 104px 22px;align-items:center;gap:.6rem;padding:.5rem .85rem;}
+  .sig-thead{min-width:780px;border:1px solid transparent;font-size:.68rem;text-transform:uppercase;letter-spacing:.03em;color:#8a94a6;padding-top:.2rem;padding-bottom:.2rem;}
   .sig-head{cursor:pointer;}
   .sig-head:hover{background:#fbfcfe;}
   .sig-estado{display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;}
