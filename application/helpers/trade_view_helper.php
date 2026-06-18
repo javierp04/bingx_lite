@@ -136,6 +136,7 @@ if (!function_exists('build_trade_view')) {
                 'order_type'   => $snap->order_type,
                 'side'         => $side,
                 'price_signal' => $snap->price_signal,
+                'signal_time'  => tv_has($snap, 'opened_at') ? $snap->opened_at : null, // cuándo el EA leyó el mercado
                 'entry'        => $snap->entry,
                 'dist_entry'   => $snap->dist_entry,
                 'k_band'       => $snap->k_band,

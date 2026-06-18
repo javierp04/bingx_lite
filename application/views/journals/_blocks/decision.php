@@ -17,7 +17,7 @@ $ol = function_exists('journal_order_label') ? journal_order_label($dec['order_t
 <?php else: ?>
   <h6 class="mb-2"><i class="fas fa-question-circle me-1 text-primary"></i>¿Por qué <b><?= htmlspecialchars($dec['order_type']) ?></b>?</h6>
   <div class="calc">
-    Mercado al llegar la señal: <b><?= tv_num($dec['price_signal'], $d) ?></b> · Entry corregido: <b><?= tv_num($dec['entry'], $d) ?></b><br>
+    Mercado al llegar la señal: <b><?= tv_num($dec['price_signal'], $d) ?></b><?php if (!empty($dec['signal_time'])): ?> <span class="text-muted">(<?= htmlspecialchars(date('Y-m-d H:i', strtotime($dec['signal_time']))) ?>)</span><?php endif; ?> · Entry corregido: <b><?= tv_num($dec['entry'], $d) ?></b><br>
     Distancia = <b><?= tv_num($dec['dist_entry'], $d) ?></b> · Lado <b><?= htmlspecialchars($dec['side'] ?: '—') ?></b><br>
     <?php if ($dec['k_band'] !== null && $dec['t1'] !== null): ?>
       Banda MARKET = K (<?= tv_num($dec['kcoef'], 4) ?>) × T1 (<?= tv_num($dec['t1'], $d) ?>) = <b><?= tv_num($dec['k_band'], $d) ?></b><br>
