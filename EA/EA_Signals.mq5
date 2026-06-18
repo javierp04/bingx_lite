@@ -1,12 +1,14 @@
 #property copyright "TelegramSignals"
-#property version   "10.22"
+#property version   "10.23"
 #property description "Reliability + gates asset-agnostic (TP1) + CSV trade journal (dataset + live)"
+// v10.23: fallback pendiente->MARKET tambien ante INVALID_PRICE (10015), no solo INVALID_STOPS (10016)
+//         — algunos brokers (ej. EURUSD.sml) rechazan la pendiente muy cercana con 10015.
 // v10.22: reporta acct_balance + sl_risk_per_lot en el snapshot -> el detalle muestra la formula
 //         de volumen completa (riesgo $ = RISK% x balance) / (riesgo $/lote) = lots, que cierra.
 // v10.21: reporta a BD el snapshot completo del trade (objetos snapshot/ea_config en ReportOpen) +
 //         telemetria del proceso de correccion (objeto correction: futuro vs vela CFD, verificacion de
 //         alineacion de velas). Permite materializar el journal/analisis en tablas consultables.
-#define EA_VERSION "10.22"
+#define EA_VERSION "10.23"
 // v10.20: (E) si el broker rechaza la pendiente por caer dentro de STOPS_LEVEL (INVALID_STOPS),
 //         fallback a MARKET (self-gateado: en stops level 0 nunca dispara). Recalibra K_STOP 0.02->0.05
 //         (ahora >= M_SLIP) y M_SLIP 0.05->0.04. Slippage cap ahora OPCIONAL (ENABLE_SLIP_CHECK, OFF
@@ -2270,9 +2272,11 @@ bool ExecuteTrade(int userSignalId, string opType, double entryPrice, double sto
         // E: si el broker rechaza la pendiente por caer dentro de STOPS_LEVEL (precio a pocos puntos
         // del entry), entrar a MARKET. El fill queda ~en el entry (lado favorable: igual o mejor;
         // lado adverso: chase mínimo). Self-gateado: en brokers con stops level 0 nunca se rechaza.
-        if(!success && trade.ResultRetcode() == TRADE_RETCODE_INVALID_STOPS) {
-            Log(WARNING_LVL, "ORDER", StringFormat("Pendiente %s rechazada por cercanía (INVALID_STOPS) -> fallback MARKET",
-                EnumToString(orderType)));
+        // Algunos brokers devuelven INVALID_PRICE (10015) en vez de INVALID_STOPS (10016) para el mismo caso.
+        uint pendingRet = trade.ResultRetcode();
+        if(!success && (pendingRet == TRADE_RETCODE_INVALID_STOPS || pendingRet == TRADE_RETCODE_INVALID_PRICE)) {
+            Log(WARNING_LVL, "ORDER", StringFormat("Pendiente %s rechazada por cercanía (%d) -> fallback MARKET",
+                EnumToString(orderType), pendingRet));
             orderType     = (opType == "LONG") ? ORDER_TYPE_BUY : ORDER_TYPE_SELL;
             isMarketOrder = true;
             orderDecision = "MARKET_FB";
