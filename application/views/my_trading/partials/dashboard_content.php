@@ -18,6 +18,17 @@ $this->load->view('journals/_blocks/styles');
         </a>
     </div></div>
 <?php else: ?>
+    <div class="sig-grid-wrap">
+    <div class="sig-thead">
+        <div>#</div>
+        <div>Símbolo</div>
+        <div>Estado</div>
+        <div>Precio</div>
+        <div class="sig-r">Vol</div>
+        <div class="sig-r">PnL</div>
+        <div class="sig-r">Fecha</div>
+        <div></div>
+    </div>
     <div id="dashboardSignalsList">
         <?php foreach ($dashboard_signals as $signal):
             $vm = build_trade_view($signal, $signal->snap ?? null, $signal->corr ?? null, $signal->tp_events ?? []);
@@ -29,28 +40,31 @@ $this->load->view('journals/_blocks/styles');
         ?>
         <div class="card sig-card" data-signal-id="<?= $m['id'] ?>">
             <div class="sig-head collapsed" data-bs-toggle="collapse" data-bs-target="#<?= $cid ?>" aria-expanded="false">
-                <div style="min-width:46px"><strong>#<?= $m['id'] ?></strong></div>
-                <div style="min-width:118px">
+                <!-- # -->
+                <div class="sig-num"><strong>#<?= $m['id'] ?></strong></div>
+                <!-- Símbolo -->
+                <div>
                     <strong><?= htmlspecialchars($m['symbol']) ?></strong>
                     <span class="badge <?= $m['dir_class'] ?> pill"><?= htmlspecialchars($m['op'] ?: '—') ?></span>
                 </div>
-                <div>
+                <!-- Estado (chips agrupados) -->
+                <div class="sig-estado">
                     <span class="badge <?= $ph['class'] ?> pill">
                         <?php if ($ph['is_failure']): ?><i class="fas fa-exclamation-triangle me-1"></i><?php endif; ?>
                         <?= htmlspecialchars($ph['label']) ?>
                     </span>
+                    <?php if ($vm['max_level'] >= 1): ?>
+                        <span class="badge badge-soft pill" title="TP más alto alcanzado">máx TP<?= (int)$vm['max_level'] ?></span>
+                    <?php endif; ?>
+                    <?php if ($m['order_type']): ?>
+                        <span class="badge badge-soft pill"><?= htmlspecialchars(journal_order_label($m['order_type'])) ?></span>
+                    <?php endif; ?>
+                    <?php if ($signal->corr ?? null): ?>
+                        <span class="<?= $h['class'] ?>" style="font-size:1rem" title="<?= htmlspecialchars($h['title']) ?>"><?= $h['icon'] ?></span>
+                    <?php endif; ?>
                 </div>
-                <?php if ($vm['max_level'] >= 1): ?>
-                    <div><span class="badge badge-soft pill" title="TP más alto alcanzado">máx TP<?= (int)$vm['max_level'] ?></span></div>
-                <?php endif; ?>
-                <?php if ($m['order_type']): ?>
-                    <div><span class="badge badge-soft pill"><?= htmlspecialchars(journal_order_label($m['order_type'])) ?></span></div>
-                <?php endif; ?>
-                <?php if ($signal->corr ?? null): ?>
-                    <div title="<?= htmlspecialchars($h['title']) ?>"><span class="<?= $h['class'] ?>" style="font-size:1rem"><?= $h['icon'] ?></span></div>
-                <?php endif; ?>
-
-                <div class="grow num text-muted small">
+                <!-- Precio -->
+                <div class="sig-num small text-muted">
                     <?php if ($m['real_entry']): ?>
                         <?= tv_num($m['real_entry'], $d) ?><?php if ($m['last_price'] && $m['status'] !== 'closed'): ?> <i class="fas fa-arrow-right mx-1"></i> <?= tv_num($m['last_price'], $d) ?><?php elseif ($m['status'] === 'closed' && $m['last_price']): ?> <span class="text-muted">→ <?= tv_num($m['last_price'], $d) ?></span><?php endif; ?>
                     <?php elseif ($ph['key'] === 'PENDING'): $tgt = $vm['prices']['corr']['entry']; ?>
@@ -61,23 +75,25 @@ $this->load->view('journals/_blocks/styles');
                         <i class="fas fa-clock me-1"></i>Esperando…
                     <?php endif; ?>
                 </div>
-
-                <div class="num small text-muted" style="min-width:70px">
+                <!-- Vol -->
+                <div class="sig-num sig-r small text-muted">
                     <?php if ($signal->real_volume): ?>
-                        vol <?php if ($m['status'] === 'open' && $signal->remaining_volume !== null): ?><?= tv_num($signal->remaining_volume, 2) ?>/<?= tv_num($signal->real_volume, 2) ?><?php else: ?><?= tv_num($signal->real_volume, 2) ?><?php endif; ?>
+                        <?php if ($m['status'] === 'open' && $signal->remaining_volume !== null): ?><?= tv_num($signal->remaining_volume, 2) ?>/<?= tv_num($signal->real_volume, 2) ?><?php else: ?><?= tv_num($signal->real_volume, 2) ?><?php endif; ?>
                     <?php else: ?>—<?php endif; ?>
                 </div>
-
-                <div class="num">
+                <!-- PnL -->
+                <div class="sig-num sig-r">
                     <span class="<?= $m['pnl'] > 0 ? 'text-profit' : ($m['pnl'] < 0 ? 'text-loss' : 'text-muted') ?> fw-bold">
                         <?= $m['pnl'] >= 0 ? '+' : '' ?><?= tv_num($m['pnl'], 2) ?>
                     </span>
                 </div>
-                <div class="text-muted small text-end" style="min-width:92px">
+                <!-- Fecha -->
+                <div class="sig-num sig-r small text-muted">
                     <div><?= $elapsed ?></div>
                     <div style="font-size:.85em"><?= date('M j H:i', strtotime($m['created_at'])) ?></div>
                 </div>
-                <div><i class="fas fa-chevron-down chev"></i></div>
+                <!-- chevron -->
+                <div class="chev"><i class="fas fa-chevron-down"></i></div>
             </div>
 
             <div id="<?= $cid ?>" class="collapse">
@@ -107,6 +123,7 @@ $this->load->view('journals/_blocks/styles');
         </div>
         <?php endforeach; ?>
     </div>
+    </div><!-- /.sig-grid-wrap -->
 <?php endif; ?>
 
 <!-- Quick Stats Cards -->

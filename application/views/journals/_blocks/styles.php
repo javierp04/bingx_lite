@@ -15,12 +15,16 @@
   .tl-item{position:relative;padding:0 0 18px 34px;}
   .tl-dot{position:absolute;left:0;top:2px;width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:.6rem;}
   .tl-item h6{margin:0;font-size:.92rem;} .tl-item small{color:#6c757d;}
-  /* cards desplegables (dashboard) */
-  .sig-card{box-shadow:0 .075rem .2rem rgba(0,0,0,.05);margin-bottom:10px;border:1px solid #e7ebf0;}
-  .sig-head{cursor:pointer;padding:.55rem .85rem;display:flex;align-items:center;gap:.85rem;flex-wrap:wrap;}
+  /* cards desplegables (dashboard) — grilla alineada tipo tabla */
+  .sig-grid-wrap{overflow-x:auto;}
+  .sig-card{box-shadow:0 .075rem .2rem rgba(0,0,0,.05);margin-bottom:8px;border:1px solid #e7ebf0;min-width:780px;}
+  .sig-thead,.sig-head{display:grid;grid-template-columns:46px minmax(104px,auto) minmax(190px,1.3fr) minmax(120px,1fr) 70px 86px 104px 22px;align-items:center;gap:.6rem;padding:.5rem .85rem;}
+  .sig-thead{min-width:780px;font-size:.68rem;text-transform:uppercase;letter-spacing:.03em;color:#8a94a6;padding-top:.2rem;padding-bottom:.2rem;}
+  .sig-head{cursor:pointer;}
   .sig-head:hover{background:#fbfcfe;}
-  .sig-head .num{font-variant-numeric:tabular-nums;}
-  .sig-head .grow{flex:1;min-width:120px;}
-  .chev{transition:transform .15s;color:#8a94a6;}
+  .sig-estado{display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;}
+  .sig-num{font-variant-numeric:tabular-nums;}
+  .sig-r{text-align:right;}
+  .chev{transition:transform .15s;color:#8a94a6;text-align:center;}
   .sig-head[aria-expanded="true"] .chev{transform:rotate(180deg);}
 </style>
