@@ -70,7 +70,10 @@ $this->load->view('journals/_blocks/styles');
                         <?= $m['pnl'] >= 0 ? '+' : '' ?><?= tv_num($m['pnl'], 2) ?>
                     </span>
                 </div>
-                <div class="text-muted small" style="min-width:64px"><?= $elapsed ?></div>
+                <div class="text-muted small text-end" style="min-width:92px">
+                    <div><?= $elapsed ?></div>
+                    <div style="font-size:.85em"><?= date('M j H:i', strtotime($m['created_at'])) ?></div>
+                </div>
                 <div><i class="fas fa-chevron-down chev"></i></div>
             </div>
 
