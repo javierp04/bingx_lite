@@ -1,6 +1,6 @@
 <?php
 /** Bloque volumen + gates. In: $vm, $compact.
- *  compact = una línea de volumen/riesgo (card). full = desglose completo (detalle). */
+ *  compact = línea honesta (sin aritmética que no cierra). full = fórmula completa + chips. */
 $g = $vm['gates']; $d = $vm['decimals'];
 $compact = isset($compact) ? $compact : false;
 if (empty($g['present'])) return;
@@ -8,14 +8,23 @@ if (empty($g['present'])) return;
 <?php if ($compact): ?>
   <?php if ($g['real_volume'] !== null): ?>
     <div class="calc" style="font-size:.85rem">
-      <b>Volumen</b> <?= tv_num($g['real_volume'], 2) ?> lots · riesgo <?= tv_num($g['risk_percent'], 1) ?>% ÷ R(<?= tv_num($g['r_dist'], $d) ?>) · T1 <?= tv_num($g['t1'], $d) ?>
+      <b>Volumen</b> <?= tv_num($g['real_volume'], 2) ?> lots · riesgo <?= tv_num($g['risk_percent'], 1) ?>% del balance · R <?= tv_num($g['r_dist'], $d) ?> · T1 <?= tv_num($g['t1'], $d) ?>
     </div>
   <?php endif; ?>
 <?php else: ?>
   <h6 class="mb-2"><i class="fas fa-sliders-h me-1 text-primary"></i>Volumen y gates</h6>
-  <?php if ($g['real_volume'] !== null && $g['r_dist'] !== null): ?>
+  <?php if ($g['real_volume'] !== null): ?>
     <div class="calc mb-2">
-      Volumen por riesgo = (Balance × RISK% <?= tv_num($g['risk_percent'], 1) ?>) ÷ R(<?= tv_num($g['r_dist'], $d) ?>) = <b><?= tv_num($g['real_volume'], 2) ?> lots</b>
+      <?php if ($g['risk_money'] !== null && $g['risk_per_lot'] !== null && $g['risk_per_lot'] > 0): ?>
+        <?php // Fórmula completa que cierra: riesgo $ ÷ riesgo $/lote = lotes ?>
+        Volumen por riesgo = riesgo (<?= tv_num($g['risk_percent'], 1) ?>% × $<?= number_format($g['acct_balance'], 2) ?> = <b>$<?= number_format($g['risk_money'], 2) ?></b>)
+        ÷ <b>$<?= number_format($g['risk_per_lot'], 2) ?></b>/lote (R <?= tv_num($g['r_dist'], $d) ?>)
+        = <b><?= tv_num($g['real_volume'], 2) ?> lots</b>
+      <?php else: ?>
+        <?php // Fallback (trade previo a v10.22, sin balance/valor de punto reportado) ?>
+        Volumen <b><?= tv_num($g['real_volume'], 2) ?> lots</b> · riesgo <?= tv_num($g['risk_percent'], 1) ?>% del balance · R <?= tv_num($g['r_dist'], $d) ?>
+        <div class="text-muted" style="font-size:.78rem">Sin balance/valor-de-punto reportado para mostrar la cuenta completa.</div>
+      <?php endif; ?>
     </div>
   <?php endif; ?>
   <div class="d-flex flex-wrap gap-2">

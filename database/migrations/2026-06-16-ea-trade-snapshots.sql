@@ -43,6 +43,8 @@ CREATE TABLE IF NOT EXISTS `ea_trade_snapshots` (
   `k_band`         DECIMAL(18,5) DEFAULT NULL,   -- banda MARKET = k * T1
   `stops_min`      DECIMAL(18,5) DEFAULT NULL,   -- SYMBOL_TRADE_STOPS_LEVEL
   `sl_dist`        DECIMAL(18,5) DEFAULT NULL,
+  `acct_balance`   DECIMAL(14,2) DEFAULT NULL,   -- balance al dimensionar (para la fórmula de volumen)
+  `sl_risk_per_lot` DECIMAL(14,4) DEFAULT NULL,  -- riesgo en $ por 1 lote para la distancia de SL
 
   -- Ejecucion inicial
   `order_type`     VARCHAR(20) DEFAULT NULL,     -- MARKET / LIMIT / STOP / MARKET_FB

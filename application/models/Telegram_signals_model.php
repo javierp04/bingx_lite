@@ -1131,7 +1131,7 @@ class Telegram_signals_model extends CI_Model
             'dir','entry_raw','sl_raw','corr_on','corr_factor','entry','sl',
             'tp1','tp2','tp3','tp4','tp5','r_dist','t1','spread_real','spread_tol',
             'slip_real','slip_tol','price_signal','dist_entry','side','k_band',
-            'stops_min','sl_dist','order_type','real_entry','real_volume','trade_id',
+            'stops_min','sl_dist','acct_balance','sl_risk_per_lot','order_type','real_entry','real_volume','trade_id',
             'max_level','vol_closed_pct','exit_level','close_reason','gross_pnl',
             'last_price','result','cfg_risk_percent','cfg_k_stop_ratio','cfg_k_limit_ratio',
             'cfg_m_slip_ratio','cfg_c_spread_ratio','cfg_enable_slip','cfg_enable_spread',

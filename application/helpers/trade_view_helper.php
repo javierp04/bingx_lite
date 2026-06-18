@@ -163,6 +163,11 @@ if (!function_exists('build_trade_view')) {
                 'sl_dist'        => $snap->sl_dist ?? null,
                 'be_level'       => $snap->cfg_be_level ?? null,
                 'real_volume'    => $snap->real_volume ?? null,
+                'acct_balance'   => tv_has($snap, 'acct_balance') ? (float)$snap->acct_balance : null,
+                'risk_per_lot'   => tv_has($snap, 'sl_risk_per_lot') ? (float)$snap->sl_risk_per_lot : null,
+                // riesgo en $ = balance × RISK%/100 (derivado; sirve para la fórmula completa del detalle)
+                'risk_money'     => (tv_has($snap, 'acct_balance') && isset($snap->cfg_risk_percent))
+                                    ? round((float)$snap->acct_balance * (float)$snap->cfg_risk_percent / 100, 2) : null,
                 'tp_pcts'        => [
                     $snap->cfg_tp1_pct ?? null, $snap->cfg_tp2_pct ?? null, $snap->cfg_tp3_pct ?? null,
                     $snap->cfg_tp4_pct ?? null, $snap->cfg_tp5_pct ?? null,
