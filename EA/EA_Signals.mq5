@@ -1068,6 +1068,24 @@ string BuildCorrectionJson() {
     return jb.Build();
 }
 
+// Footer comun de los reportes: symbol (opcional) + execution_time, en ese orden. Centraliza el
+// formato del timestamp — el body se hashea server-side para idempotencia, asi que un solo formato
+// evita drift entre los 4 Report*.
+void AddReportFooter(JsonBuilder &jb, bool withSymbol) {
+    if(withSymbol) jb.AddString("symbol", TICKER_SYMBOL);
+    jb.AddString("execution_time", TimeToString(TimeGMT(), TIME_DATE|TIME_SECONDS));
+}
+
+// Bloque de analytics para la BD: version + snapshot estatico + config + (si hubo) correccion.
+// Lo comparten ReportOpen (siempre) y ReportClose (solo en fallos pre-ejecucion).
+void AddAnalyticsBlock(JsonBuilder &jb) {
+    jb.AddString("ea_version", EA_VERSION);
+    jb.AddRaw("snapshot", BuildSnapshotJson());
+    jb.AddRaw("ea_config", BuildEaConfigJson());
+    if(currentJournal.corr_status != "")
+        jb.AddRaw("correction", BuildCorrectionJson());
+}
+
 void ReportOpen(int userSignalId, bool isMarketOrder, ENUM_ORDER_TYPE orderType,
                 double entryPrice, double stopLoss, double volume, ulong ticket,
                 string opType, PriceSet &raw, PriceSet &corrected) {
@@ -1092,14 +1110,9 @@ void ReportOpen(int userSignalId, bool isMarketOrder, ENUM_ORDER_TYPE orderType,
         jb.AddRaw("mt_corrected_data", BuildSignalDataJson(opType, corrected));
 
     // Analytics BD: snapshot estatico + constantes de config + proceso de correccion
-    jb.AddString("ea_version", EA_VERSION);
-    jb.AddRaw("snapshot", BuildSnapshotJson());
-    jb.AddRaw("ea_config", BuildEaConfigJson());
-    if(currentJournal.corr_status != "")
-        jb.AddRaw("correction", BuildCorrectionJson());
+    AddAnalyticsBlock(jb);
 
-    jb.AddString("symbol", TICKER_SYMBOL);
-    jb.AddString("execution_time", TimeToString(TimeGMT(), TIME_DATE|TIME_SECONDS));
+    AddReportFooter(jb, true);
 
     PostReport(url, jb.Build(), "Open");
 }
@@ -1118,7 +1131,7 @@ void ReportProgress(int userSignalId, int level, double volumeClosedPercent,
     jb.AddDouble("gross_pnl", pnl, 2);
     jb.AddDouble("last_price", currentPrice);
     jb.AddString("message", message);
-    jb.AddString("execution_time", TimeToString(TimeGMT(), TIME_DATE|TIME_SECONDS));
+    AddReportFooter(jb, false);
 
     // Solo cuando se mueve SL a BE
     if(newStopLoss > 0.0) {
@@ -1143,15 +1156,10 @@ void ReportClose(int userSignalId, int exitLevel, string closeReason,
     // Fallos pre-ejecucion (nunca operó, ReportOpen no corrió): adjuntamos el feature vector
     // + config + correccion para no perder la fila de analisis (mirror del CSV de rechazos).
     if(exitLevel == EXIT_INVALID || exitLevel == EXIT_ERROR) {
-        jb.AddString("ea_version", EA_VERSION);
-        jb.AddRaw("snapshot", BuildSnapshotJson());
-        jb.AddRaw("ea_config", BuildEaConfigJson());
-        if(currentJournal.corr_status != "")
-            jb.AddRaw("correction", BuildCorrectionJson());
+        AddAnalyticsBlock(jb);
     }
 
-    jb.AddString("symbol", TICKER_SYMBOL);
-    jb.AddString("execution_time", TimeToString(TimeGMT(), TIME_DATE|TIME_SECONDS));
+    AddReportFooter(jb, true);
 
     PostReport(url, jb.Build(), "Close: " + closeReason);
 
@@ -1732,13 +1740,12 @@ void OnTick() {
 // ==========================================
 // GESTIÓN DE TPs (unificada - TP5 ya no es caso especial)
 // ==========================================
-bool CheckAndExecuteTP(int tpLevel, double tpPrice, double currentPrice, bool closeAll = false) {
+bool CheckAndExecuteTP(int tpLevel, double tpPrice, double currentPrice, bool isLong, bool closeAll = false) {
     if(tpPrice <= 0.0) {
         Log(DEBUG_LVL, "TP_SKIP", StringFormat("TP%d saltado: precio no válido (%.5f)", tpLevel, tpPrice));
         return false;
     }
 
-    bool isLong = (currentTP.direction == "LONG");
     bool priceReached = (isLong && currentPrice >= tpPrice) || (!isLong && currentPrice <= tpPrice);
 
     if(!currentTP.levelFlags[tpLevel] && priceReached) {
@@ -1778,18 +1785,19 @@ bool CheckAndExecuteTP(int tpLevel, double tpPrice, double currentPrice, bool cl
 void ManageTPs(double currentPrice) {
     // Si un TP completa el trade (ClosePartialPosition -> EndTrade), cortar: seguir iterando
     // dispararía CheckAndExecuteTP sobre un estado ya reseteado (logs espurios / mutación de currentLevel).
-    CheckAndExecuteTP(1, currentTP.tp1, currentPrice);
+    bool isLong = (currentTP.direction == "LONG");   // 2a: calculado 1× por tick, no 1× por TP
+    CheckAndExecuteTP(1, currentTP.tp1, currentPrice, isLong);
     if(!currentTP.isActive) return;
-    CheckAndExecuteTP(2, currentTP.tp2, currentPrice);
+    CheckAndExecuteTP(2, currentTP.tp2, currentPrice, isLong);
     if(!currentTP.isActive) return;
-    CheckAndExecuteTP(3, currentTP.tp3, currentPrice);
+    CheckAndExecuteTP(3, currentTP.tp3, currentPrice, isLong);
     if(!currentTP.isActive) return;
-    CheckAndExecuteTP(4, currentTP.tp4, currentPrice);
+    CheckAndExecuteTP(4, currentTP.tp4, currentPrice, isLong);
     if(!currentTP.isActive) return;
 
     // TP5: cierra TODO el volumen restante (incluye cualquier sobrante de config < 100%)
     if(currentTP.currentVolume > 0) {
-        CheckAndExecuteTP(5, currentTP.tp5, currentPrice, true);
+        CheckAndExecuteTP(5, currentTP.tp5, currentPrice, isLong, true);
     }
 }
 
@@ -1905,8 +1913,7 @@ void ReportPendingExecuted(int userSignalId, ulong ticket, double entryPrice,
     jb.AddDouble("gross_pnl", 0.0, 2);
     jb.AddDouble("last_price", entryPrice);
     jb.AddString("message", "Orden pendiente ejecutada - datos completos");
-    jb.AddString("symbol", TICKER_SYMBOL);
-    jb.AddString("execution_time", TimeToString(TimeGMT(), TIME_DATE|TIME_SECONDS));
+    AddReportFooter(jb, true);
     
     PostReport(url, jb.Build(), "Pending execution");
 }
@@ -1943,6 +1950,13 @@ void CheckForSignals() {
 
     Log(DEBUG_LVL, "POLL", "Polling OK, procesando respuesta...");
     ProcessSignalResponse(response.data);
+}
+
+// Rechaza una señal sin operar: loguea el motivo (categoria SIGNAL) y reporta el cierre. El caller
+// hace el return. Unifica el patron Log+ReportClose repetido en la validacion de ProcessSignalResponse.
+void RejectSignal(int userSignalId, int exitCode, string reason, string logMsg) {
+    Log(ERROR_LVL, "SIGNAL", logMsg);
+    ReportClose(userSignalId, exitCode, reason, 0, 0);
 }
 
 void ProcessSignalResponse(string jsonResponse) {
@@ -1987,33 +2001,32 @@ void ProcessSignalResponse(string jsonResponse) {
     // Direccion: el EA decide LONG vs SHORT con (opType == "LONG"); cualquier otro valor caeria en
     // la rama SHORT y abriria al reves. Exigir el string exacto y rechazar si no.
     if(opType != "LONG" && opType != "SHORT") {
-        Log(ERROR_LVL, "SIGNAL", StringFormat("Señal rechazada ID=%d: op_type inválido '%s' (esperado LONG o SHORT)", userSignalId, opType));
-        ReportClose(userSignalId, EXIT_INVALID, REASON_INVALID_OPTYPE, 0, 0);
+        RejectSignal(userSignalId, EXIT_INVALID, REASON_INVALID_OPTYPE,
+            StringFormat("Señal rechazada ID=%d: op_type inválido '%s' (esperado LONG o SHORT)", userSignalId, opType));
         return;
     }
 
     if(entry <= 0) {
-        Log(ERROR_LVL, "SIGNAL", StringFormat("Señal rechazada ID=%d: entry inválido (%.5f)", userSignalId, entry));
-        ReportClose(userSignalId, EXIT_INVALID, REASON_INVALID_ENTRY, 0, 0);
+        RejectSignal(userSignalId, EXIT_INVALID, REASON_INVALID_ENTRY,
+            StringFormat("Señal rechazada ID=%d: entry inválido (%.5f)", userSignalId, entry));
         return;
     }
 
     if(sl1 <= 0) {
-        Log(ERROR_LVL, "SIGNAL", StringFormat("Señal rechazada ID=%d: SL1 inválido", userSignalId));
-        ReportClose(userSignalId, EXIT_INVALID, REASON_INVALID_SL, 0, 0);
+        RejectSignal(userSignalId, EXIT_INVALID, REASON_INVALID_SL,
+            StringFormat("Señal rechazada ID=%d: SL1 inválido", userSignalId));
         return;
     }
 
     if(tp1 <= 0 || tp2 <= 0 || tp3 <= 0 || tp4 <= 0 || tp5 <= 0) {
-        Log(ERROR_LVL, "SIGNAL", StringFormat("Señal rechazada ID=%d: TPs incompletos. Faltan: %s%s%s%s%s",
+        RejectSignal(userSignalId, EXIT_INVALID, REASON_INVALID_TPS,
+            StringFormat("Señal rechazada ID=%d: TPs incompletos. Faltan: %s%s%s%s%s",
             userSignalId,
             (tp1 <= 0 ? "TP1 " : ""),
             (tp2 <= 0 ? "TP2 " : ""),
             (tp3 <= 0 ? "TP3 " : ""),
             (tp4 <= 0 ? "TP4 " : ""),
-            (tp5 <= 0 ? "TP5 " : "")
-        ));
-        ReportClose(userSignalId, EXIT_INVALID, REASON_INVALID_TPS, 0, 0);
+            (tp5 <= 0 ? "TP5 " : "")));
         return;
     }
 
@@ -2024,9 +2037,9 @@ void ProcessSignalResponse(string jsonResponse) {
 
     bool slOk = isLong ? (sl1 < entry) : (sl1 > entry);
     if(!slOk) {
-        Log(ERROR_LVL, "SIGNAL", StringFormat("Señal rechazada ID=%d: SL del lado equivocado (%s entry=%.5f SL=%.5f)",
+        RejectSignal(userSignalId, EXIT_INVALID, REASON_INVALID_SL,
+            StringFormat("Señal rechazada ID=%d: SL del lado equivocado (%s entry=%.5f SL=%.5f)",
             userSignalId, opType, entry, sl1));
-        ReportClose(userSignalId, EXIT_INVALID, REASON_INVALID_SL, 0, 0);
         return;
     }
 
@@ -2034,9 +2047,9 @@ void ProcessSignalResponse(string jsonResponse) {
         ? (entry < tp1 && tp1 < tp2 && tp2 < tp3 && tp3 < tp4 && tp4 < tp5)
         : (entry > tp1 && tp1 > tp2 && tp2 > tp3 && tp3 > tp4 && tp4 > tp5);
     if(!tpsOk) {
-        Log(ERROR_LVL, "SIGNAL", StringFormat("Señal rechazada ID=%d: TPs fuera de orden/lado (%s entry=%.5f TPs=[%.5f,%.5f,%.5f,%.5f,%.5f])",
+        RejectSignal(userSignalId, EXIT_INVALID, REASON_INVALID_TPS,
+            StringFormat("Señal rechazada ID=%d: TPs fuera de orden/lado (%s entry=%.5f TPs=[%.5f,%.5f,%.5f,%.5f,%.5f])",
             userSignalId, opType, entry, tp1, tp2, tp3, tp4, tp5));
-        ReportClose(userSignalId, EXIT_INVALID, REASON_INVALID_TPS, 0, 0);
         return;
     }
 
