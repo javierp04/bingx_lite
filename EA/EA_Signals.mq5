@@ -152,6 +152,8 @@ struct OptimizedTPState {
 
     // TIME (UTC en que se estableció la orden/posición: ancla de los cortes por horario NY)
     datetime tradeStartUtc;
+    datetime cutoffTargetUtc;   // UTC del corte de pendiente, precalculado al abrir (0 = off / sin trade)
+    datetime closeTargetUtc;    // UTC del cierre forzado, precalculado al abrir (0 = off / sin trade)
 };
 
 struct JournalRecord {
@@ -533,6 +535,10 @@ bool LoadState() {
         ComputeLevelVolumes(currentTP.originalVolume, fbSpecs, currentTP.levelVolumes);
     }
 
+    // Targets de corte por horario: se recalculan determinísticamente desde tradeStartUtc (no se
+    // persisten), así el state file no cambia de schema y un trade adoptado recupera sus cortes.
+    SetupTimeCutoffs();
+
     // signalId>0 indica que habia un trade trackeado (activo o pendiente)
     return (currentTP.signalId > 0);
 }
@@ -788,6 +794,8 @@ void InitTPState() {
     currentTP.currentSL = 0;
     currentTP.tp1 = currentTP.tp2 = currentTP.tp3 = currentTP.tp4 = currentTP.tp5 = 0;
     currentTP.tradeStartUtc = 0;
+    currentTP.cutoffTargetUtc = 0;
+    currentTP.closeTargetUtc = 0;
 }
 
 void SetupBaseUrls() {
@@ -1601,16 +1609,26 @@ datetime NextNyTimeUtc(datetime fromUtc, int hh, int mm) {
     return targetNy - offTarget;
 }
 
-// ¿Llegó la hora de cortar la pendiente no ejecutada? (próximo CUTOFF_*_NY tras abrir el trade)
-bool ShouldCutoffPending() {
-    if(!ENABLE_PENDING_CUTOFF || currentTP.tradeStartUtc <= 0) return false;
-    return (TimeGMT() >= NextNyTimeUtc(currentTP.tradeStartUtc, CUTOFF_HOUR_NY, CUTOFF_MIN_NY));
+// Precalcula (una sola vez) los instantes UTC de corte desde tradeStartUtc, para no recomputar la
+// matemática NY/DST en cada OnTick. Deja 0 cuando la feature está off o no hay ancla de trade.
+void SetupTimeCutoffs() {
+    currentTP.cutoffTargetUtc = 0;
+    currentTP.closeTargetUtc  = 0;
+    if(currentTP.tradeStartUtc <= 0) return;
+    if(ENABLE_PENDING_CUTOFF)
+        currentTP.cutoffTargetUtc = NextNyTimeUtc(currentTP.tradeStartUtc, CUTOFF_HOUR_NY, CUTOFF_MIN_NY);
+    if(ENABLE_FORCE_CLOSE)
+        currentTP.closeTargetUtc  = NextNyTimeUtc(currentTP.tradeStartUtc, CLOSE_HOUR_NY, CLOSE_MIN_NY);
 }
 
-// ¿Llegó la hora de cerrar la posición a mercado? (próximo CLOSE_*_NY tras abrir el trade)
+// ¿Llegó la hora de cortar la pendiente no ejecutada? (target precalculado al abrir)
+bool ShouldCutoffPending() {
+    return (currentTP.cutoffTargetUtc > 0 && TimeGMT() >= currentTP.cutoffTargetUtc);
+}
+
+// ¿Llegó la hora de cerrar la posición a mercado? (target precalculado al abrir)
 bool ShouldForceCloseNow() {
-    if(!ENABLE_FORCE_CLOSE || currentTP.tradeStartUtc <= 0) return false;
-    return (TimeGMT() >= NextNyTimeUtc(currentTP.tradeStartUtc, CLOSE_HOUR_NY, CLOSE_MIN_NY));
+    return (currentTP.closeTargetUtc > 0 && TimeGMT() >= currentTP.closeTargetUtc);
 }
 
 // Cancela la orden pendiente no ejecutada por corte de horario y reporta ORDER_CANCELLED.
@@ -2325,6 +2343,7 @@ void SetupTPState(int signalId, string direction, double entry, double originalS
     currentTP.currentLevel = isMarketOrder ? 0 : -2;
     currentTP.slMovedToBE = false;
     currentTP.tradeStartUtc = TimeGMT();   // ancla de los cortes por horario NY
+    SetupTimeCutoffs();                    // precalcula los instantes UTC de corte (una sola vez)
 
     ArrayInitialize(currentTP.levelFlags, false);
 
