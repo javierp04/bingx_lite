@@ -1008,12 +1008,17 @@ class Telegram_signals_model extends CI_Model
         }
 
         if (!empty($filters['date_range']) && $filters['date_range'] !== 'all') {
-            if ($filters['date_range'] === 'today') {
-                $this->db->where('uts.created_at >=', date('Y-m-d 00:00:00')); // desde las 00:00 de hoy
-            } else {
-                $days = (int)$filters['date_range'];
-                $this->db->where('uts.created_at >=', date('Y-m-d H:i:s', strtotime("-{$days} days")));
-            }
+            $cutoff = ($filters['date_range'] === 'today')
+                ? date('Y-m-d 00:00:00')                                        // desde las 00:00 de hoy
+                : date('Y-m-d H:i:s', strtotime('-' . (int)$filters['date_range'] . ' days'));
+
+            // Las posiciones ACTIVAS (open/pending/claimed) se muestran SIEMPRE, sin importar la
+            // fecha; el rango solo limita a las terminadas (closed/failed/cancelled). Así "Today"
+            // no oculta un trade abierto de días previos.
+            $this->db->group_start();
+                $this->db->where_in('uts.status', ['open', 'pending', 'claimed']);
+                $this->db->or_where('uts.created_at >=', $cutoff);
+            $this->db->group_end();
         }
 
         if (!empty($filters['pnl_filter'])) {
