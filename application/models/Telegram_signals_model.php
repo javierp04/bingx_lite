@@ -1008,8 +1008,12 @@ class Telegram_signals_model extends CI_Model
         }
 
         if (!empty($filters['date_range']) && $filters['date_range'] !== 'all') {
-            $days = (int)$filters['date_range'];
-            $this->db->where('uts.created_at >=', date('Y-m-d H:i:s', strtotime("-{$days} days")));
+            if ($filters['date_range'] === 'today') {
+                $this->db->where('uts.created_at >=', date('Y-m-d 00:00:00')); // desde las 00:00 de hoy
+            } else {
+                $days = (int)$filters['date_range'];
+                $this->db->where('uts.created_at >=', date('Y-m-d H:i:s', strtotime("-{$days} days")));
+            }
         }
 
         if (!empty($filters['pnl_filter'])) {
