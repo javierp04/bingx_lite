@@ -50,8 +50,8 @@
             <div class="col-md-2">
                 <label for="date_range" class="form-label">Date Range</label>
                 <select class="form-select" id="date_range" name="date_range">
-                    <option value="today" <?= ($filters['date_range'] ?? '') === 'today' ? 'selected' : '' ?>>Today</option>
-                    <option value="7" <?= ($filters['date_range'] ?? '7') === '7' ? 'selected' : '' ?>>Last 7 days</option>
+                    <option value="today" <?= ($filters['date_range'] ?? 'today') === 'today' ? 'selected' : '' ?>>Today</option>
+                    <option value="7" <?= ($filters['date_range'] ?? '') === '7' ? 'selected' : '' ?>>Last 7 days</option>
                     <option value="30" <?= ($filters['date_range'] ?? '') === '30' ? 'selected' : '' ?>>Last 30 days</option>
                     <option value="all" <?= ($filters['date_range'] ?? '') === 'all' ? 'selected' : '' ?>>All Time</option>
                 </select>

@@ -37,7 +37,7 @@ class My_trading extends CI_Controller
                 $filters = array();
                 $filters['status_filter'] = $this->input->get('status_filter') ?: '';
                 $filters['ticker_filter'] = $this->input->get('ticker_filter') ?: '';
-                $filters['date_range'] = $this->input->get('date_range') ?: '7';
+                $filters['date_range'] = $this->input->get('date_range') ?: 'today';
                 $filters['pnl_filter'] = $this->input->get('pnl_filter') ?: '';
 
                 // Get dashboard signals with filters
@@ -217,7 +217,7 @@ class My_trading extends CI_Controller
         $filters = array();
         $filters['status_filter'] = $this->input->get('status_filter') ?: '';
         $filters['ticker_filter'] = $this->input->get('ticker_filter') ?: '';
-        $filters['date_range'] = $this->input->get('date_range') ?: '7';
+        $filters['date_range'] = $this->input->get('date_range') ?: 'today';
         $filters['pnl_filter'] = $this->input->get('pnl_filter') ?: '';
 
         $dashboard_signals = $this->Telegram_signals_model->get_trading_dashboard_signals($user_id, $filters);
