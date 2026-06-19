@@ -113,10 +113,10 @@ input double    SAFETY_FACTOR = 1.5;
 input group "=== Cortes por horario (hora NY, DST automatico) ==="
 input bool      ENABLE_PENDING_CUTOFF = true;   // cancelar la pendiente NO ejecutada al llegar la hora
 input int       CUTOFF_HOUR_NY = 16;            // hora NY de corte de pendientes
-input int       CUTOFF_MIN_NY  = 30;            // minuto NY de corte de pendientes
+input int       CUTOFF_MIN_NY  = 0;             // minuto NY de corte de pendientes
 input bool      ENABLE_FORCE_CLOSE = true;      // cerrar la posicion a mercado al llegar la hora (sin importar precio)
-input int       CLOSE_HOUR_NY = 20;             // hora NY de cierre forzado
-input int       CLOSE_MIN_NY  = 0;              // minuto NY de cierre forzado
+input int       CLOSE_HOUR_NY = 16;             // hora NY de cierre forzado
+input int       CLOSE_MIN_NY  = 55;             // minuto NY de cierre forzado
 
 input group "=== Logging ==="
 input LogLevel  MIN_LOG_LEVEL = INFO_LVL;   // DEBUG_LVL = ver todo, INFO_LVL = normal
